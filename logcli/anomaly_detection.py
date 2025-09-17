@@ -1099,12 +1099,7 @@ class AnomalyDetector:
                 if 'ratio' in details:
                     change_type = "increased" if details['ratio'] > 1 else "decreased"
                     percentage = abs(details['ratio'] - 1) * 100
-                    try:
-                        from datetime import datetime
-                        timestamp = datetime.fromisoformat(anomaly['detected_at'].replace('Z', '+00:00'))
-                        hour = timestamp.strftime('%H:%M')
-                    except:
-                        hour = anomaly['detected_at'][:5]  # Fallback
+                    hour = anomaly['detected_at'].strftime('%H:%M')
                     traffic_changes.append(f'{hour}: {change_type} by {percentage:.0f}%')
             
             recommendations.append({
@@ -1292,20 +1287,11 @@ class AnomalyDetector:
         
         times = [a['detected_at'] for a in anomalies]
         if len(times) == 1:
-            try:
-                from datetime import datetime
-                timestamp = datetime.fromisoformat(times[0].replace('Z', '+00:00'))
-                return timestamp.strftime('%H:%M')
-            except:
-                return times[0][:5]  # Fallback to first 5 chars
+            return times[0].strftime('%H:%M')
         else:
-            try:
-                from datetime import datetime
-                start_time = min(datetime.fromisoformat(t.replace('Z', '+00:00')) for t in times)
-                end_time = max(datetime.fromisoformat(t.replace('Z', '+00:00')) for t in times)
-                return f"{start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}"
-            except:
-                return f"{times[0][:5]} - {times[-1][:5]}"  # Fallback
+            start_time = min(times).strftime('%H:%M')
+            end_time = max(times).strftime('%H:%M')
+            return f"{start_time} - {end_time}"
     
     def export_anomaly_report(self, output_file: str) -> None:
         """Export comprehensive anomaly detection report."""
@@ -1442,8 +1428,8 @@ class AnomalyDetector:
                 'severity_distribution': Counter(a['details'].get('severity', 'Unknown') for a in anomalies),
                 'examples': [],
                 'time_range': {
-                    'first_occurrence': min(datetime.fromisoformat(a['detected_at'].replace('Z', '+00:00')) for a in anomalies),
-                    'last_occurrence': max(datetime.fromisoformat(a['detected_at'].replace('Z', '+00:00')) for a in anomalies),
+                    'first_occurrence': min(a['detected_at'] for a in anomalies).isoformat(),
+                    'last_occurrence': max(a['detected_at'] for a in anomalies).isoformat(),
                 },
                 'impact_summary': self._get_impact_summary_for_type(anomaly_type, anomalies)
             }
@@ -1451,7 +1437,7 @@ class AnomalyDetector:
             # Add up to 3 specific examples
             for anomaly in anomalies[:3]:
                 example = {
-                    'timestamp': anomaly['detected_at'],
+                    'timestamp': anomaly['detected_at'].isoformat(),
                     'severity': anomaly['details'].get('severity', 'Unknown'),
                     'confidence': anomaly['confidence'],
                     'description': self._format_anomaly_description(anomaly),
@@ -1473,13 +1459,7 @@ class AnomalyDetector:
         hourly_severity = defaultdict(list)
         
         for anomaly in recent_anomalies:
-            # Parse timestamp string to get hour
-            try:
-                from datetime import datetime
-                timestamp = datetime.fromisoformat(anomaly['detected_at'].replace('Z', '+00:00'))
-                hour = timestamp.hour
-            except:
-                hour = 0  # Default to midnight if parsing fails
+            hour = anomaly['detected_at'].hour
             hourly_counts[hour] += 1
             hourly_severity[hour].append(anomaly['details'].get('severity', 'Unknown'))
         
@@ -1574,13 +1554,9 @@ class AnomalyDetector:
         
         # Calculate duration
         if len(anomalies) > 1:
-            try:
-                from datetime import datetime
-                first_time = min(datetime.fromisoformat(a['detected_at'].replace('Z', '+00:00')) for a in anomalies)
-                last_time = max(datetime.fromisoformat(a['detected_at'].replace('Z', '+00:00')) for a in anomalies)
-                duration_minutes = (last_time - first_time).total_seconds() / 60
-            except:
-                duration_minutes = 1
+            first_time = min(a['detected_at'] for a in anomalies)
+            last_time = max(a['detected_at'] for a in anomalies)
+            duration_minutes = (last_time - first_time).total_seconds() / 60
         else:
             duration_minutes = 1
         
