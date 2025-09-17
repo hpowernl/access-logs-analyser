@@ -1621,7 +1621,21 @@ def anomalies(log_files, sensitivity, window_size, realtime_alerts,
             console.print(f"\n  [bold blue]📊 {type_display} ({details['count']} occurrences)[/bold blue]")
             
             # Show time range
-            console.print(f"    ⏰ Time Range: {details['time_range']['first_occurrence'][:16]} - {details['time_range']['last_occurrence'][:16]}")
+            first_occ = details['time_range']['first_occurrence']
+            last_occ = details['time_range']['last_occurrence']
+            
+            # Handle both datetime objects and strings
+            if hasattr(first_occ, 'strftime'):
+                first_str = first_occ.strftime('%Y-%m-%dT%H:%M')
+            else:
+                first_str = str(first_occ)[:16]
+                
+            if hasattr(last_occ, 'strftime'):
+                last_str = last_occ.strftime('%Y-%m-%dT%H:%M')
+            else:
+                last_str = str(last_occ)[:16]
+                
+            console.print(f"    ⏰ Time Range: {first_str} - {last_str}")
             
             # Show severity distribution
             severity_dist = details['severity_distribution']

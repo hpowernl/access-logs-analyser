@@ -1442,8 +1442,8 @@ class AnomalyDetector:
                 'severity_distribution': Counter(a['details'].get('severity', 'Unknown') for a in anomalies),
                 'examples': [],
                 'time_range': {
-                    'first_occurrence': min(a['detected_at'] for a in anomalies),
-                    'last_occurrence': max(a['detected_at'] for a in anomalies),
+                    'first_occurrence': min(datetime.fromisoformat(a['detected_at'].replace('Z', '+00:00')) for a in anomalies),
+                    'last_occurrence': max(datetime.fromisoformat(a['detected_at'].replace('Z', '+00:00')) for a in anomalies),
                 },
                 'impact_summary': self._get_impact_summary_for_type(anomaly_type, anomalies)
             }
