@@ -166,9 +166,10 @@ class StatisticsAggregator:
         self.hits_per_referer[log_entry.get('referer', 'Unknown')] += 1
         
         # Enhanced path statistics
-        response_time = log_entry.get('response_time', 0)
-        if response_time > 0:
-            self.path_response_times[path].append(response_time)
+        # Try both response_time and request_time (hypernode uses request_time)
+        response_time = log_entry.get('response_time', 0) or log_entry.get('request_time', 0)
+        if response_time and response_time > 0:
+            self.path_response_times[path].append(float(response_time))
         
         handler = log_entry.get('handler', '')
         if handler:
@@ -216,8 +217,10 @@ class StatisticsAggregator:
             self.status_categories['Other'] += 1
         
         # Response time tracking
-        response_time = log_entry.get('response_time', 0)
-        if response_time > 0:
+        # Try both response_time and request_time (hypernode uses request_time)
+        response_time = log_entry.get('response_time', 0) or log_entry.get('request_time', 0)
+        if response_time and response_time > 0:
+            response_time = float(response_time)
             self.response_times.append(response_time)
             if response_time > 1.0:  # Slow request threshold
                 self.slow_requests.append({
