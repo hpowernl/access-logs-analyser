@@ -1,4 +1,4 @@
-"""Setup script for NextGen Access Log Analyzer."""
+"""Setup script for  Access Log Analyzer."""
 
 from setuptools import setup, find_packages
 
@@ -6,14 +6,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="nextgen-logcli",
+    name="-logcli",
     version="1.0.0",
     author="Your Name",
     author_email="your.email@example.com",
-    description="NextGen Access Log Analyzer - Advanced Nginx JSON log analysis tool",
+    description=" Access Log Analyzer - Advanced Nginx JSON log analysis tool",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/nextgen-logcli",
+    url="https://github.com/yourusername/-logcli",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

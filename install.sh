@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# NextGen Access Log Analyzer - Installation Script
+#  Access Log Analyzer - Installation Script
 # For Hypernode servers and other Linux environments
 
 set -e
 
-echo "🚀 NextGen Access Log Analyzer Installation"
+echo "🚀  Access Log Analyzer Installation"
 echo "==========================================="
 
 # Check Python version
@@ -66,7 +66,7 @@ pip install -r requirements.txt
 echo "📝 Creating wrapper script..."
 cat > "$BIN_DIR/logcli" << EOF
 #!/bin/bash
-# NextGen Access Log Analyzer Wrapper Script
+#  Access Log Analyzer Wrapper Script
 
 # Activate virtual environment and run logcli
 source "$INSTALL_DIR/venv/bin/activate"
@@ -109,8 +109,8 @@ echo "   README.md - General documentation"
 echo "   USAGE_EXAMPLES.md - Usage examples"
 echo ""
 echo "🎯 For Hypernode servers:"
-echo "   sudo logcli --auto-discover              # Analyze all nginx logs"
-echo "   sudo logcli -f -i --auto-discover       # Real-time monitoring"
+echo "   logcli --auto-discover              # Analyze all nginx logs"
+echo "   logcli -f -i --auto-discover       # Real-time monitoring"
 echo ""
 
 # Create sample log for testing

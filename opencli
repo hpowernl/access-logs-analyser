@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""
+ Access Log Analyzer - Interactive TUI Entry Point
+
+Usage: ./opencli
+
+This launches the interactive terminal interface similar to htop/GoAccess.
+No command line arguments needed - everything is interactive!
+"""
+
+import sys
+import os
+from pathlib import Path
+
+# Add the project directory to Python path
+project_dir = Path(__file__).parent
+sys.path.insert(0, str(project_dir))
+
+try:
+    from logcli.interactive import run_interactive
+    
+    if __name__ == "__main__":
+        print("🚀 Starting  Access Log Analyzer...")
+        print("   Interactive TUI Mode")
+        print("   Press Ctrl+C to exit\n")
+        
+        try:
+            run_interactive()
+        except KeyboardInterrupt:
+            print("\n👋 Thanks for using  Access Log Analyzer!")
+            sys.exit(0)
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            print("💡 Try running with: python3 -m logcli analyze --help")
+            sys.exit(1)
+
+except ImportError as e:
+    print("❌ Error importing required modules:")
+    print(f"   {e}")
+    print()
+    print("💡 Make sure you have installed dependencies:")
+    print("   pip install -r requirements.txt")
+    print()
+    print("🔧 Or use the CLI version:")
+    print("   python3 -m logcli --help")
+    sys.exit(1)

@@ -1,0 +1,440 @@
+"""Security analysis module for detecting attacks and suspicious patterns."""
+
+import re
+import json
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta
+from typing import Dict, List, Set, Any, Tuple
+from pathlib import Path
+
+from .parser import LogParser
+from .log_reader import LogTailer
+
+
+class SecurityAnalyzer:
+    """Analyzes logs for security threats and attack patterns."""
+    
+    def __init__(self):
+        self.parser = LogParser()
+        
+        # Attack pattern counters
+        self.attack_patterns = Counter()
+        self.brute_force_attempts = defaultdict(list)
+        self.sql_injection_attempts = defaultdict(list)
+        self.suspicious_user_agents = Counter()
+        self.failed_logins = defaultdict(int)
+        self.directory_traversal = defaultdict(list)
+        self.xss_attempts = defaultdict(list)
+        self.command_injection = defaultdict(list)
+        
+        # IP-based tracking
+        self.ip_request_counts = defaultdict(int)
+        self.ip_error_rates = defaultdict(lambda: {'total': 0, 'errors': 0})
+        self.suspicious_ips = set()
+        
+        # Define attack patterns
+        self._init_attack_patterns()
+        
+    def _init_attack_patterns(self):
+        """Initialize regex patterns for various attacks."""
+        self.patterns = {
+            'sql_injection': [
+                r'union\s+select',
+                r'or\s+1\s*=\s*1',
+                r'drop\s+table',
+                r'insert\s+into',
+                r'delete\s+from',
+                r'update\s+.*set',
+                r'exec\s*\(',
+                r'sp_executesql',
+                r'xp_cmdshell',
+                r'information_schema',
+                r'mysql\.user',
+                r'pg_sleep',
+                r'waitfor\s+delay',
+                r'benchmark\s*\(',
+                r'sleep\s*\(',
+                r'load_file\s*\(',
+                r'into\s+outfile',
+                r'load\s+data\s+infile'
+            ],
+            'xss': [
+                r'<script',
+                r'javascript:',
+                r'onload\s*=',
+                r'onerror\s*=',
+                r'onclick\s*=',
+                r'onmouseover\s*=',
+                r'eval\s*\(',
+                r'document\.cookie',
+                r'document\.write',
+                r'window\.location',
+                r'alert\s*\(',
+                r'prompt\s*\(',
+                r'confirm\s*\('
+            ],
+            'directory_traversal': [
+                r'\.\./',
+                r'\.\.\\',
+                r'%2e%2e%2f',
+                r'%2e%2e/',
+                r'..%2f',
+                r'%252e%252e%252f',
+                r'/etc/passwd',
+                r'/etc/shadow',
+                r'\\windows\\system32',
+                r'\\boot.ini',
+                r'/proc/self/environ'
+            ],
+            'command_injection': [
+                r';\s*cat\s+',
+                r';\s*ls\s+',
+                r';\s*pwd',
+                r';\s*id\s*;',
+                r';\s*whoami',
+                r';\s*uname',
+                r';\s*wget\s+',
+                r';\s*curl\s+',
+                r';\s*nc\s+',
+                r';\s*netcat',
+                r'\|\s*cat\s+',
+                r'\|\s*ls\s+',
+                r'`cat\s+',
+                r'`ls\s+',
+                r'\$\(cat\s+',
+                r'\$\(ls\s+'
+            ],
+            'file_inclusion': [
+                r'file://',
+                r'php://filter',
+                r'php://input',
+                r'data://text',
+                r'expect://',
+                r'zip://',
+                r'phar://',
+                r'include\s*\(',
+                r'require\s*\(',
+                r'file_get_contents\s*\('
+            ],
+            'web_shell': [
+                r'c99\.php',
+                r'r57\.php',
+                r'shell\.php',
+                r'cmd\.php',
+                r'backdoor\.php',
+                r'webshell\.php',
+                r'eval\s*\(\$_',
+                r'system\s*\(\$_',
+                r'exec\s*\(\$_',
+                r'passthru\s*\(\$_',
+                r'shell_exec\s*\(\$_'
+            ]
+        }
+        
+        # Compile patterns for better performance
+        self.compiled_patterns = {}
+        for category, pattern_list in self.patterns.items():
+            self.compiled_patterns[category] = [
+                re.compile(pattern, re.IGNORECASE) for pattern in pattern_list
+            ]
+        
+        # Suspicious user agent patterns
+        self.suspicious_ua_patterns = [
+            r'sqlmap',
+            r'nikto',
+            r'nmap',
+            r'masscan',
+            r'zmap',
+            r'dirb',
+            r'dirbuster',
+            r'gobuster',
+            r'wpscan',
+            r'burp',
+            r'w3af',
+            r'acunetix',
+            r'nessus',
+            r'openvas',
+            r'havij',
+            r'pangolin',
+            r'libwww-perl',
+            r'python-urllib',
+            r'python-requests/\d+\.\d+\.\d+$',
+            r'^curl/',
+            r'^wget/',
+            r'scanner',
+            r'exploit',
+            r'payload',
+            r'injection',
+            r'<script'
+        ]
+        
+        self.compiled_ua_patterns = [
+            re.compile(pattern, re.IGNORECASE) for pattern in self.suspicious_ua_patterns
+        ]
+        
+    def analyze_file(self, file_path: str):
+        """Analyze a single log file for security threats."""
+        file_path = Path(file_path)
+        
+        with LogTailer(str(file_path), follow=False) as tailer:
+            for line in tailer.tail():
+                if not line.strip():
+                    continue
+                    
+                log_entry = self.parser.parse_log_line(line)
+                if not log_entry:
+                    continue
+                    
+                self._analyze_entry(log_entry)
+    
+    def _analyze_entry(self, log_entry: Dict[str, Any]):
+        """Analyze a single log entry for security threats."""
+        ip = str(log_entry.get('ip', 'unknown'))
+        path = log_entry.get('path', '')
+        user_agent = log_entry.get('user_agent', '')
+        status = log_entry.get('status', 0)
+        method = log_entry.get('method', 'GET')
+        timestamp = log_entry.get('timestamp')
+        
+        # Track IP activity
+        self.ip_request_counts[ip] += 1
+        self.ip_error_rates[ip]['total'] += 1
+        if status >= 400:
+            self.ip_error_rates[ip]['errors'] += 1
+        
+        # Analyze path for attack patterns
+        full_request = f"{method} {path}"
+        self._check_attack_patterns(ip, full_request, user_agent)
+        
+        # Check for brute force attempts
+        self._check_brute_force(ip, path, status, timestamp)
+        
+        # Analyze user agent
+        self._check_suspicious_user_agent(ip, user_agent)
+        
+        # Check for high error rates from single IP
+        if self.ip_request_counts[ip] > 10:  # Only check IPs with significant activity
+            error_rate = self.ip_error_rates[ip]['errors'] / self.ip_error_rates[ip]['total']
+            if error_rate > 0.8:  # More than 80% errors
+                self.suspicious_ips.add(ip)
+    
+    def _check_attack_patterns(self, ip: str, request: str, user_agent: str):
+        """Check request and user agent for attack patterns."""
+        request_lower = request.lower()
+        ua_lower = user_agent.lower()
+        
+        # Check SQL injection patterns
+        for pattern in self.compiled_patterns['sql_injection']:
+            if pattern.search(request_lower) or pattern.search(ua_lower):
+                self.sql_injection_attempts[ip].append({
+                    'request': request,
+                    'user_agent': user_agent,
+                    'timestamp': datetime.now(),
+                    'pattern': pattern.pattern
+                })
+                self.attack_patterns['SQL Injection'] += 1
+                break
+        
+        # Check XSS patterns
+        for pattern in self.compiled_patterns['xss']:
+            if pattern.search(request_lower) or pattern.search(ua_lower):
+                self.xss_attempts[ip].append({
+                    'request': request,
+                    'user_agent': user_agent,
+                    'timestamp': datetime.now(),
+                    'pattern': pattern.pattern
+                })
+                self.attack_patterns['XSS'] += 1
+                break
+        
+        # Check directory traversal
+        for pattern in self.compiled_patterns['directory_traversal']:
+            if pattern.search(request_lower):
+                self.directory_traversal[ip].append({
+                    'request': request,
+                    'timestamp': datetime.now(),
+                    'pattern': pattern.pattern
+                })
+                self.attack_patterns['Directory Traversal'] += 1
+                break
+        
+        # Check command injection
+        for pattern in self.compiled_patterns['command_injection']:
+            if pattern.search(request_lower):
+                self.command_injection[ip].append({
+                    'request': request,
+                    'timestamp': datetime.now(),
+                    'pattern': pattern.pattern
+                })
+                self.attack_patterns['Command Injection'] += 1
+                break
+        
+        # Check file inclusion
+        for pattern in self.compiled_patterns['file_inclusion']:
+            if pattern.search(request_lower):
+                self.attack_patterns['File Inclusion'] += 1
+                break
+        
+        # Check web shell
+        for pattern in self.compiled_patterns['web_shell']:
+            if pattern.search(request_lower):
+                self.attack_patterns['Web Shell'] += 1
+                break
+    
+    def _check_brute_force(self, ip: str, path: str, status: int, timestamp: datetime):
+        """Check for brute force login attempts."""
+        # Common login endpoints
+        login_patterns = [
+            r'/login',
+            r'/admin',
+            r'/wp-login',
+            r'/wp-admin',
+            r'/administrator',
+            r'/auth',
+            r'/signin',
+            r'/user/login',
+            r'/account/login',
+            r'/portal/login'
+        ]
+        
+        path_lower = path.lower()
+        is_login_attempt = any(re.search(pattern, path_lower) for pattern in login_patterns)
+        
+        if is_login_attempt and status in [401, 403, 404]:
+            self.brute_force_attempts[ip].append({
+                'path': path,
+                'status': status,
+                'timestamp': timestamp
+            })
+            self.failed_logins[ip] += 1
+    
+    def _check_suspicious_user_agent(self, ip: str, user_agent: str):
+        """Check for suspicious user agents."""
+        if not user_agent or user_agent == '-':
+            self.suspicious_user_agents['Empty/Missing User Agent'] += 1
+            return
+        
+        for pattern in self.compiled_ua_patterns:
+            if pattern.search(user_agent):
+                self.suspicious_user_agents[user_agent] += 1
+                break
+        
+        # Check for very short user agents (often automated tools)
+        if len(user_agent) < 10:
+            self.suspicious_user_agents[user_agent] += 1
+        
+        # Check for user agents with suspicious keywords
+        suspicious_keywords = ['bot', 'crawler', 'spider', 'scan', 'hack', 'exploit', 'test']
+        ua_lower = user_agent.lower()
+        if any(keyword in ua_lower for keyword in suspicious_keywords):
+            # But exclude legitimate bots
+            legitimate_bots = ['googlebot', 'bingbot', 'slurp', 'duckduckbot', 'facebookexternalhit']
+            if not any(bot in ua_lower for bot in legitimate_bots):
+                self.suspicious_user_agents[user_agent] += 1
+    
+    def get_attack_patterns(self) -> Dict[str, int]:
+        """Get detected attack patterns."""
+        return dict(self.attack_patterns.most_common())
+    
+    def get_brute_force_attempts(self, threshold: int = 10) -> Dict[str, int]:
+        """Get IPs with brute force attempts above threshold."""
+        return {ip: count for ip, count in self.failed_logins.items() if count >= threshold}
+    
+    def get_sql_injection_attempts(self) -> Dict[str, List[Dict]]:
+        """Get SQL injection attempts by IP."""
+        return dict(self.sql_injection_attempts)
+    
+    def get_suspicious_user_agents(self) -> List[Tuple[str, int]]:
+        """Get suspicious user agents."""
+        return self.suspicious_user_agents.most_common(50)
+    
+    def get_suspicious_ips(self) -> List[Dict[str, Any]]:
+        """Get list of suspicious IPs with details."""
+        suspicious = []
+        
+        for ip in self.suspicious_ips:
+            error_rate = self.ip_error_rates[ip]['errors'] / max(self.ip_error_rates[ip]['total'], 1)
+            
+            suspicious.append({
+                'ip': ip,
+                'total_requests': self.ip_request_counts[ip],
+                'error_rate': error_rate * 100,
+                'failed_logins': self.failed_logins.get(ip, 0),
+                'attack_attempts': {
+                    'sql_injection': len(self.sql_injection_attempts.get(ip, [])),
+                    'xss': len(self.xss_attempts.get(ip, [])),
+                    'directory_traversal': len(self.directory_traversal.get(ip, [])),
+                    'command_injection': len(self.command_injection.get(ip, []))
+                }
+            })
+        
+        # Sort by threat score (combination of error rate and attack attempts)
+        for item in suspicious:
+            threat_score = (
+                item['error_rate'] * 0.3 +
+                sum(item['attack_attempts'].values()) * 10 +
+                item['failed_logins'] * 2
+            )
+            item['threat_score'] = threat_score
+        
+        return sorted(suspicious, key=lambda x: x['threat_score'], reverse=True)
+    
+    def get_security_summary(self) -> Dict[str, Any]:
+        """Get comprehensive security summary."""
+        total_attacks = sum(self.attack_patterns.values())
+        total_ips_analyzed = len(self.ip_request_counts)
+        suspicious_ip_count = len(self.suspicious_ips)
+        
+        return {
+            'total_attack_attempts': total_attacks,
+            'attack_types_detected': len(self.attack_patterns),
+            'total_ips_analyzed': total_ips_analyzed,
+            'suspicious_ips': suspicious_ip_count,
+            'suspicious_ip_percentage': (suspicious_ip_count / max(total_ips_analyzed, 1)) * 100,
+            'top_attack_types': dict(self.attack_patterns.most_common(5)),
+            'brute_force_ips': len([ip for ip, count in self.failed_logins.items() if count >= 10]),
+            'sql_injection_ips': len(self.sql_injection_attempts),
+            'suspicious_user_agents': len(self.suspicious_user_agents)
+        }
+    
+    def export_security_report(self, output_file: str):
+        """Export detailed security report to JSON."""
+        report = {
+            'timestamp': datetime.now().isoformat(),
+            'summary': self.get_security_summary(),
+            'attack_patterns': dict(self.attack_patterns),
+            'suspicious_ips': self.get_suspicious_ips(),
+            'brute_force_attempts': {
+                ip: {
+                    'failed_logins': count,
+                    'attempts': [
+                        {
+                            'path': attempt['path'],
+                            'status': attempt['status'],
+                            'timestamp': attempt['timestamp'].isoformat() if attempt['timestamp'] else None
+                        } for attempt in attempts
+                    ]
+                }
+                for ip, attempts in self.brute_force_attempts.items()
+                if len(attempts) >= 5  # Only include significant attempts
+            },
+            'sql_injection_attempts': {
+                ip: [
+                    {
+                        'request': attempt['request'],
+                        'pattern': attempt['pattern'],
+                        'timestamp': attempt['timestamp'].isoformat() if attempt['timestamp'] else None
+                    } for attempt in attempts
+                ]
+                for ip, attempts in self.sql_injection_attempts.items()
+            },
+            'suspicious_user_agents': dict(self.suspicious_user_agents.most_common(100))
+        }
+        
+        with open(output_file, 'w') as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+    
+    def get_blacklist_recommendations(self, min_threat_score: float = 50.0) -> List[str]:
+        """Get IP addresses recommended for blacklisting."""
+        suspicious_ips = self.get_suspicious_ips()
+        return [ip['ip'] for ip in suspicious_ips if ip['threat_score'] >= min_threat_score]

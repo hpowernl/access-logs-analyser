@@ -30,7 +30,7 @@ class LogAnalyzerTUI(App):
     """Main Textual application for log analysis."""
     
     CSS_PATH = "ui.css"
-    TITLE = "NextGen Access Log Analyzer"
+    TITLE = " Access Log Analyzer"
     
     BINDINGS = [
         Binding("q", "quit", "Quit"),

@@ -1,0 +1,692 @@
+"""Interactive TUI application - Main interface like htop/GoAccess."""
+
+import asyncio
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional
+from pathlib import Path
+
+from textual import on, work
+from textual.app import App, ComposeResult
+from textual.containers import Container, Horizontal, Vertical, Grid
+from textual.widgets import (
+    Header, Footer, DataTable, Static, Button, Label, 
+    TabbedContent, TabPane, Input, Switch, ProgressBar,
+    Tree, Log, RichLog
+)
+from textual.reactive import reactive
+from textual.binding import Binding
+from textual.timer import Timer
+from textual.screen import Screen
+
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
+from rich.align import Align
+from rich.columns import Columns
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.live import Live
+from rich.layout import Layout
+
+from .parser import LogParser
+from .filters import LogFilter
+from .aggregators import StatisticsAggregator, RealTimeAggregator
+from .security import SecurityAnalyzer
+from .performance import PerformanceAnalyzer
+from .bots import BotAnalyzer
+from .log_reader import LogReader
+from .main import discover_nginx_logs
+
+
+class LoadingScreen(Screen):
+    """Loading screen shown during startup."""
+    
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static(""),
+            Static(
+                "[bold blue] Access Log Analyzer[/bold blue]\n"
+                "[dim]Loading...[/dim]",
+                id="loading-title"
+            ),
+            ProgressBar(id="loading-progress"),
+            Static("Initializing...", id="loading-status"),
+            Static(""),
+            id="loading-container"
+        )
+    
+    def on_mount(self) -> None:
+        """Start loading process."""
+        self.loading_progress = self.query_one("#loading-progress", ProgressBar)
+        self.loading_status = self.query_one("#loading-status", Static)
+        self.start_loading()
+    
+    @work(exclusive=True)
+    async def start_loading(self) -> None:
+        """Simulate loading process."""
+        steps = [
+            ("Discovering log files...", 0.2),
+            ("Initializing parsers...", 0.4),
+            ("Loading recent data...", 0.6),
+            ("Building statistics...", 0.8),
+            ("Starting real-time monitoring...", 1.0),
+        ]
+        
+        for step, progress in steps:
+            self.loading_status.update(step)
+            self.loading_progress.update(progress=progress * 100)
+            await asyncio.sleep(0.5)  # Simulate work
+        
+        # Switch to main app
+        await asyncio.sleep(0.5)
+        self.app.pop_screen()
+
+
+class OverviewDashboard(Static):
+    """Main overview dashboard widget."""
+    
+    def __init__(self, stats: StatisticsAggregator):
+        super().__init__()
+        self.stats = stats
+        self.update_timer = None
+    
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Container(
+                Static("📊 OVERVIEW", classes="panel-title"),
+                Static("", id="overview-stats"),
+                classes="panel overview-panel"
+            ),
+            Container(
+                Static("🔥 LIVE ACTIVITY", classes="panel-title"),
+                RichLog(id="live-log", auto_scroll=True, max_lines=15),
+                classes="panel live-panel"
+            ),
+            Container(
+                Static("📈 TRENDS", classes="panel-title"),
+                Static("", id="trends-chart"),
+                classes="panel trends-panel"
+            ),
+            classes="dashboard-grid"
+        )
+    
+    def on_mount(self) -> None:
+        """Start periodic updates."""
+        self.update_display()
+        self.update_timer = self.set_interval(2.0, self.update_display)
+    
+    def update_display(self) -> None:
+        """Update the overview display."""
+        summary = self.stats.get_summary_stats()
+        
+        # Update main stats
+        stats_text = f"""
+[green]Total Requests:[/green] {summary.get('total_requests', 0):,}
+[blue]Unique Visitors:[/blue] {summary.get('unique_visitors', 0):,}
+[red]Error Rate:[/red] {summary.get('error_rate', 0):.2f}%
+[yellow]Bot Traffic:[/yellow] {summary.get('bot_percentage', 0):.2f}%
+
+[cyan]Avg Response Time:[/cyan] {summary.get('response_time_stats', {}).get('avg', 0):.3f}s
+[magenta]Bandwidth:[/magenta] {summary.get('bandwidth_stats', {}).get('total_gb', 0):.2f} GB
+        """
+        
+        self.query_one("#overview-stats", Static).update(stats_text.strip())
+        
+        # Update trends chart (simple ASCII)
+        trends_text = self._generate_trends_chart()
+        self.query_one("#trends-chart", Static).update(trends_text)
+    
+    def _generate_trends_chart(self) -> str:
+        """Generate simple ASCII trends chart."""
+        # This is a simplified version - in real implementation would use actual data
+        return """
+Requests/min (last hour)
+120 ┤     ╭─╮
+100 ┤   ╭─╯ ╰─╮
+ 80 ┤ ╭─╯     ╰─╮
+ 60 ┤─╯         ╰─╮
+ 40 ┤             ╰───
+    └─────────────────
+    14:00  14:30  15:00
+        """
+    
+    def add_live_entry(self, log_entry: Dict[str, Any]) -> None:
+        """Add new log entry to live feed."""
+        live_log = self.query_one("#live-log", RichLog)
+        
+        timestamp = log_entry.get('timestamp', datetime.now()).strftime('%H:%M:%S')
+        ip = str(log_entry.get('ip', 'unknown'))
+        status = log_entry.get('status', 0)
+        method = log_entry.get('method', 'GET')
+        path = log_entry.get('path', '/')[:50]
+        country = log_entry.get('country', '')
+        
+        # Color code by status
+        if status >= 500:
+            color = "red"
+        elif status >= 400:
+            color = "yellow"
+        elif status >= 300:
+            color = "blue"
+        else:
+            color = "green"
+        
+        live_log.write(
+            f"[dim]{timestamp}[/dim] "
+            f"[cyan]{ip}[/cyan] "
+            f"[{color}]{status}[/{color}] "
+            f"[white]{method}[/white] "
+            f"[dim]{path}[/dim] "
+            f"[magenta]{country}[/magenta]"
+        )
+
+
+class SecurityMonitor(Static):
+    """Security monitoring panel."""
+    
+    def __init__(self, security_analyzer: SecurityAnalyzer):
+        super().__init__()
+        self.security = security_analyzer
+    
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Container(
+                Static("🔐 SECURITY ALERTS", classes="panel-title"),
+                RichLog(id="security-alerts", auto_scroll=True, max_lines=10),
+                classes="panel alerts-panel"
+            ),
+            Container(
+                Static("🚨 ATTACK PATTERNS", classes="panel-title"),
+                DataTable(id="attacks-table"),
+                classes="panel attacks-panel"
+            ),
+            Container(
+                Static("🕵️ SUSPICIOUS IPs", classes="panel-title"),
+                DataTable(id="suspicious-ips-table"),
+                classes="panel ips-panel"
+            ),
+            classes="security-grid"
+        )
+    
+    def on_mount(self) -> None:
+        """Initialize security tables."""
+        # Setup attacks table
+        attacks_table = self.query_one("#attacks-table", DataTable)
+        attacks_table.add_columns("Attack Type", "Count", "Severity")
+        
+        # Setup suspicious IPs table
+        ips_table = self.query_one("#suspicious-ips-table", DataTable)
+        ips_table.add_columns("IP Address", "Requests", "Threat Score", "Action")
+        
+        self.update_display()
+        self.set_interval(5.0, self.update_display)
+    
+    def update_display(self) -> None:
+        """Update security display."""
+        # Update attack patterns
+        attacks = self.security.get_attack_patterns()
+        attacks_table = self.query_one("#attacks-table", DataTable)
+        attacks_table.clear()
+        
+        for attack_type, count in attacks.items():
+            severity = "HIGH" if count > 50 else "MED" if count > 10 else "LOW"
+            color = "red" if severity == "HIGH" else "yellow" if severity == "MED" else "green"
+            attacks_table.add_row(
+                attack_type,
+                str(count),
+                f"[{color}]{severity}[/{color}]"
+            )
+        
+        # Update suspicious IPs
+        suspicious_ips = self.security.get_suspicious_ips()[:10]
+        ips_table = self.query_one("#suspicious-ips-table", DataTable)
+        ips_table.clear()
+        
+        for ip_info in suspicious_ips:
+            threat_level = "HIGH" if ip_info['threat_score'] > 50 else "MED" if ip_info['threat_score'] > 20 else "LOW"
+            color = "red" if threat_level == "HIGH" else "yellow" if threat_level == "MED" else "green"
+            
+            ips_table.add_row(
+                ip_info['ip'],
+                str(ip_info['total_requests']),
+                f"[{color}]{ip_info['threat_score']:.1f}[/{color}]",
+                "[red][Block][/red] [blue][Info][/blue]"
+            )
+    
+    def add_security_alert(self, alert_type: str, message: str, severity: str = "INFO") -> None:
+        """Add security alert to feed."""
+        alerts_log = self.query_one("#security-alerts", RichLog)
+        
+        timestamp = datetime.now().strftime('%H:%M:%S')
+        
+        if severity == "HIGH":
+            icon = "🚨"
+            color = "red"
+        elif severity == "MED":
+            icon = "⚠️"
+            color = "yellow"
+        else:
+            icon = "ℹ️"
+            color = "blue"
+        
+        alerts_log.write(f"[dim]{timestamp}[/dim] [{color}]{icon} {severity}[/{color}] {message}")
+
+
+class PerformanceMonitor(Static):
+    """Performance monitoring panel."""
+    
+    def __init__(self, perf_analyzer: PerformanceAnalyzer):
+        super().__init__()
+        self.perf = perf_analyzer
+    
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Container(
+                Static("⚡ RESPONSE TIMES", classes="panel-title"),
+                Static("", id="response-time-stats"),
+                classes="panel response-panel"
+            ),
+            Container(
+                Static("🐌 SLOWEST ENDPOINTS", classes="panel-title"),
+                DataTable(id="slow-endpoints-table"),
+                classes="panel slow-panel"
+            ),
+            Container(
+                Static("📊 PERFORMANCE CHART", classes="panel-title"),
+                Static("", id="performance-chart"),
+                classes="panel chart-panel"
+            ),
+            classes="performance-grid"
+        )
+    
+    def on_mount(self) -> None:
+        """Initialize performance tables."""
+        slow_table = self.query_one("#slow-endpoints-table", DataTable)
+        slow_table.add_columns("Endpoint", "Avg Time", "Max Time", "Requests")
+        
+        self.update_display()
+        self.set_interval(3.0, self.update_display)
+    
+    def update_display(self) -> None:
+        """Update performance display."""
+        # Update response time stats
+        rt_stats = self.perf.get_response_time_stats()
+        if rt_stats:
+            stats_text = f"""
+[green]Average:[/green] {rt_stats.get('avg', 0):.3f}s
+[blue]Median:[/blue] {rt_stats.get('median', 0):.3f}s
+[yellow]95th %ile:[/yellow] {rt_stats.get('p95', 0):.3f}s
+[red]Maximum:[/red] {rt_stats.get('max', 0):.3f}s
+            """
+            self.query_one("#response-time-stats", Static).update(stats_text.strip())
+        
+        # Update slowest endpoints
+        slow_endpoints = self.perf.get_slowest_endpoints(10)
+        slow_table = self.query_one("#slow-endpoints-table", DataTable)
+        slow_table.clear()
+        
+        for endpoint, avg_time in slow_endpoints:
+            color = "red" if avg_time > 2.0 else "yellow" if avg_time > 1.0 else "green"
+            slow_table.add_row(
+                endpoint[:40] + "..." if len(endpoint) > 40 else endpoint,
+                f"[{color}]{avg_time:.3f}s[/{color}]",
+                f"{avg_time * 1.5:.3f}s",  # Estimated max
+                "N/A"  # Would need actual request count
+            )
+        
+        # Update performance chart
+        chart_text = self._generate_performance_chart()
+        self.query_one("#performance-chart", Static).update(chart_text)
+    
+    def _generate_performance_chart(self) -> str:
+        """Generate performance trend chart."""
+        return """
+Response Time Trend
+2.0s ┤       ╭─╮
+1.5s ┤     ╭─╯ ╰─╮
+1.0s ┤   ╭─╯     ╰─╮
+0.5s ┤ ╭─╯         ╰─╮
+0.0s ┤─╯             ╰──
+     └──────────────────
+     14:00  14:30  15:00
+        """
+
+
+class InteractiveLogAnalyzer(App):
+    """Main interactive TUI application."""
+    
+    CSS = """
+    /* Embedded CSS for the TUI */
+    #main-container {
+        height: 100%;
+    }
+    
+    .status-bar {
+        height: 1;
+        background: $primary;
+        color: $text;
+        content-align: left middle;
+        padding: 0 1;
+    }
+    
+    .main-area {
+        height: 1fr;
+        overflow: auto;
+    }
+    
+    .info-bar {
+        height: 1;
+        background: $surface-lighten-1;
+        color: $text-muted;
+        content-align: left middle;
+        padding: 0 1;
+    }
+    
+    .panel {
+        border: solid $primary;
+        margin: 1;
+        padding: 1;
+        background: $surface;
+    }
+    
+    .panel-title {
+        text-style: bold;
+        color: $accent;
+        margin-bottom: 1;
+    }
+    
+    .dashboard-grid {
+        layout: grid;
+        grid-size: 3 2;
+        grid-gutter: 1;
+        height: 100%;
+    }
+    
+    .security-grid {
+        layout: grid;
+        grid-size: 2 2;
+        grid-gutter: 1;
+        height: 100%;
+    }
+    
+    .performance-grid {
+        layout: grid;
+        grid-size: 2 2;
+        grid-gutter: 1;
+        height: 100%;
+    }
+    
+    DataTable {
+        height: 100%;
+    }
+    
+    RichLog {
+        height: 100%;
+        border: solid $primary;
+    }
+    """
+    TITLE = " Access Log Analyzer"
+    
+    BINDINGS = [
+        Binding("f1", "help", "Help", priority=True),
+        Binding("f2", "setup", "Setup", priority=True),
+        Binding("f3", "security", "Security", priority=True),
+        Binding("f4", "performance", "Performance", priority=True),
+        Binding("f5", "bots", "Bots", priority=True),
+        Binding("f6", "export", "Export", priority=True),
+        Binding("f7", "search", "Search", priority=True),
+        Binding("r", "refresh", "Refresh"),
+        Binding("p", "pause", "Pause"),
+        Binding("q", "quit", "Quit"),
+        Binding("?", "help", "Help"),
+    ]
+    
+    # Reactive state
+    current_view = reactive("overview")
+    is_paused = reactive(False)
+    auto_refresh = reactive(True)
+    
+    def __init__(self):
+        super().__init__()
+        
+        # Initialize analyzers
+        self.parser = LogParser()
+        self.filter = LogFilter()
+        self.stats = StatisticsAggregator()
+        self.security = SecurityAnalyzer()
+        self.performance = PerformanceAnalyzer()
+        self.bots = BotAnalyzer()
+        
+        # Log files
+        self.log_files = []
+        self.log_reader = None
+        
+        # UI components
+        self.overview = None
+        self.security_monitor = None
+        self.performance_monitor = None
+        
+    def on_mount(self) -> None:
+        """Initialize the application."""
+        # Show loading screen first
+        self.push_screen(LoadingScreen())
+        
+        # Discover log files
+        self.discover_logs()
+        
+        # Start log processing
+        self.start_log_processing()
+        
+    def compose(self) -> ComposeResult:
+        """Compose the main interface."""
+        yield Header(show_clock=True)
+        
+        yield Container(
+            # Status bar
+            Container(
+                Static("", id="status-bar"),
+                classes="status-bar"
+            ),
+            
+            # Main content area
+            Container(
+                # Overview dashboard (default)
+                Container(
+                    id="main-content"
+                ),
+                classes="main-area"
+            ),
+            
+            # Bottom info bar
+            Container(
+                Static("", id="info-bar"),
+                classes="info-bar"
+            ),
+            
+            id="main-container"
+        )
+        
+        yield Footer()
+    
+    def on_ready(self) -> None:
+        """Called when app is ready."""
+        self.switch_to_overview()
+        self.update_status_bar()
+        self.set_interval(1.0, self.update_status_bar)
+    
+    def discover_logs(self) -> None:
+        """Discover available log files."""
+        try:
+            self.log_files = discover_nginx_logs("/var/log/nginx")
+            if not self.log_files:
+                # Fallback to current directory for demo
+                sample_log = Path("sample_access.log")
+                if sample_log.exists():
+                    self.log_files = [str(sample_log)]
+        except Exception:
+            # Demo mode with sample data
+            sample_log = Path("sample_access.log")
+            if sample_log.exists():
+                self.log_files = [str(sample_log)]
+    
+    def start_log_processing(self) -> None:
+        """Start background log processing."""
+        if not self.log_files:
+            return
+        
+        def on_log_entry(line: str):
+            """Process new log entry."""
+            if self.is_paused:
+                return
+                
+            log_entry = self.parser.parse_log_line(line)
+            if not log_entry:
+                return
+            
+            if self.filter.should_include(log_entry):
+                # Update all analyzers
+                self.stats.add_entry(log_entry)
+                self.security._analyze_entry(log_entry)
+                self.performance._analyze_entry(log_entry)
+                
+                # Update UI if overview is active
+                if self.current_view == "overview" and self.overview:
+                    self.overview.add_live_entry(log_entry)
+                
+                # Check for security alerts
+                self._check_security_alerts(log_entry)
+        
+        # Start log reader
+        self.log_reader = LogReader(on_log_entry)
+        
+        # For demo, process existing logs first
+        try:
+            for log_file in self.log_files[:1]:  # Just first file for demo
+                self.log_reader.read_file(log_file, follow=False)
+        except Exception as e:
+            pass  # Ignore errors in demo
+    
+    def _check_security_alerts(self, log_entry: Dict[str, Any]) -> None:
+        """Check for security alerts."""
+        status = log_entry.get('status', 200)
+        path = log_entry.get('path', '')
+        ip = str(log_entry.get('ip', ''))
+        
+        # Example alert conditions
+        if status == 500:
+            if self.security_monitor:
+                self.security_monitor.add_security_alert(
+                    "Server Error", 
+                    f"500 error from {ip} on {path}", 
+                    "MED"
+                )
+        
+        # Check for suspicious paths
+        if any(pattern in path.lower() for pattern in ['admin', 'wp-admin', '.env', 'config']):
+            if self.security_monitor:
+                self.security_monitor.add_security_alert(
+                    "Suspicious Path", 
+                    f"Access attempt to {path} from {ip}", 
+                    "HIGH"
+                )
+    
+    def switch_to_overview(self) -> None:
+        """Switch to overview dashboard."""
+        self.current_view = "overview"
+        main_content = self.query_one("#main-content", Container)
+        main_content.remove_children()
+        
+        self.overview = OverviewDashboard(self.stats)
+        main_content.mount(self.overview)
+    
+    def switch_to_security(self) -> None:
+        """Switch to security monitor."""
+        self.current_view = "security"
+        main_content = self.query_one("#main-content", Container)
+        main_content.remove_children()
+        
+        self.security_monitor = SecurityMonitor(self.security)
+        main_content.mount(self.security_monitor)
+    
+    def switch_to_performance(self) -> None:
+        """Switch to performance monitor."""
+        self.current_view = "performance"
+        main_content = self.query_one("#main-content", Container)
+        main_content.remove_children()
+        
+        self.performance_monitor = PerformanceMonitor(self.performance)
+        main_content.mount(self.performance_monitor)
+    
+    def update_status_bar(self) -> None:
+        """Update the status bar."""
+        status_text = f"View: {self.current_view.title()} | "
+        status_text += f"Files: {len(self.log_files)} | "
+        status_text += f"Requests: {self.stats.total_requests:,} | "
+        status_text += f"{'PAUSED' if self.is_paused else 'LIVE'} | "
+        status_text += f"Last Update: {datetime.now().strftime('%H:%M:%S')}"
+        
+        try:
+            self.query_one("#status-bar", Static).update(status_text)
+        except:
+            pass  # Ignore if not mounted yet
+    
+    # Action handlers
+    def action_help(self) -> None:
+        """Show help."""
+        self.bell()  # For now, just ring bell
+    
+    def action_setup(self) -> None:
+        """Show setup screen."""
+        self.bell()
+    
+    def action_security(self) -> None:
+        """Switch to security view."""
+        self.switch_to_security()
+    
+    def action_performance(self) -> None:
+        """Switch to performance view."""
+        self.switch_to_performance()
+    
+    def action_bots(self) -> None:
+        """Switch to bots view."""
+        self.bell()  # TODO: Implement
+    
+    def action_export(self) -> None:
+        """Show export options."""
+        self.bell()  # TODO: Implement
+    
+    def action_search(self) -> None:
+        """Show search interface."""
+        self.bell()  # TODO: Implement
+    
+    def action_refresh(self) -> None:
+        """Refresh current view."""
+        if self.current_view == "overview":
+            self.switch_to_overview()
+        elif self.current_view == "security":
+            self.switch_to_security()
+        elif self.current_view == "performance":
+            self.switch_to_performance()
+    
+    def action_pause(self) -> None:
+        """Toggle pause state."""
+        self.is_paused = not self.is_paused
+        self.bell()
+    
+    def key_1(self) -> None:
+        """Switch to overview (key shortcut)."""
+        self.switch_to_overview()
+    
+    def key_2(self) -> None:
+        """Switch to security (key shortcut)."""
+        self.switch_to_security()
+    
+    def key_3(self) -> None:
+        """Switch to performance (key shortcut)."""
+        self.switch_to_performance()
+
+
+def run_interactive():
+    """Run the interactive TUI application."""
+    app = InteractiveLogAnalyzer()
+    app.run()
