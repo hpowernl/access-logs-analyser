@@ -54,16 +54,70 @@ print_success "Found pip3"
 
 # Install Python dependencies
 print_status "Installing Python dependencies..."
-echo "   This will install packages system-wide"
-echo "   Dependencies: textual, rich, click, pandas, plotly, etc."
+echo "   Trying different installation methods..."
 echo ""
 
-if pip3 install -r requirements.txt; then
-    print_success "Python dependencies installed successfully"
+# Try different installation methods
+INSTALL_SUCCESS=false
+
+# Method 1: Try regular pip3
+print_status "Method 1: Regular pip3 install..."
+if pip3 install -r requirements.txt 2>/dev/null; then
+    print_success "Dependencies installed with pip3"
+    INSTALL_SUCCESS=true
 else
-    print_error "Failed to install Python dependencies"
-    print_warning "You might need to run: sudo pip3 install -r requirements.txt"
+    print_warning "Regular pip3 failed (externally-managed-environment)"
+fi
+
+# Method 2: Try with --break-system-packages (if method 1 failed)
+if [ "$INSTALL_SUCCESS" = false ]; then
+    print_status "Method 2: pip3 with --break-system-packages..."
+    if pip3 install -r requirements.txt --break-system-packages 2>/dev/null; then
+        print_success "Dependencies installed with --break-system-packages"
+        INSTALL_SUCCESS=true
+    else
+        print_warning "pip3 --break-system-packages failed"
+    fi
+fi
+
+# Method 3: Try pipx (if available and method 1&2 failed)
+if [ "$INSTALL_SUCCESS" = false ] && command -v pipx &> /dev/null; then
+    print_status "Method 3: Using pipx..."
+    if pipx install textual rich click pandas plotly 2>/dev/null; then
+        print_success "Core dependencies installed with pipx"
+        INSTALL_SUCCESS=true
+    else
+        print_warning "pipx installation failed"
+    fi
+fi
+
+# Method 4: Create a simple venv (if all else fails)
+if [ "$INSTALL_SUCCESS" = false ]; then
+    print_status "Method 4: Creating minimal venv..."
+    if python3 -m venv .venv && .venv/bin/pip install -r requirements.txt; then
+        print_success "Dependencies installed in .venv"
+        print_warning "Note: You'll need to activate venv: source .venv/bin/activate"
+        
+        # Update opencli to use venv python
+        sed -i '1s|#!/usr/bin/env python3|#!/usr/bin/env ./.venv/bin/python3|' opencli
+        INSTALL_SUCCESS=true
+    else
+        print_warning "venv creation failed"
+    fi
+fi
+
+if [ "$INSTALL_SUCCESS" = false ]; then
+    print_error "All installation methods failed!"
+    echo ""
+    echo "🔧 Manual Installation Options:"
+    echo "   1. sudo pip3 install -r requirements.txt"
+    echo "   2. pip3 install -r requirements.txt --break-system-packages"
+    echo "   3. python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
+    echo "   4. Use system packages: apt install python3-textual python3-rich python3-click"
+    echo ""
     exit 1
+else
+    print_success "Python dependencies installed successfully"
 fi
 
 # Make opencli executable
@@ -71,37 +125,55 @@ print_status "Making opencli executable..."
 chmod +x opencli
 print_success "opencli is now executable"
 
-# Check if /usr/local/bin is in PATH
-print_status "Checking installation paths..."
-if [[ ":$PATH:" == *":/usr/local/bin:"* ]]; then
-    print_success "/usr/local/bin is in PATH"
+# Check if ~/bin is in PATH
+print_status "Checking user PATH..."
+if [[ ":$PATH:" == *":$HOME/bin:"* ]] || [[ ":$PATH:" == *":~/bin:"* ]]; then
+    print_success "~/bin is already in PATH"
 else
-    print_warning "/usr/local/bin is not in PATH"
+    print_warning "~/bin is not in PATH (will be created if needed)"
 fi
 
-# Offer to install globally
+# Install in user profile (no root needed)
 echo ""
 echo "🔧 Installation Options:"
 echo "   1. Use locally: ./opencli"
-echo "   2. Install globally to /usr/local/bin (requires sudo)"
+echo "   2. Install to user profile: ~/bin/ (no root needed)"
 echo ""
-read -p "Install globally? (y/N): " -n 1 -r
+read -p "Install to user profile? (Y/n): " -n 1 -r
 echo
 
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    print_status "Installing globally..."
-    
-    # Create symlink to /usr/local/bin
-    if sudo ln -sf "$(pwd)/opencli" /usr/local/bin/opencli; then
-        print_success "Global installation complete!"
-        print_success "You can now run 'opencli' from anywhere"
-    else
-        print_error "Failed to install globally"
-        print_warning "You can still use: ./opencli"
-    fi
-else
+# Default to Yes if just Enter is pressed
+if [[ $REPLY =~ ^[Nn]$ ]]; then
     print_success "Local installation complete!"
     print_status "Use: ./opencli to run the application"
+else
+    print_status "Installing to user profile..."
+    
+    # Create ~/bin directory if it doesn't exist
+    mkdir -p ~/bin
+    
+    # Create symlink to ~/bin
+    if ln -sf "$(pwd)/opencli" ~/bin/opencli; then
+        print_success "User profile installation complete!"
+        print_success "opencli installed to ~/bin/opencli"
+        
+        # Check if ~/bin is in PATH
+        if [[ ":$PATH:" == *":$HOME/bin:"* ]] || [[ ":$PATH:" == *":~/bin:"* ]]; then
+            print_success "~/bin is already in PATH"
+            print_success "You can now run 'opencli' from anywhere"
+        else
+            print_warning "~/bin is not in PATH"
+            echo ""
+            echo "🔧 Add ~/bin to PATH by adding this to ~/.bashrc or ~/.profile:"
+            echo "   export PATH=\"\$HOME/bin:\$PATH\""
+            echo ""
+            echo "Then reload with: source ~/.bashrc"
+            echo "Or log out and log back in"
+        fi
+    else
+        print_error "Failed to install to user profile"
+        print_warning "You can still use: ./opencli"
+    fi
 fi
 
 # Test installation
@@ -120,8 +192,9 @@ echo "🎉 Installation Complete!"
 echo ""
 echo "📋 Usage:"
 echo "   Local:  ./opencli"
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "   Global: opencli"
+if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+    echo "   User:   opencli (if ~/bin is in PATH)"
+    echo "   Direct: ~/bin/opencli"
 fi
 echo ""
 echo "📁 Log Analysis:"
