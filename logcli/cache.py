@@ -60,6 +60,45 @@ class CacheManager:
             
         return self._connection
     
+    def _migrate_database(self):
+        """Migrate existing database to support inode-based caching."""
+        conn = self._connection
+        
+        try:
+            # Check if we need to add inode columns
+            cursor = conn.execute("PRAGMA table_info(file_metadata)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'file_inode' not in columns:
+                console.print("[yellow]Migrating cache database to support logrotate...[/yellow]")
+                
+                # Add inode columns
+                conn.execute("ALTER TABLE file_metadata ADD COLUMN file_inode INTEGER")
+                conn.execute("ALTER TABLE file_metadata ADD COLUMN file_device INTEGER")
+                
+                # Populate inode data for existing entries where files still exist
+                cursor = conn.execute("SELECT id, file_path FROM file_metadata")
+                for row in cursor:
+                    try:
+                        stat = os.stat(row[1])
+                        conn.execute(
+                            "UPDATE file_metadata SET file_inode = ?, file_device = ? WHERE id = ?",
+                            (stat.st_ino, stat.st_dev, row[0])
+                        )
+                    except OSError:
+                        # File no longer exists, we'll clean it up later
+                        pass
+                
+                # Create new unique constraint
+                conn.execute("DROP INDEX IF EXISTS idx_file_metadata_inode_device")
+                conn.execute("CREATE INDEX idx_file_metadata_inode_device ON file_metadata(file_inode, file_device)")
+                
+                conn.commit()
+                console.print("[green]Cache database migration completed![/green]")
+                
+        except sqlite3.Error as e:
+            console.print(f"[yellow]Database migration skipped: {e}[/yellow]")
+    
     def _init_database(self):
         """Initialize database schema."""
         conn = self._connection
@@ -101,14 +140,17 @@ class CacheManager:
             -- Metadata for processed files
             CREATE TABLE IF NOT EXISTS file_metadata (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_path TEXT UNIQUE NOT NULL,
+                file_path TEXT NOT NULL,
+                file_inode INTEGER NOT NULL,
+                file_device INTEGER NOT NULL,
                 file_size INTEGER NOT NULL,
                 file_mtime REAL NOT NULL,
                 file_hash TEXT NOT NULL,
                 file_signature TEXT,
                 lines_processed INTEGER NOT NULL,
                 last_processed DATETIME DEFAULT CURRENT_TIMESTAMP,
-                processing_time_seconds REAL
+                processing_time_seconds REAL,
+                UNIQUE(file_inode, file_device)
             );
             
             -- Cache configuration and status
@@ -119,7 +161,10 @@ class CacheManager:
             );
         """)
         
-        # Create indexes for performance
+        # Run database migration for existing databases FIRST
+        self._migrate_database()
+        
+        # Create indexes for performance (after migration)
         conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_log_entries_timestamp ON log_entries(timestamp);
             CREATE INDEX IF NOT EXISTS idx_log_entries_ip ON log_entries(ip);
@@ -132,10 +177,17 @@ class CacheManager:
             CREATE INDEX IF NOT EXISTS idx_file_metadata_last_processed ON file_metadata(last_processed);
         """)
         
+        # Create inode index only if columns exist
+        try:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_file_metadata_inode_device ON file_metadata(file_inode, file_device)")
+        except sqlite3.OperationalError:
+            # Columns don't exist yet, will be created in migration
+            pass
+        
         conn.commit()
         
         # Set initial cache status
-        self._set_cache_status("schema_version", "1.0")
+        self._set_cache_status("schema_version", "1.1")  # Updated version
         self._set_cache_status("created_at", datetime.now().isoformat())
     
     def _set_cache_status(self, key: str, value: str):
@@ -199,7 +251,9 @@ class CacheManager:
             return ""
     
     def is_file_cached_and_fresh(self, file_path: str) -> Tuple[bool, Dict[str, Any]]:
-        """Check if file is cached and up-to-date.
+        """Check if file is cached and up-to-date using inode-based detection.
+        
+        This handles logrotate scenarios where files get moved/renamed.
         
         Returns:
             Tuple of (is_fresh, metadata_dict)
@@ -211,19 +265,38 @@ class CacheManager:
             stat = os.stat(file_path)
             current_size = stat.st_size
             current_mtime = stat.st_mtime
+            current_inode = stat.st_ino
+            current_device = stat.st_dev
             
-            # Check if we have metadata for this file
+            # First try to find by inode+device (handles logrotate)
             conn = self._get_connection()
             cursor = conn.execute(
-                "SELECT * FROM file_metadata WHERE file_path = ?",
-                (file_path,)
+                "SELECT * FROM file_metadata WHERE file_inode = ? AND file_device = ?",
+                (current_inode, current_device)
             )
             row = cursor.fetchone()
+            
+            # If not found by inode, try by path (fallback for new files)
+            if not row:
+                cursor = conn.execute(
+                    "SELECT * FROM file_metadata WHERE file_path = ?",
+                    (file_path,)
+                )
+                row = cursor.fetchone()
             
             if not row:
                 return False, {}
             
             metadata = dict(row)
+            
+            # Update path if file was found by inode but path changed (logrotate case)
+            if metadata['file_path'] != file_path:
+                conn.execute(
+                    "UPDATE file_metadata SET file_path = ? WHERE file_inode = ? AND file_device = ?",
+                    (file_path, current_inode, current_device)
+                )
+                conn.commit()
+                metadata['file_path'] = file_path
             
             # Check if file has changed
             if (metadata['file_size'] != current_size or 
@@ -252,16 +325,45 @@ class CacheManager:
             return False, {}
     
     def get_cached_entries(self, file_path: str) -> List[Dict[str, Any]]:
-        """Get cached log entries for a file."""
+        """Get cached log entries for a file using inode-based lookup."""
         file_path = str(Path(file_path).resolve())
         
-        conn = self._get_connection()
-        cursor = conn.execute(
-            """SELECT * FROM log_entries 
-               WHERE file_path = ? 
-               ORDER BY file_line_number""",
-            (file_path,)
-        )
+        try:
+            # Get file inode for lookup
+            stat = os.stat(file_path)
+            file_inode = stat.st_ino
+            file_device = stat.st_dev
+            
+            # Find the actual stored path for this inode
+            conn = self._get_connection()
+            cursor = conn.execute(
+                "SELECT file_path FROM file_metadata WHERE file_inode = ? AND file_device = ?",
+                (file_inode, file_device)
+            )
+            row = cursor.fetchone()
+            
+            if row:
+                stored_path = row['file_path']
+            else:
+                # Fallback to current path
+                stored_path = file_path
+            
+            # Get entries using the stored path
+            cursor = conn.execute(
+                """SELECT * FROM log_entries 
+                   WHERE file_path = ? 
+                   ORDER BY file_line_number""",
+                (stored_path,)
+            )
+        except (OSError, sqlite3.Error):
+            # Fallback to path-based lookup
+            conn = self._get_connection()
+            cursor = conn.execute(
+                """SELECT * FROM log_entries 
+                   WHERE file_path = ? 
+                   ORDER BY file_line_number""",
+                (file_path,)
+            )
         
         entries = []
         for row in cursor:
@@ -299,10 +401,12 @@ class CacheManager:
         conn = self._get_connection()
         
         try:
-            # Get current file stats
+            # Get current file stats including inode
             stat = os.stat(file_path)
             file_size = stat.st_size
             file_mtime = stat.st_mtime
+            file_inode = stat.st_ino
+            file_device = stat.st_dev
             file_hash = self._calculate_file_hash(file_path)
             file_signature = self._calculate_file_signature(file_path)
             
@@ -358,15 +462,15 @@ class CacheManager:
                 
                 conn.executemany(insert_sql, batch_data)
             
-            # Update file metadata
+            # Update file metadata with inode information
             conn.execute("""
                 INSERT OR REPLACE INTO file_metadata 
-                (file_path, file_size, file_mtime, file_hash, file_signature, lines_processed, 
-                 last_processed, processing_time_seconds)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (file_path, file_inode, file_device, file_size, file_mtime, file_hash, file_signature, 
+                 lines_processed, last_processed, processing_time_seconds)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                file_path, file_size, file_mtime, file_hash, file_signature, len(entries),
-                datetime.now(), processing_time
+                file_path, file_inode, file_device, file_size, file_mtime, file_hash, file_signature, 
+                len(entries), datetime.now(), processing_time
             ))
             
             conn.commit()
@@ -412,6 +516,55 @@ class CacheManager:
             console.print(f"[yellow]Cleaned up {count:,} old cache entries (older than {max_age_days} days)[/yellow]")
         
         return count
+    
+    def cleanup_orphaned_entries(self) -> int:
+        """Remove cache entries for files that no longer exist.
+        
+        Returns:
+            Number of entries removed
+        """
+        conn = self._get_connection()
+        
+        # Find files that no longer exist
+        cursor = conn.execute("SELECT DISTINCT file_path FROM file_metadata")
+        orphaned_paths = []
+        
+        for row in cursor:
+            file_path = row['file_path']
+            if not os.path.exists(file_path):
+                orphaned_paths.append(file_path)
+        
+        if orphaned_paths:
+            # Remove entries for non-existent files
+            placeholders = ','.join(['?' for _ in orphaned_paths])
+            
+            # Count entries to be removed
+            cursor = conn.execute(
+                f"SELECT COUNT(*) as count FROM log_entries WHERE file_path IN ({placeholders})",
+                orphaned_paths
+            )
+            count = cursor.fetchone()['count']
+            
+            # Remove log entries
+            conn.execute(
+                f"DELETE FROM log_entries WHERE file_path IN ({placeholders})",
+                orphaned_paths
+            )
+            
+            # Remove metadata entries
+            conn.execute(
+                f"DELETE FROM file_metadata WHERE file_path IN ({placeholders})",
+                orphaned_paths
+            )
+            
+            conn.commit()
+            
+            if count > 0:
+                console.print(f"[yellow]Cleaned up {count:,} orphaned cache entries[/yellow]")
+            
+            return count
+        
+        return 0
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""

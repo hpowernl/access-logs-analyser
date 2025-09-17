@@ -1345,8 +1345,9 @@ def report(log_files, nginx_dir, no_auto_discover, daily, weekly, security_summa
 @click.option('--info', is_flag=True, help='Show cache information and statistics')
 @click.option('--clear', is_flag=True, help='Clear all cached data')
 @click.option('--cleanup', is_flag=True, help='Clean up old cached data (older than 2 days)')
+@click.option('--cleanup-orphans', is_flag=True, help='Clean up cache entries for deleted files')
 @click.option('--max-age-days', default=2, help='Maximum age for cleanup in days (default: 2)')
-def cache(info, clear, cleanup, max_age_days):
+def cache(info, clear, cleanup, cleanup_orphans, max_age_days):
     """🗄️ Manage SQLite cache for faster log processing.
     
     The cache system stores parsed log data in a SQLite database to dramatically
@@ -1364,6 +1365,7 @@ def cache(info, clear, cleanup, max_age_days):
     💡 Examples:
       hlogcli cache --info                    # Show cache statistics
       hlogcli cache --cleanup                 # Clean old data (>2 days)
+      hlogcli cache --cleanup-orphans         # Clean entries for deleted files (NEW!)
       hlogcli cache --cleanup --max-age-days 7  # Clean data older than 7 days
       hlogcli cache --clear                   # Clear entire cache
     """
@@ -1409,6 +1411,18 @@ def cache(info, clear, cleanup, max_age_days):
                     console.print(f"[green]✅ Cleaned up {removed_count:,} old entries (older than {max_age_days} days)[/green]")
                 else:
                     console.print(f"[yellow]No old data found (older than {max_age_days} days)[/yellow]")
+            else:
+                console.print("[red]❌ Unable to access cache[/red]")
+    
+    elif cleanup_orphans:
+        from .cache import get_cache_manager
+        with get_cache_manager(enabled=True) as cache_manager:
+            if cache_manager:
+                removed_count = cache_manager.cleanup_orphaned_entries()
+                if removed_count > 0:
+                    console.print(f"[green]✅ Cleaned up {removed_count:,} orphaned cache entries[/green]")
+                else:
+                    console.print("[yellow]No orphaned cache entries found[/yellow]")
             else:
                 console.print("[red]❌ Unable to access cache[/red]")
     

@@ -62,8 +62,9 @@ class CacheAwareProcessor:
                     for key, value in self.cache_manager_settings.items():
                         setattr(cache_manager, key, value)
                 
-                # First, cleanup old data
+                # First, cleanup old data and orphaned entries
                 cache_manager.cleanup_old_data()
+                cache_manager.cleanup_orphaned_entries()
             
             with Progress(
                 SpinnerColumn(),
