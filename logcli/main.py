@@ -832,9 +832,14 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
 @click.option('--legitimate-vs-malicious', is_flag=True, help='Score bots as good/bad')
 @click.option('--impact-analysis', is_flag=True, help='Analyze bot resource impact')
 @click.option('--unknown-only', is_flag=True, help='Show only unclassified bots')
+@click.option('--ai-bots-only', is_flag=True, help='Show only AI bot analysis')
+@click.option('--ai-training-detection', is_flag=True, help='Detect potential AI training data crawlers')
+@click.option('--llm-bot-analysis', is_flag=True, help='Detailed LLM bot analysis')
+@click.option('--ai-impact-analysis', is_flag=True, help='AI bot resource impact analysis')
 @click.option('--output', '-o', help='Output file for bot analysis report')
 def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analysis,
-         legitimate_vs_malicious, impact_analysis, unknown_only, output):
+         legitimate_vs_malicious, impact_analysis, unknown_only, ai_bots_only, 
+         ai_training_detection, llm_bot_analysis, ai_impact_analysis, output):
     """🤖 Advanced bot and crawler analysis and classification.
     
     Identify, classify, and analyze bot traffic to understand automated visitors
@@ -849,6 +854,16 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
       • SEO tools and analyzers
       • Malicious scrapers and security scanners
       • Unknown/unclassified bots
+      
+    \b
+    🤖 AI Bot Categories (NEW):
+      • Large Language Model bots (ChatGPT, Claude, Bard, Copilot)
+      • AI training data crawlers (Common Crawl, AI2)
+      • AI research and academic bots (Hugging Face, university crawlers)
+      • AI content generation bots (Jasper, Copy.ai, Midjourney)
+      • AI SEO and marketing bots (AI-powered tools)
+      • Conversational AI and chatbots (virtual assistants)
+      • AI API and service bots (automated AI services)
     
     \b
     🔍 Analysis Features:
@@ -857,6 +872,9 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
       • Resource impact assessment
       • Request frequency analysis
       • Geographic distribution of bots
+      • AI training data detection (NEW)
+      • LLM bot activity analysis (NEW)
+      • AI bot resource impact metrics (NEW)
     
     \b
     💡 Examples:
@@ -866,6 +884,12 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
       hlogcli bots --legitimate-vs-malicious    # Good vs. bad bot scoring
       hlogcli bots --impact-analysis            # Resource usage by bots
       hlogcli bots --unknown-only -o unknown-bots.json  # Export unclassified
+      
+      # NEW AI Bot Analysis:
+      hlogcli bots --ai-bots-only               # Focus on AI bots only
+      hlogcli bots --ai-training-detection      # Detect AI training crawlers
+      hlogcli bots --llm-bot-analysis           # Detailed LLM bot analysis
+      hlogcli bots --ai-impact-analysis         # AI bot resource impact
     """
     
     # Auto-discover log files by default unless disabled or log files are specified
@@ -924,6 +948,77 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
         console.print(f"  Bot bandwidth usage: {impact['bandwidth_gb']:.2f} GB")
         console.print(f"  Average bot response time: {impact['avg_response_time']:.3f}s")
         console.print(f"  Server load from bots: {impact['server_load_pct']:.1f}%")
+    
+    # NEW AI Bot Analysis Features
+    if ai_bots_only or ai_impact_analysis:
+        console.print("\n[bold magenta]🤖 AI BOT ANALYSIS[/bold magenta]")
+        ai_analysis = analyzer.get_ai_bot_analysis()
+        console.print(f"  Total AI bot requests: [cyan]{ai_analysis['total_ai_requests']:,}[/cyan]")
+        console.print(f"  AI bot percentage: [yellow]{ai_analysis['ai_percentage']:.1f}%[/yellow] of all bot traffic")
+        
+        if ai_analysis['ai_categories']:
+            console.print(f"\n  🔍 AI Bot Categories:")
+            for category, data in ai_analysis['ai_categories'].items():
+                console.print(f"    • {category.replace('_', ' ').title()}: [green]{data['total_requests']:,}[/green] requests")
+                console.print(f"      └─ Unique IPs: {data['unique_ips']}, Avg Response: {data['avg_response_time']:.3f}s")
+                
+                if ai_bots_only:
+                    for bot_name, bot_data in data['bots'].items():
+                        legitimate_icon = "✅" if bot_data['legitimate'] else "❌"
+                        console.print(f"        {legitimate_icon} {bot_name}: {bot_data['requests']:,} requests - {bot_data['description']}")
+    
+    if ai_training_detection:
+        console.print("\n[bold red]🎯 AI TRAINING DATA DETECTION[/bold red]")
+        training_indicators = analyzer.get_ai_training_indicators()
+        
+        if training_indicators['high_volume_crawlers']:
+            console.print(f"  ⚠️  High-Volume Crawlers (potential training data collection):")
+            for crawler in training_indicators['high_volume_crawlers'][:10]:
+                console.print(f"    • [red]{crawler['bot']}[/red]: {crawler['requests']:,} requests, {crawler['avg_interval']:.2f}s avg interval")
+                console.print(f"      └─ {crawler['description']}")
+        else:
+            console.print(f"  [green]✅ No high-volume training crawlers detected[/green]")
+        
+        if training_indicators['content_focused_bots']:
+            console.print(f"\n  📄 Content-Focused Bots:")
+            for bot in training_indicators['content_focused_bots'][:10]:
+                console.print(f"    • [yellow]{bot['bot']}[/yellow]: {bot['content_percentage']:.1f}% content focus ({bot['total_requests']:,} requests)")
+        else:
+            console.print(f"  [green]✅ No content-focused crawlers detected[/green]")
+    
+    if llm_bot_analysis:
+        console.print("\n[bold cyan]🧠 LLM BOT DETAILED ANALYSIS[/bold cyan]")
+        ai_analysis = analyzer.get_ai_bot_analysis()
+        llm_data = ai_analysis['ai_categories'].get('ai_llm', {})
+        
+        if llm_data:
+            console.print(f"  Total LLM requests: [cyan]{llm_data['total_requests']:,}[/cyan]")
+            console.print(f"  Unique LLM IPs: [cyan]{llm_data['unique_ips']}[/cyan]")
+            console.print(f"  Average response time: [cyan]{llm_data['avg_response_time']:.3f}s[/cyan]")
+            console.print(f"  Bandwidth usage: [cyan]{llm_data['bandwidth_mb']:.2f} MB[/cyan]")
+            
+            console.print(f"\n  🤖 Detected LLM Bots:")
+            for bot_name, bot_data in llm_data['bots'].items():
+                console.print(f"    • [bright_cyan]{bot_name}[/bright_cyan]: {bot_data['requests']:,} requests")
+                console.print(f"      └─ {bot_data['description']}")
+        else:
+            console.print(f"  [yellow]No LLM bot activity detected[/yellow]")
+    
+    # Show AI-specific recommendations
+    if ai_bots_only or ai_training_detection or llm_bot_analysis or ai_impact_analysis:
+        ai_recommendations = analyzer.get_ai_bot_recommendations()
+        if ai_recommendations:
+            console.print(f"\n[bold green]💡 AI BOT RECOMMENDATIONS[/bold green]")
+            for rec in ai_recommendations:
+                priority_color = "red" if rec['priority'] == 'High' else "yellow" if rec['priority'] == 'Medium' else "green"
+                console.print(f"  [{priority_color}]{rec['category']} ({rec['priority']} Priority)[/{priority_color}]")
+                console.print(f"    Issue: {rec['issue']}")
+                console.print(f"    Recommendation: {rec['recommendation']}")
+                if 'bots' in rec:
+                    console.print(f"    Affected bots: {', '.join(rec['bots'])}")
+                if 'details' in rec:
+                    console.print(f"    Details: {rec['details']}")
+                console.print()
     
     # Export bot analysis report if requested
     if output:

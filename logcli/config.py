@@ -2,11 +2,25 @@
 
 # Default bot signatures for filtering
 BOT_SIGNATURES = {
+    # Traditional bots
     'googlebot', 'bingbot', 'slurp', 'duckduckbot', 'baiduspider',
     'yandexbot', 'facebookexternalhit', 'twitterbot', 'linkedinbot',
     'whatsapp', 'telegrambot', 'applebot', 'amazonbot', 'crawl',
     'spider', 'bot', 'scraper', 'curl', 'wget', 'python-requests',
-    'postman', 'insomnia', 'httpie'
+    'postman', 'insomnia', 'httpie',
+    
+    # AI and LLM bots (new)
+    'chatgpt', 'gpt-bot', 'openai', 'gpt-4', 'gpt-3.5',
+    'claude', 'anthropic', 'claude-bot', 'bard', 'google-bard', 'palm-bot',
+    'copilot', 'github-copilot', 'microsoft-copilot', 'perplexity', 'perplexitybot',
+    'ccbot', 'common-crawl', 'commoncrawl', 'ai2bot', 'allen-institute',
+    'anthropic-ai', 'claude-web', 'research-bot', 'academic-crawler', 'university-bot',
+    'huggingface', 'hf-bot', 'jasper', 'copy.ai', 'writesonic', 'contentbot',
+    'midjourney', 'dall-e', 'stable-diffusion', 'imagen', 'ai-seo', 'rank-math-ai',
+    'yoast-ai', 'surfer-ai', 'marketo-ai', 'hubspot-ai', 'salesforce-ai',
+    'chatbot', 'virtual-assistant', 'dialogflow', 'rasa', 'alexa', 'siri',
+    'google-assistant', 'cortana', 'ai-api', 'ml-service', 'neural-bot',
+    'tensorflow-bot', 'automated-ai', 'ai-automation', 'ml-automation',
 }
 
 # Default status code groups

@@ -208,6 +208,128 @@ class BotAnalyzer:
                 'type': 'vulnerability_scanner',
                 'legitimate': False,
                 'description': 'Vulnerability scanner'
+            },
+            
+            # AI Bots and LLM Crawlers (New Category)
+            'chatgpt_bot': {
+                'patterns': [r'chatgpt', r'gpt-bot', r'openai', r'gpt-4', r'gpt-3\.5'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'ChatGPT/OpenAI bot'
+            },
+            'claude_bot': {
+                'patterns': [r'claude', r'anthropic', r'claude-bot'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'Claude AI bot'
+            },
+            'bard_bot': {
+                'patterns': [r'bard', r'google-bard', r'palm-bot'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'Google Bard/PaLM bot'
+            },
+            'copilot_bot': {
+                'patterns': [r'copilot', r'github-copilot', r'microsoft-copilot'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'Microsoft Copilot bot'
+            },
+            'perplexity_bot': {
+                'patterns': [r'perplexity', r'perplexitybot'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'Perplexity AI bot'
+            },
+            
+            # AI Training Data Crawlers
+            'common_crawl': {
+                'patterns': [r'ccbot', r'common-crawl', r'commoncrawl'],
+                'type': 'ai_training',
+                'legitimate': True,
+                'description': 'Common Crawl data collection bot'
+            },
+            'ai2_bot': {
+                'patterns': [r'ai2bot', r'allen-institute'],
+                'type': 'ai_training',
+                'legitimate': True,
+                'description': 'AI2 research crawler'
+            },
+            'anthropic_crawler': {
+                'patterns': [r'anthropic-ai', r'claude-web'],
+                'type': 'ai_training',
+                'legitimate': True,
+                'description': 'Anthropic data crawler'
+            },
+            
+            # AI Research and Academic Bots
+            'academic_ai_bot': {
+                'patterns': [r'research-bot', r'academic-crawler', r'university-bot'],
+                'type': 'ai_research',
+                'legitimate': True,
+                'description': 'Academic AI research bot'
+            },
+            'huggingface_bot': {
+                'patterns': [r'huggingface', r'hf-bot'],
+                'type': 'ai_research',
+                'legitimate': True,
+                'description': 'Hugging Face model bot'
+            },
+            
+            # AI Content Generation Bots
+            'ai_content_bot': {
+                'patterns': [r'jasper', r'copy\.ai', r'writesonic', r'contentbot'],
+                'type': 'ai_content',
+                'legitimate': True,
+                'description': 'AI content generation bot'
+            },
+            'ai_image_bot': {
+                'patterns': [r'midjourney', r'dall-e', r'stable-diffusion', r'imagen'],
+                'type': 'ai_content',
+                'legitimate': True,
+                'description': 'AI image generation bot'
+            },
+            
+            # AI SEO and Marketing Bots
+            'ai_seo_bot': {
+                'patterns': [r'ai-seo', r'rank-math-ai', r'yoast-ai', r'surfer-ai'],
+                'type': 'ai_seo',
+                'legitimate': True,
+                'description': 'AI-powered SEO bot'
+            },
+            'ai_marketing_bot': {
+                'patterns': [r'marketo-ai', r'hubspot-ai', r'salesforce-ai'],
+                'type': 'ai_marketing',
+                'legitimate': True,
+                'description': 'AI marketing automation bot'
+            },
+            
+            # Conversational AI and Chatbots
+            'chatbot': {
+                'patterns': [r'chatbot', r'virtual-assistant', r'dialogflow', r'rasa'],
+                'type': 'ai_conversational',
+                'legitimate': True,
+                'description': 'Conversational AI chatbot'
+            },
+            'voice_assistant': {
+                'patterns': [r'alexa', r'siri', r'google-assistant', r'cortana'],
+                'type': 'ai_conversational',
+                'legitimate': True,
+                'description': 'Voice assistant bot'
+            },
+            
+            # AI API and Service Bots
+            'ai_api_bot': {
+                'patterns': [r'ai-api', r'ml-service', r'neural-bot', r'tensorflow-bot'],
+                'type': 'ai_service',
+                'legitimate': True,
+                'description': 'AI API service bot'
+            },
+            'automated_ai_bot': {
+                'patterns': [r'automated-ai', r'ai-automation', r'ml-automation'],
+                'type': 'ai_service',
+                'legitimate': False,  # Could be aggressive
+                'description': 'Automated AI service bot'
             }
         }
         
@@ -574,6 +696,139 @@ class BotAnalyzer:
         
         return recommendations
     
+    def get_ai_bot_analysis(self) -> Dict[str, Any]:
+        """Get comprehensive AI bot analysis."""
+        ai_bot_types = ['ai_llm', 'ai_training', 'ai_research', 'ai_content', 'ai_seo', 'ai_marketing', 'ai_conversational', 'ai_service']
+        
+        ai_bots = {}
+        total_ai_requests = 0
+        
+        for bot_type, requests in self.bot_requests.items():
+            if bot_type in self.bot_signatures and self.bot_signatures[bot_type]['type'] in ai_bot_types:
+                ai_category = self.bot_signatures[bot_type]['type']
+                if ai_category not in ai_bots:
+                    ai_bots[ai_category] = {
+                        'bots': {},
+                        'total_requests': 0,
+                        'unique_ips': set(),
+                        'avg_response_time': [],
+                        'bandwidth_mb': 0
+                    }
+                
+                ai_bots[ai_category]['bots'][bot_type] = {
+                    'requests': len(requests),
+                    'description': self.bot_signatures[bot_type]['description'],
+                    'legitimate': self.bot_signatures[bot_type]['legitimate']
+                }
+                ai_bots[ai_category]['total_requests'] += len(requests)
+                ai_bots[ai_category]['unique_ips'].update(req['ip'] for req in requests)
+                ai_bots[ai_category]['avg_response_time'].extend(self.bot_response_times.get(bot_type, []))
+                ai_bots[ai_category]['bandwidth_mb'] += self.bot_bandwidth.get(bot_type, 0) / (1024 * 1024)
+                
+                total_ai_requests += len(requests)
+        
+        # Calculate averages and convert sets to counts
+        for category in ai_bots:
+            ai_bots[category]['unique_ips'] = len(ai_bots[category]['unique_ips'])
+            if ai_bots[category]['avg_response_time']:
+                ai_bots[category]['avg_response_time'] = statistics.mean(ai_bots[category]['avg_response_time'])
+            else:
+                ai_bots[category]['avg_response_time'] = 0
+        
+        return {
+            'total_ai_requests': total_ai_requests,
+            'ai_categories': ai_bots,
+            'ai_percentage': (total_ai_requests / max(sum(len(reqs) for reqs in self.bot_requests.values()), 1)) * 100
+        }
+    
+    def get_ai_training_indicators(self) -> Dict[str, Any]:
+        """Detect potential AI training data collection patterns."""
+        training_indicators = {
+            'high_volume_crawlers': [],
+            'suspicious_paths': [],
+            'rapid_site_traversal': [],
+            'content_focused_bots': []
+        }
+        
+        # Detect high-volume crawlers (potential training data collection)
+        for bot_type, requests in self.bot_requests.items():
+            if len(requests) > 1000:  # High volume threshold
+                intervals = self.bot_intervals.get(bot_type, [])
+                if intervals:
+                    avg_interval = statistics.mean(intervals)
+                    if avg_interval < 1:  # Very frequent requests
+                        training_indicators['high_volume_crawlers'].append({
+                            'bot': bot_type,
+                            'requests': len(requests),
+                            'avg_interval': avg_interval,
+                            'description': self.bot_signatures.get(bot_type, {}).get('description', 'Unknown')
+                        })
+        
+        # Detect content-focused paths (text, articles, etc.)
+        content_paths = ['/blog', '/article', '/post', '/news', '/content', '/page']
+        for bot_type, path_counter in self.bot_paths.items():
+            content_requests = sum(count for path, count in path_counter.items() 
+                                 if any(cp in path.lower() for cp in content_paths))
+            total_requests = sum(path_counter.values())
+            
+            if total_requests > 50 and content_requests / total_requests > 0.7:
+                training_indicators['content_focused_bots'].append({
+                    'bot': bot_type,
+                    'content_percentage': (content_requests / total_requests) * 100,
+                    'total_requests': total_requests
+                })
+        
+        return training_indicators
+    
+    def get_ai_bot_recommendations(self) -> List[Dict[str, Any]]:
+        """Generate AI bot-specific recommendations."""
+        recommendations = []
+        ai_analysis = self.get_ai_bot_analysis()
+        training_indicators = self.get_ai_training_indicators()
+        
+        # High AI traffic recommendation
+        if ai_analysis['ai_percentage'] > 30:
+            recommendations.append({
+                'category': 'AI Bot Management',
+                'priority': 'Medium',
+                'issue': f"High AI bot traffic: {ai_analysis['ai_percentage']:.1f}% of total bot requests",
+                'recommendation': 'Consider implementing AI bot-specific rate limiting and monitoring',
+                'details': f"Total AI requests: {ai_analysis['total_ai_requests']:,}"
+            })
+        
+        # Training data collection detection
+        if training_indicators['high_volume_crawlers']:
+            recommendations.append({
+                'category': 'AI Training Data',
+                'priority': 'High',
+                'issue': f"Detected {len(training_indicators['high_volume_crawlers'])} high-volume crawlers",
+                'recommendation': 'Review robots.txt and consider blocking aggressive AI training crawlers',
+                'bots': [bot['bot'] for bot in training_indicators['high_volume_crawlers'][:3]]
+            })
+        
+        # Content-focused AI bots
+        if training_indicators['content_focused_bots']:
+            recommendations.append({
+                'category': 'Content Protection',
+                'priority': 'Medium',
+                'issue': f"AI bots heavily accessing content: {len(training_indicators['content_focused_bots'])} bots",
+                'recommendation': 'Consider implementing content protection measures for AI training',
+                'bots': [bot['bot'] for bot in training_indicators['content_focused_bots'][:3]]
+            })
+        
+        # LLM bot analysis
+        llm_requests = ai_analysis['ai_categories'].get('ai_llm', {}).get('total_requests', 0)
+        if llm_requests > 100:
+            recommendations.append({
+                'category': 'LLM Integration',
+                'priority': 'Low',
+                'issue': f"Significant LLM bot activity: {llm_requests:,} requests",
+                'recommendation': 'Monitor for potential API abuse or unauthorized LLM integrations',
+                'details': 'Consider implementing API authentication for LLM services'
+            })
+        
+        return recommendations
+
     def export_bot_report(self, output_file: str):
         """Export detailed bot analysis report to JSON."""
         import json
@@ -589,6 +844,8 @@ class BotAnalyzer:
             'bot_classification': self.get_bot_classification(),
             'behavior_patterns': self.get_behavior_patterns(),
             'legitimacy_scores': self.legitimacy_scores,
+            'ai_bot_analysis': self.get_ai_bot_analysis(),
+            'ai_training_indicators': self.get_ai_training_indicators(),
             'bot_details': {
                 bot_type: {
                     'request_count': len(requests),
@@ -602,7 +859,7 @@ class BotAnalyzer:
                 for bot_type, requests in self.bot_requests.items()
             },
             'unknown_user_agents': dict(self.unknown_bots.most_common(50)),
-            'recommendations': self.get_bot_recommendations()
+            'recommendations': self.get_bot_recommendations() + self.get_ai_bot_recommendations()
         }
         
         with open(output_file, 'w') as f:

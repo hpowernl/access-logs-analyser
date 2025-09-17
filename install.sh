@@ -221,8 +221,7 @@ if [[ ! $REPLY =~ ^[Nn]$ ]]; then
     echo "   Direct:           ~/bin/opencli or ~/bin/hlogcli"
 fi
 echo ""
-echo "📁 Log Analysis (NEW!):"
-echo "   • Auto-discovers nginx logs by default (no --auto-discover needed)"
+echo "📁 Log Analysis:"
 echo "   • Platform detection for Hypernode environments"
 echo "   • Extended output with User Agents, IPs, Paths, Browser/OS stats"
 echo "   • Real-time log monitoring and analysis"
