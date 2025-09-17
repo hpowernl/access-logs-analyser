@@ -566,55 +566,82 @@ class InteractiveLogAnalyzer(App):
         
     def on_mount(self) -> None:
         """Initialize the application."""
-        # Show loading screen first
-        self.push_screen(LoadingScreen())
-        
-        # Discover log files
-        print("🔍 Discovering log files...")
-        self.discover_logs()
-        print(f"📁 Found {len(self.log_files)} log files: {self.log_files}")
-        
-        # Start log processing
-        print("⚡ Starting log processing...")
-        self.start_log_processing()
-        print("✅ Initialization complete")
+        try:
+            print("🚀 Initializing InteractiveLogAnalyzer...")
+            
+            # Show loading screen first
+            print("📱 Pushing loading screen...")
+            self.push_screen(LoadingScreen())
+            
+            # Discover log files
+            print("🔍 Discovering log files...")
+            self.discover_logs()
+            print(f"📁 Found {len(self.log_files)} log files: {self.log_files}")
+            
+            # Start log processing
+            print("⚡ Starting log processing...")
+            self.start_log_processing()
+            print("✅ Initialization complete")
+            
+        except Exception as e:
+            print(f"❌ Error during initialization: {e}")
+            import traceback
+            traceback.print_exc()
         
     def compose(self) -> ComposeResult:
         """Compose the main interface."""
-        yield Header(show_clock=True)
-        
-        yield Container(
-            # Status bar
-            Container(
-                Static("", id="status-bar"),
-                classes="status-bar"
-            ),
+        try:
+            print("🎨 Composing main interface...")
             
-            # Main content area
-            Container(
-                # Overview dashboard (default)
+            yield Header(show_clock=True)
+            
+            yield Container(
+                # Status bar
                 Container(
-                    id="main-content"
+                    Static("Initializing...", id="status-bar"),
+                    classes="status-bar"
                 ),
-                classes="main-area"
-            ),
+                
+                # Main content area
+                Container(
+                    # Overview dashboard (default)
+                    Container(
+                        id="main-content"
+                    ),
+                    classes="main-area"
+                ),
+                
+                # Bottom info bar
+                Container(
+                    Static("Use F1-F7 for navigation | Press 'q' to quit | Press 'r' to refresh", id="info-bar"),
+                    classes="info-bar"
+                ),
+                
+                id="main-container"
+            )
             
-            # Bottom info bar
-            Container(
-                Static("Use F1-F7 for navigation | Press 'q' to quit | Press 'r' to refresh", id="info-bar"),
-                classes="info-bar"
-            ),
+            yield Footer()
+            print("✅ Interface composed successfully")
             
-            id="main-container"
-        )
-        
-        yield Footer()
+        except Exception as e:
+            print(f"❌ Error composing interface: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback to minimal interface
+            yield Static("Error loading interface. Check console for details.")
     
     def on_ready(self) -> None:
         """Called when app is ready."""
-        self.switch_to_overview()
-        self.update_status_bar()
-        self.set_interval(1.0, self.update_status_bar)
+        try:
+            print("🎯 App is ready, setting up interface...")
+            self.switch_to_overview()
+            self.update_status_bar()
+            self.set_interval(1.0, self.update_status_bar)
+            print("✅ Interface setup complete")
+        except Exception as e:
+            print(f"❌ Error in on_ready: {e}")
+            import traceback
+            traceback.print_exc()
     
     def discover_logs(self) -> None:
         """Discover available log files."""
@@ -779,14 +806,42 @@ class InteractiveLogAnalyzer(App):
     
     def switch_to_overview(self) -> None:
         """Switch to overview dashboard."""
-        print(f"🔄 Switching to overview view (stats total: {self.stats.total_requests})")
-        self.current_view = "overview"
-        main_content = self.query_one("#main-content", Container)
-        main_content.remove_children()
-        
-        self.overview = OverviewDashboard(self.stats)
-        main_content.mount(self.overview)
-        print("✅ Overview dashboard mounted")
+        try:
+            print(f"🔄 Switching to overview view (stats total: {self.stats.total_requests})")
+            self.current_view = "overview"
+            
+            # Find the main content area
+            try:
+                main_content = self.query_one("#main-content")
+                print(f"📍 Found main-content: {type(main_content)}")
+            except Exception as e:
+                print(f"❌ Could not find main-content: {e}")
+                return
+            
+            # Clear existing content
+            try:
+                if hasattr(main_content, 'remove_children'):
+                    main_content.remove_children()
+                else:
+                    # If it's a Static widget, update its content instead
+                    main_content.update("Loading overview...")
+                    return
+            except Exception as e:
+                print(f"⚠️ Could not clear content: {e}")
+            
+            # Create and mount overview
+            self.overview = OverviewDashboard(self.stats)
+            if hasattr(main_content, 'mount'):
+                main_content.mount(self.overview)
+            else:
+                print("❌ main-content doesn't support mounting")
+                
+            print("✅ Overview dashboard mounted")
+            
+        except Exception as e:
+            print(f"❌ Error switching to overview: {e}")
+            import traceback
+            traceback.print_exc()
     
     def switch_to_security(self) -> None:
         """Switch to security monitor."""
@@ -879,5 +934,70 @@ class InteractiveLogAnalyzer(App):
 
 def run_interactive():
     """Run the interactive TUI application."""
-    app = InteractiveLogAnalyzer()
-    app.run()
+    try:
+        print("🔧 Starting simple test app...")
+        app = SimpleTestApp()
+        app.run()
+    except Exception as e:
+        print(f"❌ Error running test app: {e}")
+        print("🔄 Falling back to complex app...")
+        try:
+            app = InteractiveLogAnalyzer()
+            app.run()
+        except Exception as e2:
+            print(f"❌ Complex app also failed: {e2}")
+            print("💡 Try running: python3 -m logcli analyze --help")
+
+
+class SimpleTestApp(App):
+    """Simple test app to verify Textual works."""
+    
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Container(
+            Static("🚀 Access Log Analyzer - Test Mode", id="title"),
+            Static("", id="content"),
+            Static("Press 'q' to quit, 'h' for help", id="footer"),
+        )
+        yield Footer()
+    
+    def on_mount(self) -> None:
+        """Initialize test app."""
+        content = self.query_one("#content", Static)
+        content.update("""
+[green]✅ Textual is working![/green]
+
+[yellow]Debug Info:[/yellow]
+• Terminal: Working
+• Textual: Loaded
+• Python: Running
+
+[cyan]Next Steps:[/cyan]
+1. Press 'q' to quit
+2. Press 'h' for help
+3. Check console output
+
+[dim]If you see this, the basic interface works.[/dim]
+        """)
+    
+    def key_q(self) -> None:
+        """Quit the app."""
+        self.exit()
+    
+    def key_h(self) -> None:
+        """Show help."""
+        content = self.query_one("#content", Static)
+        content.update("""
+[bold blue]🔧 Simple Test App Help[/bold blue]
+
+[yellow]Available Keys:[/yellow]
+• q - Quit application
+• h - Show this help
+
+[yellow]Purpose:[/yellow]
+This is a minimal test to verify Textual works.
+If you see this interface, the problem is not 
+with Textual itself but with the complex app.
+
+[green]✅ Basic functionality confirmed![/green]
+        """)
