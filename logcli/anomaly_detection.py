@@ -47,9 +47,15 @@ class HistoricalDataManager:
     
     def get_week_data(self) -> Dict[int, List[Dict[str, Any]]]:
         """Get data for the entire past week."""
+        # Check if we already have week data cached
+        if hasattr(self, '_week_data_cache') and self._week_data_cache:
+            return self._week_data_cache
+            
         try:
             # Use the new week data method from hypernode command
-            return self.hypernode_command.get_week_historical_data()
+            week_data = self.hypernode_command.get_week_historical_data()
+            self._week_data_cache = week_data
+            return week_data
         except Exception as e:
             console.print(f"[yellow]Warning: Could not fetch week data: {e}[/yellow]")
             # Fallback to individual day fetching
@@ -58,6 +64,7 @@ class HistoricalDataManager:
                 data = self.get_historical_data(day)
                 if data:
                     week_data[day] = data
+            self._week_data_cache = week_data
             return week_data
 
 
@@ -183,13 +190,6 @@ class BaselineCalculator:
         
         error_rate = (errors / len(hour_data) * 100) if hour_data else 0
         
-        # Debug: Log unusual error rates
-        if error_rate > 50:
-            console.print(f"[yellow]Debug: High error rate detected: {error_rate:.1f}% ({errors}/{len(hour_data)} entries)[/yellow]")
-            # Sample some status codes for debugging
-            sample_statuses = [entry.get('status', 'None') for entry in hour_data[:5]]
-            console.print(f"[yellow]Sample status codes: {sample_statuses}[/yellow]")
-        
         return {
             'requests': len(hour_data),
             'unique_ips': len(unique_ips),
@@ -249,6 +249,9 @@ class AnomalyDetector:
         except Exception as e:
             console.print(f"[yellow]Warning: Could not build historical baselines: {e}[/yellow]")
             self.historical_baselines = {'hourly': {}, 'weekday': {}}
+            
+        # Cache for avoiding duplicate data fetches
+        self._historical_data_cache = {}
         
         # Time-series data for anomaly detection
         self.time_series_data = defaultdict(lambda: deque(maxlen=window_size))
@@ -505,20 +508,25 @@ class AnomalyDetector:
                     'timestamp': minute_data['timestamp']
                 })
         
-        # Error rate anomalies
+        # Error rate anomalies - very conservative for high-error-rate websites
         error_rate = (minute_data['errors'] / minute_data['requests'] * 100) if minute_data['requests'] > 0 else 0
         if len(self.traffic_patterns['error_rate_per_minute']) > 1:
+            current_mean = statistics.mean(self.traffic_patterns['error_rate_per_minute'])
             z_score = self._calculate_z_score(error_rate, self.traffic_patterns['error_rate_per_minute'])
-            if z_score > self.sensitivity:  # Only alert on error rate increases
+            
+            # Only alert on EXTREME error rate increases (much more conservative)
+            if (z_score > (self.sensitivity + 3.0) and 
+                error_rate > current_mean + 20.0 and  # At least 20% higher than current average
+                error_rate > 98.0):  # And above 98%
                 self.anomaly_types['error_spike'] += 1
                 
                 self._record_anomaly('error_spike', {
-                    'type': 'Error Rate Spike',
+                    'type': 'Critical Error Rate Spike',
                     'z_score': z_score,
                     'actual_error_rate': error_rate,
-                    'expected_error_rate': statistics.mean(self.traffic_patterns['error_rate_per_minute']),
+                    'expected_error_rate': current_mean,
                     'error_count': minute_data['errors'],
-                    'severity': 'High' if z_score > 3 else 'Medium',
+                    'severity': 'Critical',
                     'timestamp': minute_data['timestamp']
                 })
         
@@ -715,20 +723,23 @@ class AnomalyDetector:
                     'timestamp': timestamp
                 })
         
-        # Check error rate anomaly
+        # Check error rate anomaly - much more conservative for websites with naturally high error rates
         error_rate_mean = hourly_baseline.get('error_rate_mean', 0)
         error_rate_stdev = hourly_baseline.get('error_rate_stdev', 0)
         
-        if error_rate_mean >= 0 and error_rate_stdev > 0 and error_rate > error_rate_mean + (2 * error_rate_stdev):
+        # Only alert if error rate is SIGNIFICANTLY higher than historical AND above 95%
+        if (error_rate_mean >= 0 and error_rate_stdev > 0 and 
+            error_rate > error_rate_mean + (5 * error_rate_stdev) and 
+            error_rate > 95.0 and error_rate_mean < 90.0):
             self.anomaly_types['hourly_pattern_anomaly'] += 1
             self._record_anomaly('hourly_pattern_anomaly', {
-                'type': 'Hourly Error Rate Anomaly',
+                'type': 'Critical Error Rate Spike',
                 'metric': 'error_rate',
                 'hour': hour,
                 'actual_error_rate': error_rate,
                 'historical_mean': error_rate_mean,
                 'historical_stdev': error_rate_stdev,
-                'severity': 'High',
+                'severity': 'Critical',
                 'timestamp': timestamp
             })
         
@@ -816,16 +827,19 @@ class AnomalyDetector:
                             'timestamp': timestamp
                         })
                 
-                # Compare error rates - only if significant difference
+                # Compare error rates - extremely conservative for high-error sites
                 last_week_error_rate = last_week_metrics['error_rate']
-                if error_rate > last_week_error_rate + 10.0 and error_rate > 20.0:  # 10% higher and above 20%
+                # Only alert if error rate is dramatically higher AND both periods have meaningful data
+                if (error_rate > last_week_error_rate + 25.0 and  # 25% higher than last week
+                    error_rate > 99.0 and  # Current error rate above 99%
+                    last_week_error_rate < 95.0):  # Last week was significantly better
                     self.anomaly_types['same_time_last_week_anomaly'] += 1
                     self._record_anomaly('same_time_last_week_anomaly', {
-                        'type': 'Same Time Last Week Error Rate Increase',
+                        'type': 'Extreme Error Rate Increase vs Last Week',
                         'current_error_rate': error_rate,
                         'last_week_error_rate': last_week_error_rate,
                         'increase': error_rate - last_week_error_rate,
-                        'severity': 'High',
+                        'severity': 'Critical',
                         'timestamp': timestamp
                     })
                     
