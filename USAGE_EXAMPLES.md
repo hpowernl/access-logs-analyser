@@ -1,147 +1,147 @@
-# NextGen Access Log Analyzer - Gebruiksvoorbeelden
+# NextGen Access Log Analyzer - Usage Examples
 
 ## 🚀 Quick Start
 
-### Basis Analyse
+### Basic Analysis
 ```bash
-# Activeer de virtual environment
+# Activate the virtual environment
 source venv/bin/activate
 
-# Analyseer een specifiek log bestand
+# Analyze a specific log file
 python3 -m logcli /var/log/nginx/access.log
 
-# Analyseer sample data (voor testen)
+# Analyze sample data (for testing)
 python3 -m logcli sample_access.log
 ```
 
 ### Auto-Discovery
 ```bash
-# Vind automatisch alle access logs in nginx directory
+# Automatically find all access logs in nginx directory
 python3 -m logcli --auto-discover
 
-# Specificeer een andere nginx directory
+# Specify a different nginx directory
 python3 -m logcli --auto-discover --nginx-dir /custom/nginx/logs
 ```
 
-## 📊 Filtering Voorbeelden
+## 📊 Filtering Examples
 
-### Land Filters
+### Country Filters
 ```bash
-# Alleen traffic uit Nederland en België
+# Only traffic from Netherlands and Belgium
 python3 -m logcli --countries NL,BE sample_access.log
 
-# Alleen US traffic
+# Only US traffic
 python3 -m logcli --countries US sample_access.log --summary-only
 ```
 
 ### Status Code Filters
 ```bash
-# Alleen errors (4xx en 5xx)
+# Only errors (4xx and 5xx)
 python3 -m logcli --filter-preset errors_only sample_access.log
 
-# Alleen 404 en 500 errors
+# Only 404 and 500 errors
 python3 -m logcli --status-codes 404,500 sample_access.log
 
-# Alleen succesvolle requests
+# Only successful requests
 python3 -m logcli --filter-preset success_only sample_access.log
 ```
 
 ### Bot Filtering
 ```bash
-# Exclude alle bots
+# Exclude all bots
 python3 -m logcli --exclude-bots sample_access.log
 
-# Alleen bot traffic (gebruik geen --exclude-bots)
+# Only bot traffic (don't use --exclude-bots)
 python3 -m logcli sample_access.log
 ```
 
-### Combinatie Filters
+### Combined Filters
 ```bash
-# Nederlandse traffic, geen bots, alleen errors
+# Dutch traffic, no bots, only errors
 python3 -m logcli --countries NL --exclude-bots --filter-preset errors_only sample_access.log
 
-# API endpoints alleen, geen bots
+# API endpoints only, no bots
 python3 -m logcli --filter-preset api_only --exclude-bots sample_access.log
 ```
 
-## 📈 Export Voorbeelden
+## 📈 Export Examples
 
 ### CSV Export
 ```bash
-# Export naar CSV
+# Export to CSV
 python3 -m logcli --export-csv sample_access.log
 
-# Export naar custom directory
+# Export to custom directory
 python3 -m logcli --export-csv --output ./my_exports sample_access.log
 ```
 
 ### JSON Export
 ```bash
-# Export naar JSON (gestructureerde data)
+# Export to JSON (structured data)
 python3 -m logcli --export-json sample_access.log
 
-# Export alle formaten
+# Export all formats
 python3 -m logcli --export-csv --export-json --export-charts sample_access.log
 ```
 
-### Gefilterde Export
+### Filtered Export
 ```bash
-# Export alleen Nederlandse traffic zonder bots
+# Export only Dutch traffic without bots
 python3 -m logcli --countries NL --exclude-bots --export-csv sample_access.log
 
-# Export alleen errors naar JSON
+# Export only errors to JSON
 python3 -m logcli --filter-preset errors_only --export-json sample_access.log
 ```
 
-## 🔄 Realtime Monitoring
+## 🔄 Real-time Monitoring
 
 ### Console Monitoring
 ```bash
-# Follow logs in realtime (console output)
+# Follow logs in real-time (console output)
 python3 -m logcli -f /var/log/nginx/access.log
 
-# Realtime met filters
+# Real-time with filters
 python3 -m logcli -f --exclude-bots --countries NL /var/log/nginx/access.log
 ```
 
-### Interactieve TUI
+### Interactive TUI
 ```bash
-# Launch interactieve interface
+# Launch interactive interface
 python3 -m logcli -i sample_access.log
 
-# Realtime interactieve interface
+# Real-time interactive interface
 python3 -m logcli -f -i /var/log/nginx/access.log
 
-# TUI met auto-discovery
+# TUI with auto-discovery
 python3 -m logcli -f -i --auto-discover
 ```
 
-## 🎯 Productie Voorbeelden
+## 🎯 Production Examples
 
 ### Hypernode Server Analysis
 ```bash
-# Analyseer alle Hypernode access logs
+# Analyze all Hypernode access logs
 sudo python3 -m logcli --auto-discover --nginx-dir /var/log/nginx
 
-# Realtime monitoring van Hypernode logs
+# Real-time monitoring of Hypernode logs
 sudo python3 -m logcli -f -i --auto-discover --nginx-dir /var/log/nginx
 
-# Export dagelijkse rapportage
+# Export daily reports
 sudo python3 -m logcli --auto-discover --export-csv --export-json --output /home/app/reports --nginx-dir /var/log/nginx
 ```
 
 ### Performance Monitoring
 ```bash
-# Monitor alleen langzame requests (gebruik filter in TUI)
+# Monitor only slow requests (use filter in TUI)
 python3 -m logcli -f -i /var/log/nginx/access.log
 
-# Export voor performance analyse
+# Export for performance analysis
 python3 -m logcli --export-json --output ./performance_reports /var/log/nginx/access.log
 ```
 
 ### Security Monitoring
 ```bash
-# Monitor alleen errors voor security analyse
+# Monitor only errors for security analysis
 python3 -m logcli -f --filter-preset errors_only /var/log/nginx/access.log
 
 # Export security events
@@ -150,40 +150,40 @@ python3 -m logcli --filter-preset errors_only --export-csv --output ./security_r
 
 ### Bot Analysis
 ```bash
-# Analyseer alleen bot traffic
-python3 -m logcli sample_access.log  # Bots zijn standaard included
+# Analyze only bot traffic
+python3 -m logcli sample_access.log  # Bots are included by default
 
-# Vergelijk bot vs human traffic
+# Compare bot vs human traffic
 python3 -m logcli sample_access.log > all_traffic.txt
 python3 -m logcli --exclude-bots sample_access.log > human_traffic.txt
 ```
 
-## 🔧 Geavanceerde Gebruik
+## 🔧 Advanced Usage
 
-### Meerdere Log Bestanden
+### Multiple Log Files
 ```bash
-# Analyseer meerdere bestanden tegelijk
+# Analyze multiple files simultaneously
 python3 -m logcli /var/log/nginx/access.log /var/log/nginx/access.log.1
 
-# Inclusief gzip bestanden
+# Including gzip files
 python3 -m logcli /var/log/nginx/access.log /var/log/nginx/access.log.1.gz /var/log/nginx/access.log.2.gz
 
-# Alle access logs in directory
+# All access logs in directory
 python3 -m logcli /var/log/nginx/access.log*
 ```
 
 ### Custom Output
 ```bash
-# Alleen summary voor scripts
+# Summary only for scripts
 python3 -m logcli --summary-only sample_access.log
 
-# Export voor externe tools
+# Export for external tools
 python3 -m logcli --export-json --summary-only sample_access.log
 ```
 
 ### Scheduled Reports
 ```bash
-# Cron job voor dagelijkse rapportage
+# Cron job for daily reporting
 0 6 * * * cd /path/to/logcli && source venv/bin/activate && python3 -m logcli --auto-discover --export-csv --export-json --output /var/reports --nginx-dir /var/log/nginx
 
 # Weekly comprehensive report
@@ -193,34 +193,34 @@ python3 -m logcli --export-json --summary-only sample_access.log
 ## 💡 Tips & Tricks
 
 ### Performance Tips
-- Gebruik `--summary-only` voor snelle checks
-- Filter data vroeg in de pipeline voor betere performance
-- Voor grote bestanden, gebruik specifieke filters
-- Gzip bestanden worden automatisch ondersteund
+- Use `--summary-only` for quick checks
+- Filter data early in the pipeline for better performance
+- For large files, use specific filters
+- Gzip files are automatically supported
 
 ### Monitoring Tips
-- Gebruik `-f -i` voor beste realtime ervaring
-- Combineer filters voor specifieke monitoring
-- Export regelmatig voor historische analyse
-- Gebruik presets voor veelgebruikte filters
+- Use `-f -i` for best real-time experience
+- Combine filters for specific monitoring
+- Export regularly for historical analysis
+- Use presets for commonly used filters
 
 ### Troubleshooting
 ```bash
-# Test met sample data eerst
+# Test with sample data first
 python3 -m logcli sample_access.log --summary-only
 
-# Check of JSON format correct is
+# Check if JSON format is correct
 head -1 /var/log/nginx/access.log | python3 -m json.tool
 
-# Verbose output voor debugging
+# Verbose output for debugging
 python3 -m logcli --help
 ```
 
 ## 📋 Cheat Sheet
 
-| Commando | Beschrijving |
-|----------|-------------|
-| `python3 -m logcli file.log` | Basis analyse |
+| Command | Description |
+|---------|-------------|
+| `python3 -m logcli file.log` | Basic analysis |
 | `--auto-discover` | Auto-find nginx logs |
 | `-f` | Follow/tail logs |
 | `-i` | Interactive TUI |
@@ -229,11 +229,11 @@ python3 -m logcli --help
 | `--filter-preset errors_only` | Quick error filter |
 | `--export-csv` | Export to CSV |
 | `--summary-only` | Quick summary |
-| `-f -i` | Realtime TUI |
+| `-f -i` | Real-time TUI |
 
 ## 🎛️ TUI Controls
 
-In de interactieve modus:
+In interactive mode:
 - **q**: Quit
 - **f**: Filters tab
 - **e**: Export data

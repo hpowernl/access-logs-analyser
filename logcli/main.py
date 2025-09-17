@@ -43,16 +43,16 @@ def main(log_files, follow, interactive, output, filter_preset, countries, statu
     
     Examples:
         # Analyze specific log files
-        python -m logcli.main /var/log/nginx/access.log
+        python -m logcli /var/log/nginx/access.log
         
         # Follow logs in real-time with interactive UI
-        python -m logcli.main -f -i /var/log/nginx/access.log
+        python -m logcli -f -i /var/log/nginx/access.log
         
         # Auto-discover and analyze all access logs
-        python -m logcli.main --auto-discover
+        python -m logcli --auto-discover
         
         # Filter and export
-        python -m logcli.main --countries US,GB --exclude-bots --export-csv /var/log/nginx/access.log
+        python -m logcli --countries US,GB --exclude-bots --export-csv /var/log/nginx/access.log
     """
     
     # Auto-discover log files if requested

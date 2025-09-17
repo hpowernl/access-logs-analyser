@@ -1,88 +1,88 @@
 # NextGen Access Log Analyzer
 
-Een geavanceerde, realtime CLI-tool voor het analyseren van Nginx JSON access logs. Deze tool biedt uitgebreidere functionaliteit dan GoAccess met interactieve filtering, realtime monitoring, en uitgebreide export mogelijkheden.
+An advanced, real-time CLI tool for analyzing Nginx JSON access logs. This tool provides more comprehensive functionality than GoAccess with interactive filtering, real-time monitoring, and extensive export capabilities.
 
 ## ✨ Features
 
-- **Realtime Log Monitoring**: Live tailing van access logs met automatische updates
-- **Interactieve TUI**: Moderne terminal interface gebouwd met Textual
-- **Geavanceerde Filtering**: Filter op land, IP-ranges, bots, status codes, paths, en meer
-- **Gzip Ondersteuning**: Automatische ondersteuning voor gecomprimeerde log bestanden
-- **Multiple Export Formaten**: CSV, JSON, HTML charts, en tekstuele rapporten
-- **Bot Detectie**: Intelligente herkenning van verschillende bot types
-- **Response Time Analyse**: Gedetailleerde statistieken over response tijden
-- **Bandwidth Tracking**: Monitor data usage en transfer statistieken
+- **Real-time Log Monitoring**: Live tailing of access logs with automatic updates
+- **Interactive TUI**: Modern terminal interface built with Textual
+- **Advanced Filtering**: Filter by country, IP ranges, bots, status codes, paths, and more
+- **Gzip Support**: Automatic support for compressed log files
+- **Multiple Export Formats**: CSV, JSON, HTML charts, and text reports
+- **Bot Detection**: Intelligent recognition of different bot types
+- **Response Time Analysis**: Detailed statistics on response times
+- **Bandwidth Tracking**: Monitor data usage and transfer statistics
 
-## 🚀 Installatie
+## 🚀 Installation
 
-### Vereisten
-- Python 3.8 of hoger
+### Requirements
+- Python 3.8 or higher
 - pip
 
-### Installatie Stappen
+### Installation Steps
 
-1. **Clone de repository:**
+1. **Clone the repository:**
 ```bash
 git clone <repository-url>
 cd Hypernode-logs
 ```
 
-2. **Maak een virtual environment:**
+2. **Create a virtual environment:**
 ```bash
 python -m venv venv
-source venv/bin/activate  # Op Windows: venv\\Scripts\\activate
+source venv/bin/activate  # On Windows: venv\\Scripts\\activate
 ```
 
-3. **Installeer dependencies:**
+3. **Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Installeer de tool (optioneel):**
+4. **Install the tool (optional):**
 ```bash
 pip install -e .
 ```
 
-## 📖 Gebruik
+## 📖 Usage
 
-### Basis Commando's
+### Basic Commands
 
 ```bash
-# Analyseer een specifiek log bestand
+# Analyze a specific log file
 python -m logcli /var/log/nginx/access.log
 
-# Auto-discover alle access logs in nginx directory
+# Auto-discover all access logs in nginx directory
 python -m logcli --auto-discover
 
-# Realtime monitoring met interactieve UI
+# Real-time monitoring with interactive UI
 python -m logcli -f -i /var/log/nginx/access.log
 
-# Filter op landen en exporteer naar CSV
+# Filter by countries and export to CSV
 python -m logcli --countries US,GB,DE --export-csv /var/log/nginx/access.log
 
-# Exclude bots en toon alleen errors
+# Exclude bots and show only errors
 python -m logcli --exclude-bots --filter-preset errors_only /var/log/nginx/access.log
 ```
 
-### Geavanceerde Opties
+### Advanced Options
 
 ```bash
-# Alle beschikbare opties
+# Show all available options
 python -m logcli --help
 
-# Gebruik met meerdere bestanden (inclusief gzip)
+# Use with multiple files (including gzip)
 python -m logcli /var/log/nginx/access.log /var/log/nginx/access.log.1.gz
 
-# Export naar alle formaten
+# Export to all formats
 python -m logcli --export-csv --export-json --export-charts --output ./exports /var/log/nginx/access.log
 
-# Realtime console mode (geen TUI)
+# Real-time console mode (no TUI)
 python -m logcli -f /var/log/nginx/access.log
 ```
 
-### Interactieve Modus
+### Interactive Mode
 
-In de interactieve modus (TUI) zijn de volgende toetsen beschikbaar:
+In interactive mode (TUI), the following keys are available:
 
 - **`q`**: Quit
 - **`f`**: Toggle filters tab
@@ -90,9 +90,9 @@ In de interactieve modus (TUI) zijn de volgende toetsen beschikbaar:
 - **`r`**: Refresh data
 - **`t`**: Toggle timeline view
 
-## 🎯 Nginx Log Formaat
+## 🎯 Nginx Log Format
 
-Deze tool is geoptimaliseerd voor Nginx JSON logs met het volgende formaat:
+This tool is optimized for Nginx JSON logs with the following format:
 
 ```json
 {
@@ -111,71 +111,71 @@ Deze tool is geoptimaliseerd voor Nginx JSON logs met het volgende formaat:
 }
 ```
 
-### Ondersteunde Velden
+### Supported Fields
 
-- `time` - Timestamp van het request
-- `remote_addr` - Client IP adres
+- `time` - Request timestamp
+- `remote_addr` - Client IP address
 - `host` - Host header
-- `request` - HTTP request regel (method, path, protocol)
+- `request` - HTTP request line (method, path, protocol)
 - `status` - HTTP status code
-- `body_bytes_sent` - Aantal verzonden bytes
+- `body_bytes_sent` - Number of bytes sent
 - `user_agent` - User agent string
-- `request_time` - Response tijd in seconden
-- `country` - Land code (indien beschikbaar)
+- `request_time` - Response time in seconds
+- `country` - Country code (if available)
 - `referer` - Referer header
-- `server_name` - Server naam
+- `server_name` - Server name
 - `handler` - Backend handler (phpfpm, varnish, etc.)
 
 ## 📊 Filter Presets
 
-De tool biedt verschillende voorgedefinieerde filters:
+The tool offers several predefined filters:
 
-- **`errors_only`**: Toon alleen 4xx en 5xx responses
-- **`success_only`**: Toon alleen 2xx responses  
-- **`no_bots`**: Exclude alle bot traffic
-- **`api_only`**: Toon alleen API endpoints (/api/*)
-- **`recent_activity`**: Toon alleen recente activiteit
+- **`errors_only`**: Show only 4xx and 5xx responses
+- **`success_only`**: Show only 2xx responses  
+- **`no_bots`**: Exclude all bot traffic
+- **`api_only`**: Show only API endpoints (/api/*)
+- **`recent_activity`**: Show only recent activity
 
-## 📈 Export Formaten
+## 📈 Export Formats
 
 ### CSV Export
-Gedetailleerde tabellen met:
+Detailed tables with:
 - Top countries, IPs, paths, status codes
 - Timeline data
 - Error details
-- Response time statistieken
+- Response time statistics
 
 ### JSON Export
-Volledige gestructureerde data export met:
-- Alle statistieken en counters
+Complete structured data export with:
+- All statistics and counters
 - Timeline data
-- Slow requests lijst
-- Bot traffic analyse
+- Slow requests list
+- Bot traffic analysis
 
 ### HTML Charts
-Interactieve charts met:
+Interactive charts with:
 - Country distribution
 - Status code breakdown
 - Browser statistics
-- Timeline visualisaties
+- Timeline visualizations
 
 ### Text Reports
-Menselijk leesbare samenvattingen met:
-- Overview statistieken
-- Top entries per categorie
-- Response time analyse
+Human-readable summaries with:
+- Overview statistics
+- Top entries per category
+- Response time analysis
 
-## 🔧 Configuratie
+## 🔧 Configuration
 
-Pas `logcli/config.py` aan voor:
+Modify `logcli/config.py` for:
 
 - Bot signature lists
 - Alert thresholds
-- Timeline granulariteit
-- Export instellingen
+- Timeline granularity
+- Export settings
 - Default filters
 
-## 📁 Project Structuur
+## 📁 Project Structure
 
 ```
 logcli/
@@ -193,35 +193,35 @@ logcli/
 
 ## 🐛 Troubleshooting
 
-### Veelvoorkomende Problemen
+### Common Issues
 
-1. **Permission denied bij /var/log/nginx**
+1. **Permission denied at /var/log/nginx**
    ```bash
    sudo python -m logcli --auto-discover
    ```
 
-2. **Gzip bestanden worden niet gelezen**
-   - Controleer of het bestand een `.gz` extensie heeft
-   - Zorg dat het bestand niet corrupt is
+2. **Gzip files not being read**
+   - Check if the file has a `.gz` extension
+   - Ensure the file is not corrupted
 
-3. **Geen data zichtbaar**
-   - Controleer log formaat (moet JSON zijn)
-   - Controleer of filters te restrictief zijn
-   - Gebruik `--summary-only` voor quick check
+3. **No data visible**
+   - Check log format (must be JSON)
+   - Check if filters are too restrictive
+   - Use `--summary-only` for quick check
 
-4. **Performance problemen met grote bestanden**
-   - Gebruik filters om data te beperken
-   - Overweeg alleen recente logs te analyseren
-   - Gebruik `--summary-only` voor snelle overview
+4. **Performance issues with large files**
+   - Use filters to limit data
+   - Consider analyzing only recent logs
+   - Use `--summary-only` for quick overview
 
-## 🤝 Bijdragen
+## 🤝 Contributing
 
-Bijdragen zijn welkom! Open een issue of pull request.
+Contributions are welcome! Open an issue or pull request.
 
-## 📄 Licentie
+## 📄 License
 
-MIT License - zie LICENSE bestand voor details.
+MIT License - see LICENSE file for details.
 
 ## 🙏 Credits
 
-Gebaseerd op de requirements uit `idea.md` en geoptimaliseerd voor Hypernode/Nginx omgevingen.
+Based on requirements from `idea.md` and optimized for Hypernode/Nginx environments.
