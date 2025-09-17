@@ -45,6 +45,13 @@ An **enterprise-grade, interactive log analysis platform** for Nginx JSON access
 - **Executive Summaries**: High-level KPIs and trends
 - **Technical Deep-dives**: Detailed analysis for DevOps teams
 
+### 🆕 **Enhanced Analytics (New Features)**
+- **Advanced Path Analysis**: Min/Max/Average response times and handler information for each path
+- **Geographic IP Analysis**: Top IP addresses breakdown per country for detailed geographic insights
+- **Reverse DNS Resolution**: Automatic hostname lookup for IP addresses to identify servers and services
+- **Performance Metrics**: Detailed timing statistics for performance optimization
+- **Handler Tracking**: Monitor which backend handlers (php-fpm, static, etc.) serve requests
+
 ## 🚀 Installation
 
 ### Requirements

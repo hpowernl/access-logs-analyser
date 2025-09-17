@@ -103,6 +103,13 @@ class StatisticsAggregator:
         self.hits_per_path = Counter()
         self.hits_per_referer = Counter()
         
+        # Path-specific statistics for enhanced Top Requested Paths table
+        self.path_response_times = defaultdict(list)  # path -> [response_times]
+        self.path_handlers = defaultdict(set)  # path -> {handlers}
+        
+        # Country-specific IP tracking for new country IP table
+        self.country_ips = defaultdict(Counter)  # country -> Counter(ip -> hits)
+        
         # Bot vs human traffic
         self.bot_traffic = Counter()  # bot vs human
         self.bot_types = Counter()    # specific bot types
@@ -147,13 +154,28 @@ class StatisticsAggregator:
                 self.latest_timestamp = timestamp
         
         # Basic aggregations
-        self.hits_per_country[log_entry.get('country', 'Unknown')] += 1
+        country = log_entry.get('country', 'Unknown')
+        self.hits_per_country[country] += 1
         self.hits_per_status[log_entry.get('status', 0)] += 1
         ip = log_entry.get('ip') or log_entry.get('remote_addr', 'Unknown')
-        self.hits_per_ip[str(ip)] += 1
+        ip_str = str(ip)
+        self.hits_per_ip[ip_str] += 1
         self.hits_per_method[log_entry.get('method', 'Unknown')] += 1
-        self.hits_per_path[log_entry.get('path', 'Unknown')] += 1
+        path = log_entry.get('path', 'Unknown')
+        self.hits_per_path[path] += 1
         self.hits_per_referer[log_entry.get('referer', 'Unknown')] += 1
+        
+        # Enhanced path statistics
+        response_time = log_entry.get('response_time', 0)
+        if response_time > 0:
+            self.path_response_times[path].append(response_time)
+        
+        handler = log_entry.get('handler', '')
+        if handler:
+            self.path_handlers[path].add(handler)
+        
+        # Country-specific IP tracking
+        self.country_ips[country][ip_str] += 1
         
         # User agent aggregations
         user_agent = log_entry.get('user_agent', 'Unknown')
@@ -289,6 +311,57 @@ class StatisticsAggregator:
             'requests_per_minute': (self.total_requests / (time_span_seconds / 60)) if time_span_seconds > 0 else 0,
         }
     
+    def get_path_stats(self, path: str) -> Dict[str, Any]:
+        """Get detailed statistics for a specific path."""
+        response_times = self.path_response_times.get(path, [])
+        handlers = self.path_handlers.get(path, set())
+        
+        stats = {
+            'hits': self.hits_per_path.get(path, 0),
+            'handlers': list(handlers),
+            'primary_handler': list(handlers)[0] if handlers else 'Unknown'
+        }
+        
+        if response_times:
+            stats.update({
+                'min_time': min(response_times),
+                'max_time': max(response_times),
+                'avg_time': statistics.mean(response_times)
+            })
+        else:
+            stats.update({
+                'min_time': 0,
+                'max_time': 0,
+                'avg_time': 0
+            })
+        
+        return stats
+    
+    def get_enhanced_top_paths(self, n: int = 15) -> List[Dict[str, Any]]:
+        """Get top N paths with enhanced statistics."""
+        top_paths = []
+        for path, hits in self.get_top_n(self.hits_per_path, n):
+            path_stats = self.get_path_stats(path)
+            path_stats['path'] = path
+            top_paths.append(path_stats)
+        return top_paths
+    
+    def get_country_top_ips(self, country: str, n: int = 10) -> List[Tuple[str, int]]:
+        """Get top N IPs for a specific country."""
+        if country not in self.country_ips:
+            return []
+        return self.country_ips[country].most_common(n)
+    
+    def get_all_countries_top_ips(self, countries_limit: int = 10, ips_per_country: int = 10) -> Dict[str, List[Tuple[str, int]]]:
+        """Get top IPs for each of the top countries."""
+        top_countries = [country for country, _ in self.get_top_n(self.hits_per_country, countries_limit)]
+        result = {}
+        
+        for country in top_countries:
+            result[country] = self.get_country_top_ips(country, ips_per_country)
+        
+        return result
+
     def get_summary_stats(self) -> Dict[str, Any]:
         """Get summary statistics."""
         return {

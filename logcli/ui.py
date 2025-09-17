@@ -24,6 +24,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from .aggregators import StatisticsAggregator, RealTimeAggregator
 from .filters import LogFilter, FilterPresets
 from .export import DataExporter, create_report_summary
+from .dns_utils import dns_lookup
 
 
 class LogAnalyzerTUI(App):
@@ -205,15 +206,20 @@ Avg/Request: [cyan]{bandwidth.get('avg_bytes_per_request', 0):,.0f} bytes[/cyan]
         table = self.query_one("#ips-table", DataTable)
         table.clear(columns=True)
         
-        table.add_columns("IP Address", "Hits", "Percentage")
+        table.add_columns("IP Address", "Hits", "Percentage", "Reverse DNS")
         
         total_requests = max(self.stats.total_requests, 1)
         for ip, hits in self.stats.get_top_n(self.stats.hits_per_ip, 50):
             percentage = (hits / total_requests) * 100
+            # Perform reverse DNS lookup
+            hostname = dns_lookup.reverse_dns_lookup(ip)
+            display_hostname = hostname[:30] + "..." if len(hostname) > 30 else hostname
+            
             table.add_row(
                 ip,
                 f"{hits:,}",
-                f"{percentage:.1f}%"
+                f"{percentage:.1f}%",
+                display_hostname if hostname != ip else "-"
             )
     
     def update_paths_table(self) -> None:
@@ -221,17 +227,23 @@ Avg/Request: [cyan]{bandwidth.get('avg_bytes_per_request', 0):,.0f} bytes[/cyan]
         table = self.query_one("#paths-table", DataTable)
         table.clear(columns=True)
         
-        table.add_columns("Path", "Hits", "Percentage")
+        table.add_columns("Path", "Hits", "Percentage", "Min Time", "Max Time", "Avg Time", "Handler")
         
         total_requests = max(self.stats.total_requests, 1)
-        for path, hits in self.stats.get_top_n(self.stats.hits_per_path, 50):
-            percentage = (hits / total_requests) * 100
+        for path_data in self.stats.get_enhanced_top_paths(50):
+            percentage = (path_data['hits'] / total_requests) * 100
             # Truncate long paths
-            display_path = path[:80] + "..." if len(path) > 80 else path
+            display_path = path_data['path'][:60] + "..." if len(path_data['path']) > 60 else path_data['path']
+            handler = path_data['primary_handler'][:15] + "..." if len(path_data['primary_handler']) > 15 else path_data['primary_handler']
+            
             table.add_row(
                 display_path,
-                f"{hits:,}",
-                f"{percentage:.1f}%"
+                f"{path_data['hits']:,}",
+                f"{percentage:.1f}%",
+                f"{path_data['min_time']:.3f}s",
+                f"{path_data['max_time']:.3f}s",
+                f"{path_data['avg_time']:.3f}s",
+                handler
             )
     
     def update_status_table(self) -> None:
@@ -493,42 +505,79 @@ class SimpleConsoleUI:
         self.console.print(ua_table)
         self.console.print()
         
-        # Top IPs
+        # Top IPs (Enhanced with Reverse DNS)
         ip_table = Table(title="Top IP Addresses", show_header=True)
         ip_table.add_column("IP Address", style="bold")
         ip_table.add_column("Hits", justify="right", style="green")
         ip_table.add_column("Percentage", justify="right", style="cyan")
+        ip_table.add_column("Reverse DNS", justify="left", style="yellow")
         
         for ip, hits in self.stats.get_top_n(self.stats.hits_per_ip, 15):
             percentage = (hits / total) * 100
+            # Perform reverse DNS lookup
+            hostname = dns_lookup.reverse_dns_lookup(ip)
+            # Truncate long hostnames
+            display_hostname = hostname[:40] + "..." if len(hostname) > 40 else hostname
+            
             ip_table.add_row(
                 ip,
                 f"{hits:,}",
-                f"{percentage:.1f}%"
+                f"{percentage:.1f}%",
+                display_hostname if hostname != ip else "-"
             )
         
         self.console.print(ip_table)
         self.console.print()
         
-        # Top Paths
+        # Top Paths (Enhanced)
         path_table = Table(title="Top Requested Paths", show_header=True)
         path_table.add_column("Path", style="bold", max_width=60)
         path_table.add_column("Hits", justify="right", style="green")
         path_table.add_column("Percentage", justify="right", style="cyan")
+        path_table.add_column("Min Time", justify="right", style="yellow")
+        path_table.add_column("Max Time", justify="right", style="red")
+        path_table.add_column("Avg Time", justify="right", style="blue")
+        path_table.add_column("Handler", justify="left", style="magenta")
         
-        for path, hits in self.stats.get_top_n(self.stats.hits_per_path, 15):
-            percentage = (hits / total) * 100
+        for path_data in self.stats.get_enhanced_top_paths(15):
+            percentage = (path_data['hits'] / total) * 100
             # Truncate long paths
-            display_path = path[:57] + "..." if len(path) > 60 else path
+            display_path = path_data['path'][:57] + "..." if len(path_data['path']) > 60 else path_data['path']
             
             path_table.add_row(
                 display_path,
-                f"{hits:,}",
-                f"{percentage:.1f}%"
+                f"{path_data['hits']:,}",
+                f"{percentage:.1f}%",
+                f"{path_data['min_time']:.3f}s",
+                f"{path_data['max_time']:.3f}s", 
+                f"{path_data['avg_time']:.3f}s",
+                path_data['primary_handler'][:15] + "..." if len(path_data['primary_handler']) > 15 else path_data['primary_handler']
             )
         
         self.console.print(path_table)
         self.console.print()
+        
+        # Top IPs by Country
+        countries_ips = self.stats.get_all_countries_top_ips(10, 10)
+        if countries_ips:
+            for country, top_ips in countries_ips.items():
+                if top_ips:  # Only show countries that have IPs
+                    country_ip_table = Table(title=f"Top IP Addresses - {country or 'Unknown'}", show_header=True)
+                    country_ip_table.add_column("IP Address", style="bold")
+                    country_ip_table.add_column("Hits", justify="right", style="green")
+                    country_ip_table.add_column("Percentage", justify="right", style="cyan")
+                    
+                    country_total = sum(hits for _, hits in top_ips)
+                    for ip, hits in top_ips:
+                        percentage = (hits / country_total) * 100 if country_total > 0 else 0
+                        country_ip_table.add_row(
+                            ip,
+                            f"{hits:,}",
+                            f"{percentage:.1f}%"
+                        )
+                    
+                    self.console.print(country_ip_table)
+                    self.console.print()
         
         # Bot Analysis
         if self.stats.bot_traffic:
