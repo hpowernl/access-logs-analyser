@@ -64,14 +64,14 @@ class HelpScreen(Screen):
 
 [bold yellow]Troubleshooting:[/bold yellow]
 If you see no data:
-1. Check if log files exist in /data/web/nginx/
+1. Check if log files exist in /var/log/nginx/
 2. Ensure log files are readable (permissions)
 3. Verify logs are in JSON format
 4. Press 'r' to refresh
 
 [bold yellow]Log Locations Checked:[/bold yellow]
-• /data/web/nginx/ (Hypernode)
-• /var/log/nginx/ (Standard)
+• /var/log/nginx/ (Hypernode/Standard)
+• /data/web/nginx/ (Alternative)
 • Current directory (sample_access.log)
 
 [dim]Press any key to close this help screen[/dim]
@@ -187,8 +187,8 @@ class OverviewDashboard(Static):
 • Summary keys: {list(summary.keys()) if summary else 'No summary'}
 
 [bold]Checking for logs in:[/bold]
-• /data/web/nginx/
 • /var/log/nginx/
+• /data/web/nginx/
 • Current directory
 
 If logs exist, make sure they are readable
@@ -647,8 +647,8 @@ class InteractiveLogAnalyzer(App):
         """Discover available log files."""
         # Try multiple common nginx log locations
         nginx_locations = [
-            "/data/web/nginx",  # Hypernode location
-            "/var/log/nginx",   # Standard location
+            "/var/log/nginx",   # Hypernode/Standard location
+            "/data/web/nginx",  # Alternative location
             "/usr/local/var/log/nginx",  # Homebrew on macOS
             "/opt/nginx/logs"   # Alternative location
         ]
@@ -935,17 +935,17 @@ class InteractiveLogAnalyzer(App):
 def run_interactive():
     """Run the interactive TUI application."""
     try:
-        print("🔧 Starting simple test app...")
-        app = SimpleTestApp()
+        print("🚀 Starting Access Log Analyzer...")
+        app = InteractiveLogAnalyzer()
         app.run()
     except Exception as e:
-        print(f"❌ Error running test app: {e}")
-        print("🔄 Falling back to complex app...")
+        print(f"❌ Error running main app: {e}")
+        print("🔧 Falling back to test mode for debugging...")
         try:
-            app = InteractiveLogAnalyzer()
+            app = SimpleTestApp()
             app.run()
         except Exception as e2:
-            print(f"❌ Complex app also failed: {e2}")
+            print(f"❌ Test app also failed: {e2}")
             print("💡 Try running: python3 -m logcli analyze --help")
 
 
