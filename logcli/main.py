@@ -140,11 +140,11 @@ def get_platform_nginx_dir() -> str:
 @click.option('--install-completion', is_flag=True, help='Install shell completion for bash/zsh/fish')
 @click.pass_context
 def cli(ctx, install_completion):
-    """🚀 Hypernode Log Analyzer - Advanced CLI tool for Nginx JSON log analysis.
+    """🚀 Hypernode Log Analyzer - Advanced CLI tool for Nginx log analysis.
     
     A comprehensive log analysis toolkit specifically designed for Hypernode environments,
-    featuring direct log parsing via hypernode-parse-nginx-log command, real-time monitoring, 
-    security analysis, and performance insights.
+    featuring direct log parsing via hypernode-parse-nginx-log command, security analysis, 
+    and performance insights.
     
     \b
     Quick Start:
