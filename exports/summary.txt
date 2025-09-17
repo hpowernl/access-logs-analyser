@@ -1,0 +1,55 @@
+
+LOG ANALYSIS SUMMARY REPORT
+===========================
+Generated: 2025-09-17 11:22:47
+
+OVERVIEW
+--------
+Total Requests: 10
+Unique Visitors: 9
+Error Rate: 40.00%
+Bot Traffic: 70.00%
+Slow Requests (>1s): 1
+
+RESPONSE TIME STATISTICS
+-----------------------
+Average: 0.238s
+Maximum: 1.500s
+Median: 0.066s
+95th Percentile: 2.125s
+99th Percentile: 2.625s
+
+BANDWIDTH STATISTICS
+-------------------
+Total Data: 0.00 GB
+Average per Request: 794 bytes
+
+TOP COUNTRIES
+-------------
+US                     3 ( 30.0%)
+CZ                     2 ( 20.0%)
+DK                     1 ( 10.0%)
+NL                     1 ( 10.0%)
+                       1 ( 10.0%)
+AU                     1 ( 10.0%)
+GB                     1 ( 10.0%)
+
+TOP STATUS CODES
+---------------
+200                    4 ( 40.0%)
+302                    2 ( 20.0%)
+404                    2 ( 20.0%)
+429                    1 ( 10.0%)
+500                    1 ( 10.0%)
+
+TOP PATHS
+---------
+/graphql                                                     2 ( 20.0%)
+/stores/store/redirect/___store/b2b_cz/___from_sto...        1 ( 10.0%)
+/index.php/mx_admin                                          1 ( 10.0%)
+/stores/store/redirect/___store/b2b_api/___from_st...        1 ( 10.0%)
+/stores/store/switch/?___from_store=b2b_en&___stor...        1 ( 10.0%)
+/api/products                                                1 ( 10.0%)
+/admin/login                                                 1 ( 10.0%)
+/favicon.ico                                                 1 ( 10.0%)
+/health-check                                                1 ( 10.0%)
