@@ -317,7 +317,7 @@ class HypernodeLogCommand:
             'archive', 'index', 'search'
         ]
         
-        # Known bot user agents
+        # Known bot user agents (more comprehensive list based on real data)
         known_bots = [
             'googlebot', 'bingbot', 'slurp', 'duckduckbot',
             'facebookexternalhit', 'twitterbot', 'linkedinbot',
@@ -325,7 +325,8 @@ class HypernodeLogCommand:
             'semrushbot', 'ahrefsbot', 'mj12bot', 'dotbot',
             'yandexbot', 'baiduspider', 'sogou', 'exabot',
             'pinterestbot', 'facebot', 'ia_archiver',
-            'censysinspect', 'genomecrawler', 'gptbot'
+            'censysinspect', 'genomecrawler', 'gptbot',
+            'googlebot-image', 'googlebot-news', 'googlebot-video'
         ]
         
         # Check for bot keywords
@@ -408,13 +409,31 @@ class MockHypernodeCommand(HypernodeLogCommand):
         """
         console.print(f"[yellow]Mock mode: Using sample data from {self.sample_file}[/yellow]")
         
-        # Generate some mock TSV data based on the expected format
+        # Real sample TSV data from Hypernode server (first 25 entries for comprehensive testing)
         mock_lines = [
             # remote_user, user_agent, time, body_bytes_sent, remote_addr, status, request_time, host, ssl_protocol, country, port, referer, ssl_cipher, request, handler, server_name
-            "\tMozilla/5.0 (compatible; SemrushBot/7~bl; +http://www.semrush.com/bot.html)\t2025-09-17T00:00:00+00:00\t37526\t85.208.96.193\t404\t0.075\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /go/category/11212447/dmws-kickoffcountdown-button-url HTTP/2.0\tphpfpm\twww.tessv.nl",
-            "\tMozilla/5.0 (iPhone; CPU iPhone OS 18_6_2 like Mac OS X) AppleWebKit/605.1.15\t2025-09-17T00:00:02+00:00\t42569\t2a02:a446:69a0:0:eccf:66c8:1db5:889e\t200\t0.048\twww.tessv.nl\tTLSv1.3\t\t443\thttps://www.tiktok.com/\tTLS_AES_128_GCM_SHA256\tGET /friday-denim/wide-leg/ HTTP/2.0\tphpfpm\twww.tessv.nl",
-            "\tGooglebot/2.1 (+http://www.google.com/bot.html)\t2025-09-17T00:00:17+00:00\t63597\t66.249.79.231\t301\t0.062\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /accessoires/schoenen/boots/?mode=list HTTP/2.0\tphpfpm\twww.tessv.nl",
-            "\t\t2025-09-17T16:15:00+00:00\t0\t10.0.0.1\t400\t0.000\ttest.hypernode.io\t\t\t80\t\t\tGET /test HTTP/1.1\t\ttest.hypernode.io",
+            "\tMozilla/5.0 (compatible; SemrushBot/7~bl; +http://www.semrush.com/bot.html)\t2025-09-17T00:00:00+00:00\t37526\t85.208.96.193\t404\t0.075\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /go/category/11212447/dmws-kickoffcountdown-button-url/dmws-kickoffcountdown-button-url/dmws-kickoffcountdown-button-url/dmws-kickoffcountdown-button-url/dmws-kickoffcountdown-button-url/dmws-kickoffcountdown-button-url/dmws-kickoffcountdown-button-url/dmws-kickoffcountdown-button-url/dmws-kickoffcountdown-button-url/dmws-kickoffcountdown-button-url HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (iPhone; CPU iPhone OS 18_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 musical_ly_41.6.0 JsSdk/2.0 NetType/2G Channel/App Store ByteLocale/en Region/NL isDarkMode/0 WKWebView/1 RevealType/Dialog\t2025-09-17T00:00:02+00:00\t42569\t2a02:a446:69a0:0:eccf:66c8:1db5:889e\t200\t0.048\twww.tessv.nl\tTLSv1.3\t\t443\thttps://www.tiktok.com/\tTLS_AES_128_GCM_SHA256GET /friday-denim/wide-leg/?utm_medium=paid&utm_source=tiktok&utm_campaign=conversie&utm_content=do-conv HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (compatible; Pinterestbot/1.0; +http://www.pinterest.com/bot.html)\t2025-09-17T00:00:03+00:00\t37527\t54.236.1.53\t404\t0.090\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /desi-top-beige/261750.BEIGE.ML.html HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 musical_ly_41.6.0 JsSdk/2.0 NetType/WIFI Channel/App Store ByteLocale/nl Region/NL isDarkMode/0 WKWebView/1 RevealType/Dialog\t2025-09-17T00:00:06+00:00\t45772\t77.248.239.146\t200\t0.050\twww.tessv.nl\tTLSv1.3\tNL\t443\thttps://www.tiktok.com/\tTLS_AES_128_GCM_SHA256\tGET /carlijn-bomber/2536-C03-116-801-XS.html HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 musical_ly_41.6.0 JsSdk/2.0 NetType/WIFI Channel/App Store ByteLocale/en Region/NL isDarkMode/0 WKWebView/1 RevealType/Dialog\t2025-09-17T00:00:07+00:00\t42572\t217.105.15.171\t200\t0.047\twww.tessv.nl\tTLSv1.3\tNL\t443\thttps://www.tiktok.com/\tTLS_AES_128_GCM_SHA256\tGET /friday-denim/wide-leg/?utm_medium=paid&utm_source=tiktok&utm_campaign=conversion&utm_content=fd-conv HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (compatible; SemrushBot/7~bl; +http://www.semrush.com/bot.html)\t2025-09-17T00:00:07+00:00\t37527\t185.191.171.12\t404\t0.067\twww.tessv.nl\tTLSv1.3\tGB\t443\t\tTLS_AES_128_GCM_SHA256\tGET /go/product/125705028/dmws-kickoffcountdown-button-url/dmws-kickoffcountdown-button-url HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)\t2025-09-17T00:00:08+00:00\t162\t66.132.153.129\t429\t0.000\t94.76.235.127\tTLSv1.3\tUS\t443\t\tTLS_CHACHA20_POLY1305_SHA256\tGET /robots.txt HTTP/1.1\tphpfpm\tproductiontessv.hypernode.io",
+            "\tMozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15\t2025-09-17T00:00:11+00:00\t0\t2001:1c04:4808:2000:f8ce:6be9:c1c9:a0e2\t204\t0.063\twww.tessv.nl\tTLSv1.3\t\t443\thttps://www.tessv.nl/kleding/co-ords/?p=8\tTLS_AES_128_GCM_SHA256\tGET /widgets/checkout/info HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15\t2025-09-17T00:00:11+00:00\t1\t2001:1c04:4808:2000:f8ce:6be9:c1c9:a0e2\t200\t0.066\twww.tessv.nl\tTLSv1.3\t\t443\thttps://www.tessv.nl/kleding/co-ords/?p=8\tTLS_AES_128_GCM_SHA256\tGET /widgets/cbax/analytics/visitors/Navigation HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1\t2025-09-17T00:00:11+00:00\t45011\t62.45.139.224\t200\t0.046\twww.tessv.nl\tTLSv1.3\tNL\t443\t\tTLS_AES_128_GCM_SHA256\tGET / HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1\t2025-09-17T00:00:11+00:00\t0\t62.45.139.224\t204\t0.060\twww.tessv.nl\tTLSv1.3\tNL\t443\thttps://www.tessv.nl/\tTLS_AES_128_GCM_SHA256\tGET /widgets/checkout/info HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1\t2025-09-17T00:00:11+00:00\t1\t62.45.139.224\t200\t0.058\twww.tessv.nl\tTLSv1.3\tNL\t443\thttps://www.tessv.nl/\tTLS_AES_128_GCM_SHA256\tGET /widgets/cbax/analytics/visitors/Navigation HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (compatible; Pinterestbot/1.0; +http://www.pinterest.com/bot.html)\t2025-09-17T00:00:14+00:00\t162\t54.236.1.54\t429\t0.000\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /new HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (compatible; SemrushBot/7~bl; +http://www.semrush.com/bot.html)\t2025-09-17T00:00:14+00:00\t162\t85.208.96.204\t429\t0.000\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /go/product/124433603/dmws-kickoffcountdown-button-url HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (compatible; Pinterestbot/1.0; +http://www.pinterest.com/bot.html)\t2025-09-17T00:00:14+00:00\t45553\t54.236.1.11\t200\t0.456\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /lianda-jurk/264986-lichtroze-L.html HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1\t2025-09-17T00:00:14+00:00\t1097\t62.45.139.224\t200\t0.035\twww.tessv.nl\tTLSv1.3\tNL\t443\thttps://www.tessv.nl/\tTLS_AES_128_GCM_SHA256\tGET /widgets/menu/offcanvas HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1\t2025-09-17T00:00:15+00:00\t66\t62.45.139.224\t200\t0.038\twww.tessv.nl\tTLSv1.3\tNL\t443\thttps://www.tessv.nl/\tTLS_AES_128_GCM_SHA256\tGET /storefront/script/shopware-analytics-customer HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)\t2025-09-17T00:00:16+00:00\t214926\t20.171.207.44\t200\t0.267\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /media/82/32/8d/1701696907/charlotte%20jurken-2.jpg HTTP/2.0\t\twww.tessv.nl",
+            "\tMozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.127 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)\t2025-09-17T00:00:17+00:00\t63597\t66.249.79.231\t301\t0.062\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /accessoires/schoenen/boots/?mode=list HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.127 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)\t2025-09-17T00:00:18+00:00\t42399\t66.249.79.231\t200\t0.328\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /schoenen/boots/?mode=list HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tGooglebot-Image/1.0\t2025-09-17T00:00:21+00:00\t49688\t66.249.79.231\t200\t0.000\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /thumbnail/06/07/ce/1754901437/01989846dba772d78c95909981521418_500x500.png?ts=1755016598 HTTP/2.0\t\twww.tessv.nl",
+            "\tMozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 musical_ly_41.4.0 JsSdk/2.0 NetType/WIFI Channel/App Store ByteLocale/nl Region/NL isDarkMode/0 WKWebView/1 RevealType/Dialog\t2025-09-17T00:00:21+00:00\t44117\t2a02:a471:2fcf:0:94b0:635a:99d2:9f6e\t200\t0.036\twww.tessv.nl\tTLSv1.3\t\t443\thttps://www.tiktok.com/\tTLS_AES_128_GCM_SHA256\tGET /kleding/collecties/choco-brown/ HTTP/2.0\tphpfpm\twww.tessv.nl",
         ]
         
         for line in mock_lines:
