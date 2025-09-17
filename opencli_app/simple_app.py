@@ -53,8 +53,7 @@ class SimpleLogApp(App):
         self.performance_widget = None
         self.security_widget = None
         
-        # Load data immediately
-        self.load_data()
+        # Don't load data here - wait for on_mount
     
     def load_data(self):
         """Load and process log data."""
@@ -62,7 +61,39 @@ class SimpleLogApp(App):
             print("🚀 Loading real log data...")
             
             # Discover log files
-            self.log_files = discover_nginx_logs()
+            # Try common nginx log locations
+            nginx_locations = [
+                "/var/log/nginx/",     # Standard location
+                "/var/log/",           # Alternative location
+                "/data/web/nginx/",    # Custom location
+                "/usr/local/nginx/logs/",  # Another common location
+            ]
+            
+            self.log_files = []
+            for location in nginx_locations:
+                try:
+                    if os.path.exists(location):
+                        # Look for access.log* files
+                        import glob
+                        pattern = os.path.join(location, "access.log*")
+                        found_files = glob.glob(pattern)
+                        
+                        # Filter out .gz files for now (we can add gz support later)
+                        log_files = [f for f in found_files if not f.endswith('.gz')]
+                        
+                        if log_files:
+                            self.log_files.extend(log_files)
+                            print(f"✅ Found {len(log_files)} log files in {location}")
+                            for log_file in log_files[:3]:  # Show first 3
+                                print(f"   📄 {log_file}")
+                            break  # Use first location that has logs
+                        else:
+                            print(f"⚠️ No access.log files found in {location}")
+                    else:
+                        print(f"⚠️ Directory does not exist: {location}")
+                except Exception as e:
+                    print(f"⚠️ Error checking {location}: {e}")
+                    continue
             
             if not self.log_files:
                 print("📄 No nginx logs found, using sample data...")
@@ -163,6 +194,35 @@ class SimpleLogApp(App):
                 yield self.security_widget
         
         yield Footer()
+    
+    def on_mount(self) -> None:
+        """Initialize the application after widgets are created."""
+        print("🚀 App mounted, loading data...")
+        self.load_data()
+        self.update_all_widgets()
+        print("✅ Data loaded and widgets updated!")
+    
+    def update_all_widgets(self) -> None:
+        """Update all widgets with current data."""
+        print(f"🔄 Updating widgets with {self.stats.total_requests} requests")
+        
+        if self.overview_widget:
+            print("📊 Updating overview...")
+            self.overview_widget.update(self.get_overview_content())
+        else:
+            print("⚠️ Overview widget not found")
+        
+        if self.performance_widget:
+            print("⚡ Updating performance...")
+            self.performance_widget.update(self.get_performance_content())
+        else:
+            print("⚠️ Performance widget not found")
+        
+        if self.security_widget:
+            print("🔒 Updating security...")
+            self.security_widget.update(self.get_security_content())
+        else:
+            print("⚠️ Security widget not found")
     
     def get_overview_content(self) -> str:
         """Generate overview content with real data."""
@@ -406,15 +466,7 @@ Error Requests:      [{error_color}]{total_errors:,}[/{error_color}]
         """Refresh all data and update widgets."""
         self.notify("Refreshing data...", timeout=2)
         self.load_data()
-        
-        # Update widgets if they exist
-        if self.overview_widget:
-            self.overview_widget.update(self.get_overview_content())
-        if self.performance_widget:
-            self.performance_widget.update(self.get_performance_content())
-        if self.security_widget:
-            self.security_widget.update(self.get_security_content())
-        
+        self.update_all_widgets()
         self.notify("Data refreshed!", timeout=1)
     
     def action_show_overview(self) -> None:
