@@ -1009,6 +1009,18 @@ class AnomalyDetector:
         # Historical comparison stats
         historical_anomalies = [a for a in recent_anomalies if 'historical' in a['type'] or 'weekday' in a['type'] or 'hourly' in a['type']]
         
+        # Detailed breakdown by anomaly type
+        detailed_breakdown = self._get_detailed_anomaly_breakdown(recent_anomalies)
+        
+        # Timeline analysis
+        timeline_analysis = self._get_timeline_analysis(recent_anomalies)
+        
+        # Top affected resources
+        top_affected = self._get_top_affected_resources(recent_anomalies)
+        
+        # Historical context
+        historical_context = self._get_historical_context()
+        
         return {
             'total_anomalies': total_anomalies,
             'recent_anomalies': len(recent_anomalies),
@@ -1029,7 +1041,11 @@ class AnomalyDetector:
                 'weekly_trend_analysis': True,
                 'same_time_last_week_comparison': True,
                 'historical_baseline_learning': True
-            }
+            },
+            'detailed_breakdown': detailed_breakdown,
+            'timeline_analysis': timeline_analysis,
+            'top_affected_resources': top_affected,
+            'historical_context': historical_context
         }
     
     def get_recent_anomalies(self, hours: int = 1) -> List[Dict[str, Any]]:
@@ -1045,98 +1061,237 @@ class AnomalyDetector:
         ]
     
     def get_anomaly_recommendations(self) -> List[Dict[str, Any]]:
-        """Generate recommendations based on detected anomalies."""
+        """Generate detailed, actionable recommendations based on detected anomalies."""
         recommendations = []
         recent_anomalies = self.get_recent_anomalies(hours=24)
         
+        # Get detailed breakdown for context
+        breakdown = self._get_detailed_anomaly_breakdown(recent_anomalies)
+        timeline = self._get_timeline_analysis(recent_anomalies)
+        top_affected = self._get_top_affected_resources(recent_anomalies)
+        
         # DDoS protection recommendation
         ddos_attacks = [a for a in recent_anomalies if a['type'] == 'ddos_attack']
-        if len(ddos_attacks) > 5:
+        if len(ddos_attacks) > 0:
+            top_attacking_ips = [a['details'].get('ip') for a in ddos_attacks if 'ip' in a['details']][:3]
             recommendations.append({
                 'priority': 'Critical',
                 'category': 'DDoS Protection',
                 'issue': f'{len(ddos_attacks)} potential DDoS attacks detected',
-                'recommendation': 'Implement rate limiting and DDoS protection measures',
-                'details': 'Multiple high-request-rate incidents from individual IPs detected'
+                'recommendation': 'Implement immediate rate limiting and DDoS protection measures',
+                'immediate_actions': [
+                    f'Block or rate-limit IPs: {", ".join(top_attacking_ips) if top_attacking_ips else "Check logs for attacking IPs"}',
+                    'Enable CloudFlare DDoS protection or similar service',
+                    'Monitor server resources (CPU, memory, bandwidth)',
+                    'Set up automated IP blocking for high request rates'
+                ],
+                'monitoring': 'Set up alerts for >100 requests/minute from single IP',
+                'timeline': f'Attacks occurred during: {self._get_time_range_summary(ddos_attacks)}',
+                'business_impact': 'High - Potential service unavailability for legitimate users'
             })
         
-        # Performance optimization recommendation
+        # Same time last week analysis with specific examples
+        weekly_comparison_anomalies = [a for a in recent_anomalies if a['type'] == 'same_time_last_week_anomaly']
+        if len(weekly_comparison_anomalies) > 2:
+            traffic_changes = []
+            for anomaly in weekly_comparison_anomalies[:3]:
+                details = anomaly['details']
+                if 'ratio' in details:
+                    change_type = "increased" if details['ratio'] > 1 else "decreased"
+                    percentage = abs(details['ratio'] - 1) * 100
+                    hour = anomaly['detected_at'].strftime('%H:%M')
+                    traffic_changes.append(f'{hour}: {change_type} by {percentage:.0f}%')
+            
+            recommendations.append({
+                'priority': 'High',
+                'category': 'Weekly Traffic Analysis',
+                'issue': f'{len(weekly_comparison_anomalies)} significant week-over-week changes detected',
+                'recommendation': 'Investigate root causes of traffic pattern changes',
+                'specific_changes': traffic_changes,
+                'immediate_actions': [
+                    'Check if marketing campaigns were launched/stopped this week',
+                    'Review Google Analytics for traffic source changes',
+                    'Verify no technical issues (DNS, CDN, server problems)',
+                    'Check social media mentions and viral content',
+                    'Review competitor activity and market events'
+                ],
+                'investigation_checklist': [
+                    '□ Marketing campaign calendar review',
+                    '□ SEO ranking changes check',
+                    '□ Technical infrastructure status',
+                    '□ Social media monitoring',
+                    '□ Competitor analysis'
+                ],
+                'expected_resolution_time': '2-4 hours for investigation',
+                'business_impact': 'Medium - May indicate missed opportunities or hidden issues'
+            })
+        
+        # Hourly pattern analysis with specific hours
+        hourly_anomalies = [a for a in recent_anomalies if a['type'] == 'hourly_pattern_anomaly']
+        if len(hourly_anomalies) > 5:
+            affected_hours = list(set([a['details'].get('hour') for a in hourly_anomalies if 'hour' in a['details']]))[:5]
+            peak_hours = timeline.get('peak_periods', [])
+            
+            recommendations.append({
+                'priority': 'Medium',
+                'category': 'Traffic Pattern Optimization',
+                'issue': f'{len(hourly_anomalies)} hourly pattern deviations detected',
+                'recommendation': 'Optimize capacity planning and resource allocation',
+                'affected_hours': affected_hours,
+                'peak_anomaly_periods': peak_hours,
+                'immediate_actions': [
+                    f'Review server capacity during hours: {", ".join(map(str, affected_hours))}',
+                    'Adjust auto-scaling rules if using cloud infrastructure',
+                    'Consider implementing CDN caching for peak hours',
+                    'Review database performance during high-traffic periods'
+                ],
+                'capacity_planning': [
+                    'Analyze historical traffic patterns for next 30 days',
+                    'Set up predictive scaling based on hourly patterns',
+                    'Consider load balancer configuration optimization',
+                    'Review caching strategies for peak hours'
+                ],
+                'monitoring_setup': f'Set up hourly traffic monitoring for hours {affected_hours}',
+                'business_impact': 'Medium - May affect user experience during peak times'
+            })
+        
+        # Performance optimization with specific metrics
         response_time_spikes = [a for a in recent_anomalies if a['type'] == 'response_time_spike']
-        if len(response_time_spikes) > 10:
+        if len(response_time_spikes) > 3:
+            avg_response_time = sum([a['details'].get('actual_response_time', 0) for a in response_time_spikes]) / len(response_time_spikes)
+            worst_response_time = max([a['details'].get('actual_response_time', 0) for a in response_time_spikes])
+            
             recommendations.append({
                 'priority': 'High',
                 'category': 'Performance Optimization',
-                'issue': f'{len(response_time_spikes)} response time anomalies detected',
-                'recommendation': 'Investigate performance bottlenecks and optimize slow endpoints',
-                'details': 'Multiple response time spikes may indicate performance issues'
+                'issue': f'{len(response_time_spikes)} response time spikes detected',
+                'recommendation': 'Optimize application performance and database queries',
+                'performance_metrics': {
+                    'average_spike_response_time': f'{avg_response_time:.2f}s',
+                    'worst_response_time': f'{worst_response_time:.2f}s',
+                    'affected_requests': len(response_time_spikes)
+                },
+                'immediate_actions': [
+                    'Identify slow database queries using query logs',
+                    'Check server resource utilization (CPU, memory, disk I/O)',
+                    'Review application logs for errors during spike periods',
+                    'Analyze slow endpoints and optimize critical paths'
+                ],
+                'optimization_tasks': [
+                    'Database query optimization and indexing',
+                    'Application code profiling and optimization',
+                    'Caching implementation for frequently accessed data',
+                    'CDN configuration for static assets'
+                ],
+                'monitoring_setup': 'Set up APM (Application Performance Monitoring) tools',
+                'target_improvement': 'Reduce average response time to <1.0s',
+                'business_impact': 'High - Poor user experience, potential revenue loss'
             })
         
-        # Security monitoring recommendation
+        # Geographic anomalies with location details
+        geographic_anomalies = [a for a in recent_anomalies if a['type'] == 'geographic_anomaly']
+        if len(geographic_anomalies) > 1:
+            affected_countries = list(set([a['details'].get('country') for a in geographic_anomalies if 'country' in a['details']]))
+            
+            recommendations.append({
+                'priority': 'Medium',
+                'category': 'Geographic Traffic Analysis',
+                'issue': f'{len(geographic_anomalies)} unusual geographic traffic patterns detected',
+                'recommendation': 'Investigate traffic source changes and potential security concerns',
+                'affected_regions': affected_countries,
+                'immediate_actions': [
+                    f'Analyze traffic quality from: {", ".join(affected_countries)}',
+                    'Check for bot traffic or click fraud',
+                    'Review marketing campaigns targeting these regions',
+                    'Verify CDN performance in affected areas'
+                ],
+                'security_review': [
+                    'Check for suspicious bot patterns',
+                    'Review user agent strings from these regions',
+                    'Analyze conversion rates from affected countries',
+                    'Consider implementing geo-blocking if needed'
+                ],
+                'business_opportunity': 'May indicate new market opportunities if traffic is legitimate',
+                'business_impact': 'Medium - Could be security threat or growth opportunity'
+            })
+        
+        # Security monitoring with attack patterns
         attack_patterns = [a for a in recent_anomalies if a['type'] == 'attack_pattern_anomaly']
-        if len(attack_patterns) > 3:
+        if len(attack_patterns) > 1:
+            attacked_paths = [a['details'].get('path') for a in attack_patterns if 'path' in a['details']][:5]
+            
             recommendations.append({
                 'priority': 'High',
-                'category': 'Security Monitoring',
-                'issue': f'{len(attack_patterns)} attack patterns detected',
-                'recommendation': 'Enhance security monitoring and implement WAF rules',
-                'details': 'Attack patterns in URLs suggest active security threats'
+                'category': 'Security Enhancement',
+                'issue': f'{len(attack_patterns)} attack patterns detected in URLs',
+                'recommendation': 'Strengthen security measures and implement WAF rules',
+                'targeted_endpoints': attacked_paths,
+                'immediate_actions': [
+                    'Block malicious request patterns at firewall level',
+                    'Implement Web Application Firewall (WAF) rules',
+                    'Review and secure vulnerable endpoints',
+                    'Enable detailed security logging'
+                ],
+                'security_hardening': [
+                    'Update all software components and dependencies',
+                    'Implement input validation and sanitization',
+                    'Add rate limiting to sensitive endpoints',
+                    'Set up intrusion detection system (IDS)'
+                ],
+                'monitoring_enhancement': 'Set up real-time security alerts for attack patterns',
+                'compliance_check': 'Review security compliance (OWASP Top 10)',
+                'business_impact': 'High - Potential data breach or service compromise'
             })
         
-        # Historical pattern analysis recommendations
-        hourly_anomalies = [a for a in recent_anomalies if a['type'] == 'hourly_pattern_anomaly']
-        if len(hourly_anomalies) > 5:
+        # General monitoring recommendations
+        if len(recent_anomalies) > 20:
             recommendations.append({
                 'priority': 'Medium',
-                'category': 'Traffic Pattern Analysis',
-                'issue': f'{len(hourly_anomalies)} hourly pattern deviations detected',
-                'recommendation': 'Review traffic patterns and adjust capacity planning',
-                'details': 'Current traffic significantly differs from historical hourly patterns'
-            })
-        
-        # Weekday pattern recommendations
-        weekday_anomalies = [a for a in recent_anomalies if a['type'] == 'weekday_pattern_anomaly']
-        if len(weekday_anomalies) > 3:
-            recommendations.append({
-                'priority': 'Medium',
-                'category': 'Weekly Pattern Analysis',
-                'issue': f'{len(weekday_anomalies)} weekday pattern anomalies detected',
-                'recommendation': 'Investigate changes in weekly traffic patterns',
-                'details': 'Traffic patterns differ significantly from typical weekday behavior'
-            })
-        
-        # Same time last week comparison recommendations
-        weekly_comparison_anomalies = [a for a in recent_anomalies if a['type'] == 'same_time_last_week_anomaly']
-        if len(weekly_comparison_anomalies) > 2:
-            recommendations.append({
-                'priority': 'High',
-                'category': 'Weekly Trend Analysis',
-                'issue': f'{len(weekly_comparison_anomalies)} significant week-over-week changes detected',
-                'recommendation': 'Investigate causes of traffic pattern changes compared to last week',
-                'details': 'Substantial differences in traffic compared to same time periods last week'
-            })
-        
-        # Weekly trend recommendations
-        trend_anomalies = [a for a in recent_anomalies if a['type'] == 'weekly_trend_anomaly']
-        if len(trend_anomalies) > 2:
-            recommendations.append({
-                'priority': 'Medium',
-                'category': 'Trend Analysis',
-                'issue': f'{len(trend_anomalies)} trend deviations detected',
-                'recommendation': 'Analyze traffic growth trends and adjust infrastructure planning',
-                'details': 'Current traffic deviates significantly from established weekly trends'
+                'category': 'Monitoring Enhancement',
+                'issue': f'{len(recent_anomalies)} total anomalies detected in 24 hours',
+                'recommendation': 'Enhance monitoring and alerting infrastructure',
+                'immediate_actions': [
+                    'Set up real-time dashboards for key metrics',
+                    'Implement automated alerting for critical anomalies',
+                    'Create escalation procedures for different severity levels',
+                    'Schedule regular anomaly review meetings'
+                ],
+                'dashboard_metrics': [
+                    'Traffic volume and patterns',
+                    'Error rates and response times',
+                    'Geographic traffic distribution',
+                    'Security threat indicators'
+                ],
+                'alert_thresholds': 'Configure alerts for anomalies above current detection sensitivity',
+                'business_impact': 'Medium - Improved incident response and system reliability'
             })
         
         # Historical baseline recommendations
         if not self.historical_baselines.get('hourly', {}):
             recommendations.append({
                 'priority': 'Low',
-                'category': 'Baseline Learning',
+                'category': 'System Improvement',
                 'issue': 'Limited historical baseline data available',
-                'recommendation': 'Allow more time for historical baseline learning to improve anomaly detection accuracy',
-                'details': 'Enhanced anomaly detection requires at least 7 days of historical data'
+                'recommendation': 'Allow more time for baseline learning to improve detection accuracy',
+                'timeline': 'Wait 7-14 days for comprehensive baseline establishment',
+                'expected_improvement': 'More accurate anomaly detection with fewer false positives',
+                'business_impact': 'Low - Gradual improvement in monitoring effectiveness'
             })
         
         return recommendations
+    
+    def _get_time_range_summary(self, anomalies: List[Dict[str, Any]]) -> str:
+        """Get a human-readable time range summary for anomalies."""
+        if not anomalies:
+            return "No specific time"
+        
+        times = [a['detected_at'] for a in anomalies]
+        if len(times) == 1:
+            return times[0].strftime('%H:%M')
+        else:
+            start_time = min(times).strftime('%H:%M')
+            end_time = max(times).strftime('%H:%M')
+            return f"{start_time} - {end_time}"
     
     def export_anomaly_report(self, output_file: str) -> None:
         """Export comprehensive anomaly detection report."""
@@ -1257,3 +1412,237 @@ class AnomalyDetector:
         }
         
         return report
+    
+    def _get_detailed_anomaly_breakdown(self, recent_anomalies: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Get detailed breakdown of each anomaly type with specific examples."""
+        breakdown = {}
+        
+        # Group anomalies by type
+        anomalies_by_type = defaultdict(list)
+        for anomaly in recent_anomalies:
+            anomalies_by_type[anomaly['type']].append(anomaly)
+        
+        for anomaly_type, anomalies in anomalies_by_type.items():
+            type_breakdown = {
+                'count': len(anomalies),
+                'severity_distribution': Counter(a['details'].get('severity', 'Unknown') for a in anomalies),
+                'examples': [],
+                'time_range': {
+                    'first_occurrence': min(a['detected_at'] for a in anomalies).isoformat(),
+                    'last_occurrence': max(a['detected_at'] for a in anomalies).isoformat(),
+                },
+                'impact_summary': self._get_impact_summary_for_type(anomaly_type, anomalies)
+            }
+            
+            # Add up to 3 specific examples
+            for anomaly in anomalies[:3]:
+                example = {
+                    'timestamp': anomaly['detected_at'].isoformat(),
+                    'severity': anomaly['details'].get('severity', 'Unknown'),
+                    'confidence': anomaly['confidence'],
+                    'description': self._format_anomaly_description(anomaly),
+                    'key_metrics': self._extract_key_metrics(anomaly)
+                }
+                type_breakdown['examples'].append(example)
+            
+            breakdown[anomaly_type] = type_breakdown
+        
+        return breakdown
+    
+    def _get_timeline_analysis(self, recent_anomalies: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Get timeline analysis of anomalies throughout the day."""
+        if not recent_anomalies:
+            return {'hourly_distribution': {}, 'peak_periods': [], 'quiet_periods': []}
+        
+        # Group by hour
+        hourly_counts = defaultdict(int)
+        hourly_severity = defaultdict(list)
+        
+        for anomaly in recent_anomalies:
+            hour = anomaly['detected_at'].hour
+            hourly_counts[hour] += 1
+            hourly_severity[hour].append(anomaly['details'].get('severity', 'Unknown'))
+        
+        # Find peak and quiet periods
+        avg_per_hour = sum(hourly_counts.values()) / len(hourly_counts) if hourly_counts else 0
+        peak_periods = [hour for hour, count in hourly_counts.items() if count > avg_per_hour * 1.5]
+        quiet_periods = [hour for hour in range(24) if hour not in hourly_counts or hourly_counts[hour] < avg_per_hour * 0.5]
+        
+        return {
+            'hourly_distribution': dict(hourly_counts),
+            'hourly_severity_breakdown': {hour: Counter(severities) for hour, severities in hourly_severity.items()},
+            'peak_periods': peak_periods,
+            'quiet_periods': quiet_periods,
+            'average_per_hour': round(avg_per_hour, 1)
+        }
+    
+    def _get_top_affected_resources(self, recent_anomalies: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Get the most affected IPs, paths, and other resources."""
+        affected_ips = Counter()
+        affected_paths = Counter()
+        affected_countries = Counter()
+        affected_user_agents = Counter()
+        
+        for anomaly in recent_anomalies:
+            details = anomaly['details']
+            
+            # Extract IPs
+            if 'ip' in details:
+                affected_ips[details['ip']] += 1
+            
+            # Extract paths
+            if 'path' in details:
+                affected_paths[details['path']] += 1
+            
+            # Extract countries
+            if 'country' in details:
+                affected_countries[details['country']] += 1
+                
+            # Extract user agents (truncated)
+            if 'user_agent' in details:
+                ua = details['user_agent'][:50] + '...' if len(details['user_agent']) > 50 else details['user_agent']
+                affected_user_agents[ua] += 1
+        
+        return {
+            'top_ips': dict(affected_ips.most_common(5)),
+            'top_paths': dict(affected_paths.most_common(5)),
+            'top_countries': dict(affected_countries.most_common(5)),
+            'top_user_agents': dict(affected_user_agents.most_common(3))
+        }
+    
+    def _get_historical_context(self) -> Dict[str, Any]:
+        """Get historical context for better understanding of current anomalies."""
+        current_time = datetime.now()
+        current_hour = current_time.hour
+        current_weekday = current_time.weekday()
+        weekday_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        
+        context = {
+            'current_time': current_time.isoformat(),
+            'current_hour': current_hour,
+            'current_weekday': weekday_names[current_weekday],
+            'historical_data_available': len(self.historical_baselines.get('hourly', {})) > 0,
+            'baseline_comparison': {}
+        }
+        
+        # Add current hour baseline if available
+        if current_hour in self.historical_baselines.get('hourly', {}):
+            hourly_baseline = self.historical_baselines['hourly'][current_hour]
+            context['baseline_comparison']['current_hour'] = {
+                'hour': current_hour,
+                'expected_requests': round(hourly_baseline.get('requests_mean', 0), 1),
+                'expected_error_rate': round(hourly_baseline.get('error_rate_mean', 0), 1),
+                'expected_unique_ips': round(hourly_baseline.get('unique_ips_mean', 0), 1),
+                'current_vs_expected': self._calculate_current_vs_expected(hourly_baseline)
+            }
+        
+        # Add weekday baseline if available
+        if current_weekday in self.historical_baselines.get('weekday', {}):
+            weekday_baseline = self.historical_baselines['weekday'][current_weekday]
+            context['baseline_comparison']['current_weekday'] = {
+                'weekday': weekday_names[current_weekday],
+                'expected_requests': round(weekday_baseline.get('requests_mean', 0), 1),
+                'expected_error_rate': round(weekday_baseline.get('error_rate_mean', 0), 1)
+            }
+        
+        return context
+    
+    def _get_impact_summary_for_type(self, anomaly_type: str, anomalies: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Get impact summary for a specific anomaly type."""
+        if not anomalies:
+            return {}
+        
+        # Calculate duration
+        if len(anomalies) > 1:
+            first_time = min(a['detected_at'] for a in anomalies)
+            last_time = max(a['detected_at'] for a in anomalies)
+            duration_minutes = (last_time - first_time).total_seconds() / 60
+        else:
+            duration_minutes = 1
+        
+        # Count high severity anomalies
+        high_severity_count = sum(1 for a in anomalies if a['details'].get('severity') == 'High')
+        critical_count = sum(1 for a in anomalies if a['details'].get('severity') == 'Critical')
+        
+        return {
+            'duration_minutes': round(duration_minutes, 1),
+            'high_severity_count': high_severity_count,
+            'critical_count': critical_count,
+            'average_confidence': round(sum(a['confidence'] for a in anomalies) / len(anomalies), 2),
+            'estimated_impact': self._estimate_business_impact(anomaly_type, len(anomalies), duration_minutes)
+        }
+    
+    def _format_anomaly_description(self, anomaly: Dict[str, Any]) -> str:
+        """Format a human-readable description of an anomaly."""
+        anomaly_type = anomaly['type']
+        details = anomaly['details']
+        
+        if anomaly_type == 'same_time_last_week_anomaly':
+            if 'ratio' in details:
+                change = "increased" if details['ratio'] > 1 else "decreased"
+                percentage = abs(details['ratio'] - 1) * 100
+                return f"Traffic {change} by {percentage:.0f}% compared to same time last week ({details.get('current_value', 0)} vs {details.get('last_week_value', 0)} requests)"
+            elif 'current_error_rate' in details:
+                return f"Error rate increased to {details['current_error_rate']:.1f}% (vs {details.get('last_week_error_rate', 0):.1f}% last week)"
+        
+        elif anomaly_type == 'hourly_pattern_anomaly':
+            metric = details.get('metric', 'unknown')
+            actual = details.get('actual_value', 0)
+            expected = details.get('historical_mean', 0)
+            return f"Hourly {metric} pattern deviation: {actual} vs expected {expected:.1f} (hour {details.get('hour', 'unknown')})"
+        
+        elif anomaly_type == 'traffic_spike':
+            return f"Traffic spike detected: {details.get('actual_requests', 0)} requests vs expected {details.get('expected_requests', 0):.1f}"
+        
+        elif anomaly_type == 'ddos_attack':
+            return f"High request rate from IP {details.get('ip', 'unknown')}: {details.get('requests_per_minute', 0)} requests/minute"
+        
+        elif anomaly_type == 'geographic_anomaly':
+            return f"Unusual traffic from {details.get('country', 'unknown')}: {details.get('requests', 0)} requests vs expected {details.get('expected_requests', 0)}"
+        
+        else:
+            return f"{anomaly_type.replace('_', ' ').title()} detected"
+    
+    def _extract_key_metrics(self, anomaly: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract key metrics from an anomaly for display."""
+        details = anomaly['details']
+        metrics = {}
+        
+        # Common metrics
+        if 'actual_value' in details:
+            metrics['actual_value'] = details['actual_value']
+        if 'expected_value' in details or 'historical_mean' in details:
+            metrics['expected_value'] = details.get('expected_value', details.get('historical_mean', 0))
+        if 'z_score' in details:
+            metrics['z_score'] = round(details['z_score'], 2)
+        if 'ratio' in details:
+            metrics['change_ratio'] = round(details['ratio'], 2)
+        if 'deviation_percentage' in details:
+            metrics['deviation_percent'] = round(details['deviation_percentage'], 1)
+        
+        return metrics
+    
+    def _calculate_current_vs_expected(self, baseline: Dict[str, float]) -> Dict[str, str]:
+        """Calculate current vs expected values for display."""
+        # This would need current minute data to compare
+        # For now, return placeholder
+        return {
+            'requests': 'Monitoring...',
+            'error_rate': 'Monitoring...',
+            'unique_ips': 'Monitoring...'
+        }
+    
+    def _estimate_business_impact(self, anomaly_type: str, count: int, duration_minutes: float) -> str:
+        """Estimate business impact of anomalies."""
+        if anomaly_type == 'ddos_attack':
+            return 'High - Potential service disruption'
+        elif anomaly_type == 'traffic_spike' and count > 10:
+            return 'Medium - Possible marketing campaign or viral content'
+        elif anomaly_type == 'traffic_drop' and count > 5:
+            return 'Medium - Possible service issues or user experience problems'
+        elif anomaly_type == 'error_spike':
+            return 'High - User experience degradation'
+        elif duration_minutes > 30:
+            return 'Medium - Extended anomaly period'
+        else:
+            return 'Low - Brief anomaly'

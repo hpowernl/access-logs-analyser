@@ -1611,17 +1611,127 @@ def anomalies(log_files, sensitivity, window_size, realtime_alerts,
         detector.export_anomaly_report(output)
         console.print(f"[green]Anomaly detection report exported to: {output}[/green]")
     
-    # Show recommendations
+    # Show detailed breakdown if there are anomalies
+    if anomaly_summary.get('detailed_breakdown'):
+        console.print("\n[bold green]🔍 DETAILED ANOMALY BREAKDOWN[/bold green]")
+        breakdown = anomaly_summary['detailed_breakdown']
+        
+        for anomaly_type, details in list(breakdown.items())[:5]:  # Show top 5 types
+            type_display = anomaly_type.replace('_', ' ').title()
+            console.print(f"\n  [bold blue]📊 {type_display} ({details['count']} occurrences)[/bold blue]")
+            
+            # Show time range
+            console.print(f"    ⏰ Time Range: {details['time_range']['first_occurrence'][:16]} - {details['time_range']['last_occurrence'][:16]}")
+            
+            # Show severity distribution
+            severity_dist = details['severity_distribution']
+            severity_parts = []
+            for severity, count in severity_dist.items():
+                color = {'Critical': 'red', 'High': 'orange1', 'Medium': 'yellow', 'Low': 'dim'}.get(severity, 'white')
+                severity_parts.append(f"[{color}]{count} {severity}[/{color}]")
+            console.print(f"    🎯 Severity: {', '.join(severity_parts)}")
+            
+            # Show impact summary
+            impact = details['impact_summary']
+            if impact:
+                console.print(f"    💥 Impact: {impact.get('estimated_impact', 'Unknown')} ({impact.get('duration_minutes', 0):.1f} min)")
+                console.print(f"    📈 Confidence: {impact.get('average_confidence', 0):.2f}")
+            
+            # Show examples
+            if details['examples']:
+                console.print(f"    📝 Examples:")
+                for example in details['examples'][:2]:  # Show first 2 examples
+                    console.print(f"      • {example['timestamp'][:16]}: {example['description']}")
+    
+    # Show timeline analysis
+    if anomaly_summary.get('timeline_analysis'):
+        timeline = anomaly_summary['timeline_analysis']
+        if timeline.get('hourly_distribution'):
+            console.print(f"\n[bold magenta]⏰ ANOMALY TIMELINE ANALYSIS[/bold magenta]")
+            console.print(f"  📊 Average anomalies per hour: {timeline.get('average_per_hour', 0)}")
+            
+            if timeline.get('peak_periods'):
+                peak_hours = [f"{h:02d}:00" for h in timeline['peak_periods'][:5]]
+                console.print(f"  🔥 Peak anomaly periods: {', '.join(peak_hours)}")
+            
+            if timeline.get('quiet_periods'):
+                quiet_hours = [f"{h:02d}:00" for h in timeline['quiet_periods'][:5]]
+                console.print(f"  😴 Quiet periods: {', '.join(quiet_hours)}")
+    
+    # Show top affected resources
+    if anomaly_summary.get('top_affected_resources'):
+        resources = anomaly_summary['top_affected_resources']
+        console.print(f"\n[bold red]🎯 TOP AFFECTED RESOURCES[/bold red]")
+        
+        if resources.get('top_ips'):
+            console.print(f"  🌐 Most Affected IPs:")
+            for ip, count in list(resources['top_ips'].items())[:3]:
+                console.print(f"    • {ip}: {count} anomalies")
+        
+        if resources.get('top_paths'):
+            console.print(f"  📁 Most Affected Paths:")
+            for path, count in list(resources['top_paths'].items())[:3]:
+                path_display = path[:50] + '...' if len(path) > 50 else path
+                console.print(f"    • {path_display}: {count} anomalies")
+        
+        if resources.get('top_countries'):
+            console.print(f"  🌍 Most Affected Countries:")
+            for country, count in list(resources['top_countries'].items())[:3]:
+                console.print(f"    • {country}: {count} anomalies")
+    
+    # Show historical context
+    if anomaly_summary.get('historical_context'):
+        context = anomaly_summary['historical_context']
+        console.print(f"\n[bold cyan]📅 HISTORICAL CONTEXT[/bold cyan]")
+        console.print(f"  🕐 Current Time: {context['current_time'][:16]} ({context['current_weekday']})")
+        
+        if context.get('baseline_comparison', {}).get('current_hour'):
+            hour_baseline = context['baseline_comparison']['current_hour']
+            console.print(f"  📊 Expected for hour {hour_baseline['hour']:02d}:00:")
+            console.print(f"    • Requests: {hour_baseline['expected_requests']:.1f}")
+            console.print(f"    • Error Rate: {hour_baseline['expected_error_rate']:.1f}%")
+            console.print(f"    • Unique IPs: {hour_baseline['expected_unique_ips']:.1f}")
+
+    # Show comprehensive recommendations
     recommendations = detector.get_anomaly_recommendations()
     if recommendations:
-        console.print(f"\n[bold green]💡 ANOMALY-BASED RECOMMENDATIONS[/bold green]")
-        for rec in recommendations:
-            priority_color = "red" if rec['priority'] == 'Critical' else "orange1" if rec['priority'] == 'High' else "yellow"
-            console.print(f"  [{priority_color}]{rec['category']} ({rec['priority']} Priority)[/{priority_color}]")
-            console.print(f"    Issue: {rec['issue']}")
-            console.print(f"    Recommendation: {rec['recommendation']}")
-            console.print(f"    Details: {rec['details']}")
-            console.print()
+        console.print("\n[bold yellow]💡 COMPREHENSIVE RECOMMENDATIONS[/bold yellow]")
+        for i, rec in enumerate(recommendations[:3], 1):  # Show top 3 recommendations
+            priority_color = {
+                'Critical': 'red',
+                'High': 'orange1',
+                'Medium': 'yellow',
+                'Low': 'dim'
+            }.get(rec['priority'], 'white')
+            
+            console.print(f"\n  [bold {priority_color}]{i}. {rec['category']}[/bold {priority_color}] ([{priority_color}]{rec['priority']} Priority[/{priority_color}])")
+            console.print(f"     Issue: {rec['issue']}")
+            console.print(f"     Recommendation: {rec['recommendation']}")
+            
+            # Show specific changes if available
+            if 'specific_changes' in rec:
+                console.print(f"     📈 Specific Changes:")
+                for change in rec['specific_changes'][:3]:
+                    console.print(f"       • {change}")
+            
+            # Show immediate actions
+            if 'immediate_actions' in rec:
+                console.print(f"     🚨 Immediate Actions:")
+                for action in rec['immediate_actions'][:3]:
+                    console.print(f"       • {action}")
+            
+            # Show business impact
+            if 'business_impact' in rec:
+                console.print(f"     💼 Business Impact: {rec['business_impact']}")
+            
+            # Show timeline if available
+            if 'timeline' in rec:
+                console.print(f"     ⏱️  Timeline: {rec['timeline']}")
+        
+        # Show summary of remaining recommendations
+        if len(recommendations) > 3:
+            remaining = len(recommendations) - 3
+            console.print(f"\n  [dim]... and {remaining} more recommendations available in detailed report[/dim]")
     else:
         console.print(f"\n[bold green]✅ NO URGENT RECOMMENDATIONS[/bold green]")
         console.print("  Current traffic patterns appear normal with no critical anomalies requiring immediate action.")
