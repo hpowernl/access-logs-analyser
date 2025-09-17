@@ -20,7 +20,7 @@ from .log_reader import LogReader
 from .ui import LogAnalyzerTUI, SimpleConsoleUI
 from .export import DataExporter, create_report_summary
 from .config import HYPERNODE_SETTINGS
-from .cache_processor import CacheAwareProcessor
+from .hypernode_command import get_hypernode_command
 
 
 def complete_countries(ctx, param, incomplete):
@@ -143,28 +143,26 @@ def cli(ctx, install_completion):
     """🚀 Hypernode Log Analyzer - Advanced CLI tool for Nginx JSON log analysis.
     
     A comprehensive log analysis toolkit specifically designed for Hypernode environments,
-    featuring automatic log discovery, real-time monitoring, security analysis, and 
-    performance insights.
+    featuring direct log parsing via hypernode-parse-nginx-log command, real-time monitoring, 
+    security analysis, and performance insights.
     
     \b
     Quick Start:
-      hlogcli analyze                    # Auto-discover and analyze all logs (with cache)
+      hlogcli analyze                    # Analyze current day logs
       hlogcli analyze --summary-only     # Quick overview
       hlogcli security --scan-attacks    # Security analysis
       hlogcli perf --response-time-analysis  # Performance analysis
-      hlogcli cache --info               # View cache statistics
     
     \b
     Features:
-      • Auto-discovery of nginx logs (no manual file specification needed)
-      • Platform detection for Hypernode environments
-      • SQLite cache system for 5-10x faster processing
-      • Real-time log monitoring and analysis
+      • Direct integration with hypernode-parse-nginx-log command
+      • Real-time log data retrieval (always fresh, no cache needed)
       • Security threat detection and analysis
       • Performance optimization insights
       • Bot behavior analysis and classification
       • Advanced search and filtering capabilities
       • Multiple export formats (CSV, JSON, HTML charts)
+      • Mock mode for development and testing
     """
     if install_completion:
         import subprocess
@@ -231,14 +229,8 @@ eval "$(_HLOGCLI_COMPLETE={shell}_source hlogcli)"
 @click.option('--summary-only', is_flag=True, help='Show only summary statistics')
 @click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
 @click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
-@click.option('--use-cache', is_flag=True, default=True, help='Use SQLite cache for faster processing (default: enabled)')
-@click.option('--no-cache', is_flag=True, help='Disable cache and process files fresh')
-@click.option('--force-refresh', is_flag=True, help='Force refresh cache even if data is fresh')
-@click.option('--cache-info', is_flag=True, help='Show cache information and statistics')
-@click.option('--aggressive-cache', is_flag=True, help='Trust cache more aggressively (faster but may miss recent changes)')
 def analyze(log_files, follow, interactive, output, filter_preset, countries, status_codes, 
-         exclude_bots, from_time, to_time, last_hours, last_days, export_csv, export_json, export_charts, summary_only, nginx_dir, no_auto_discover,
-         use_cache, no_cache, force_refresh, cache_info, aggressive_cache):
+         exclude_bots, from_time, to_time, last_hours, last_days, export_csv, export_json, export_charts, summary_only, nginx_dir, no_auto_discover):
     """📊 Analyze Nginx JSON access logs with comprehensive statistics and insights.
     
     This is the main analysis command that provides detailed insights into your web traffic,
@@ -261,89 +253,32 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
       Works on Hypernode platforms and standard nginx installations.
     
     \b
-    🗄️ Caching (NEW):
-      By default, uses SQLite cache for 5-10x faster processing on repeated runs.
-      Cache automatically detects file changes and updates incrementally.
-      Old data (>2 days) is automatically cleaned up.
-    
-    \b
     💡 Examples:
-      hlogcli analyze                           # Full analysis with cache (default)
+      hlogcli analyze                           # Full analysis
       hlogcli analyze --summary-only            # Quick overview only
       hlogcli analyze -i                        # Interactive TUI mode
       hlogcli analyze -f                        # Real-time monitoring
       hlogcli analyze --countries US,NL,DE     # Filter by countries
       hlogcli analyze --exclude-bots            # Exclude bot traffic
       hlogcli analyze --export-csv --export-charts  # Export results
-      hlogcli analyze /path/to/specific.log     # Analyze specific file
+      hlogcli analyze                           # Analyze current logs
       
       # Time filtering:
       hlogcli analyze --last-hours 24          # Last 24 hours only
       hlogcli analyze --last-days 7            # Last 7 days only
       hlogcli analyze --from "2024-01-01" --to "2024-01-02"  # Specific date range
       hlogcli analyze --from "2024-01-01 10:00:00"           # From specific datetime
-      
-      # Cache options:
-      hlogcli analyze --no-cache                # Disable cache, process fresh
-      hlogcli analyze --force-refresh           # Force refresh cached data
-      hlogcli analyze --cache-info              # Show cache statistics
-      hlogcli analyze --aggressive-cache        # Maximum speed (trust cache for 2h)
     """
     
-    # Auto-discover log files by default unless disabled or log files are specified
-    if not log_files and not no_auto_discover:
-        # Use platform-specific nginx directory if not specified
-        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
-        log_files = discover_nginx_logs(actual_nginx_dir)
-        if not log_files:
-            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
-            if is_hypernode_platform():
-                console.print(f"[yellow]Hint: This appears to be a Hypernode platform. Logs might be in /data/log/nginx or /var/log/nginx[/yellow]")
-            else:
-                console.print(f"[yellow]Hint: Specify log files manually or use --nginx-dir to set the correct directory[/yellow]")
-            sys.exit(1)
-        console.print(f"[green]Discovered {len(log_files)} log files[/green]")
+    # Note: We no longer use file discovery - data comes from hypernode command
+    # The log_files parameter is kept for backward compatibility but ignored
+    console.print("[blue]Using Hypernode log parsing command for data retrieval[/blue]")
     
-    # Validate input
-    if not log_files:
-        console.print("[red]No log files specified. Use --help for usage information.[/red]")
-        sys.exit(1)
-    
-    # Handle cache options
-    cache_enabled = use_cache and not no_cache
-    
-    # Show cache info if requested
-    if cache_info:
-        processor = CacheAwareProcessor(cache_enabled=cache_enabled)
-        cache_stats = processor.get_cache_info()
-        if cache_stats:
-            console.print(f"\n[bold blue]📊 CACHE INFORMATION[/bold blue]")
-            console.print(f"  Database: [cyan]{cache_stats['database_path']}[/cyan]")
-            console.print(f"  Size: [yellow]{cache_stats['database_size_mb']:.2f} MB[/yellow]")
-            console.print(f"  Entries: [green]{cache_stats['total_entries']:,}[/green]")
-            console.print(f"  Files: [green]{cache_stats['total_files']:,}[/green]")
-            if cache_stats['oldest_entry'] and cache_stats['newest_entry']:
-                console.print(f"  Date range: [cyan]{cache_stats['oldest_entry']} to {cache_stats['newest_entry']}[/cyan]")
-            console.print()
-        else:
-            console.print("[yellow]No cache available or cache is disabled[/yellow]")
-        
-        if not log_files:
-            return
     
     # Initialize components
     parser = LogParser()
     log_filter = LogFilter()
     stats = StatisticsAggregator()
-    processor = CacheAwareProcessor(cache_enabled=cache_enabled)
-    
-    # Configure aggressive cache mode if requested
-    if aggressive_cache and cache_enabled:
-        # Set longer freshness threshold for aggressive caching
-        processor.cache_manager_settings = {
-            'freshness_threshold_minutes': 120,  # 2 hours instead of 10 minutes
-            'aggressive_cache': True
-        }
     
     # Apply filter preset
     if filter_preset:
@@ -395,11 +330,11 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
             run_realtime_console(log_files, parser, log_filter, stats)
         elif interactive:
             # Interactive mode with existing data
-            processor.process_log_files_cached(log_files, log_filter, stats, force_refresh)
+            process_hypernode_logs(log_filter, stats)
             run_interactive_static(stats, log_filter)
         else:
             # Batch processing mode
-            processor.process_log_files_cached(log_files, log_filter, stats, force_refresh)
+            process_hypernode_logs(log_filter, stats)
             
             if summary_only:
                 display_summary_only(stats)
@@ -440,6 +375,49 @@ def discover_nginx_logs(nginx_dir: str) -> List[str]:
     log_files.sort(key=lambda x: Path(x).stat().st_mtime, reverse=True)
     
     return log_files
+
+
+def process_hypernode_logs(log_filter: LogFilter, stats: StatisticsAggregator, additional_args: Optional[List[str]] = None):
+    """Process logs using hypernode-parse-nginx-log command."""
+    command = get_hypernode_command()
+    
+    processed_entries = 0
+    total_entries = 0
+    
+    try:
+        for log_entry in command.get_log_entries(additional_args):
+            total_entries += 1
+            
+            # Apply filters
+            if log_filter.should_include(log_entry):
+                stats.add_entry(log_entry)
+                processed_entries += 1
+    
+    except Exception as e:
+        console.print(f"[red]Error processing Hypernode logs: {str(e)}[/red]")
+        raise
+    
+    console.print(f"[green]Processed {processed_entries:,} entries from {total_entries:,} total entries[/green]")
+
+
+def process_hypernode_logs_with_callback(callback_func, analysis_type: str = "analysis", additional_args: Optional[List[str]] = None):
+    """Process logs using hypernode command with callback function."""
+    command = get_hypernode_command()
+    
+    processed_entries = 0
+    total_entries = 0
+    
+    try:
+        for log_entry in command.get_log_entries(additional_args):
+            total_entries += 1
+            callback_func(log_entry)
+            processed_entries += 1
+    
+    except Exception as e:
+        console.print(f"[red]Error processing Hypernode logs for {analysis_type}: {str(e)}[/red]")
+        raise
+    
+    console.print(f"[green]Processed {processed_entries:,} entries for {analysis_type}[/green]")
 
 
 def process_log_files(log_files: List[str], parser: LogParser, log_filter: LogFilter, stats: StatisticsAggregator):
@@ -666,13 +644,10 @@ def handle_exports(stats: StatisticsAggregator, output_dir: Optional[str],
 @click.option('--quiet', is_flag=True, help='Only show summary, suppress detailed output')
 @click.option('--export-blacklist', help='Export recommended IP blacklist to file')
 @click.option('--output', '-o', help='Output file for security report')
-@click.option('--use-cache', is_flag=True, default=True, help='Use SQLite cache for faster processing')
-@click.option('--no-cache', is_flag=True, help='Disable cache and process files fresh')
-@click.option('--force-refresh', is_flag=True, help='Force refresh cache even if data is fresh')
 def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_detection, 
             sql_injection_patterns, suspicious_user_agents, show_summary, show_top_threats,
             show_geographic, show_timeline, threshold, min_threat_score, detailed, quiet,
-            export_blacklist, output, use_cache, no_cache, force_refresh):
+            export_blacklist, output):
     """🔒 Advanced security analysis and threat detection.
     
     Analyze your access logs for security threats, attack patterns, and suspicious activity.
@@ -718,27 +693,9 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
       hlogcli security --suspicious-user-agents     # Show user agent details
     """
     
-    # Auto-discover log files by default unless disabled or log files are specified
-    if not log_files and not no_auto_discover:
-        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
-        log_files = discover_nginx_logs(actual_nginx_dir)
-        if not log_files:
-            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
-            return
-        console.print(f"[green]Discovered {len(log_files)} log files for security analysis[/green]")
-    
-    if not log_files:
-        console.print("[red]No log files specified. Use --help for usage information.[/red]")
-        return
-    
     # Initialize security analyzer
     from .security import SecurityAnalyzer
     analyzer = SecurityAnalyzer()
-    parser = LogParser()
-    
-    # Handle cache options
-    cache_enabled = use_cache and not no_cache
-    processor = CacheAwareProcessor(cache_enabled=cache_enabled)
     
     # Process log files with nice progress display
     console.print("[blue]Starting security analysis...[/blue]")
@@ -747,7 +704,7 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
         """Analyze a single log entry for security."""
         analyzer._analyze_entry(log_entry)
     
-    processor.process_with_callback_cached(log_files, analyze_entry, "security analysis", force_refresh)
+    process_hypernode_logs_with_callback(analyze_entry, "security analysis")
     
     # Get comprehensive security data
     summary = analyzer.get_security_summary()
@@ -890,12 +847,8 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
 @click.option('--cache-analysis', is_flag=True, help='Analyze cache effectiveness')
 @click.option('--handler', help='Filter by handler (e.g., varnish, phpfpm)')
 @click.option('--output', '-o', help='Output file for performance report')
-@click.option('--use-cache', is_flag=True, default=True, help='Use SQLite cache for faster processing')
-@click.option('--no-cache', is_flag=True, help='Disable cache and process files fresh')
-@click.option('--force-refresh', is_flag=True, help='Force refresh cache even if data is fresh')
-@click.option('--debug-cache', is_flag=True, help='Enable debug output for cache operations')
 def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest, 
-         percentiles, bandwidth_analysis, cache_analysis, handler, output, use_cache, no_cache, force_refresh, debug_cache):
+         percentiles, bandwidth_analysis, cache_analysis, handler, output):
     """⚡ Performance analysis and optimization insights.
     
     Analyze response times, bandwidth usage, and identify performance bottlenecks.
@@ -921,32 +874,9 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
       hlogcli perf --percentiles -o perf-report.json   # Export with percentiles
     """
     
-    # Auto-discover log files by default unless disabled or log files are specified
-    if not log_files and not no_auto_discover:
-        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
-        log_files = discover_nginx_logs(actual_nginx_dir)
-        if not log_files:
-            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
-            return
-        console.print(f"[green]Discovered {len(log_files)} log files for performance analysis[/green]")
-    
-    if not log_files:
-        console.print("[red]No log files specified. Use --help for usage information.[/red]")
-        return
-    
     # Initialize performance analyzer
     from .performance import PerformanceAnalyzer
     analyzer = PerformanceAnalyzer()
-    parser = LogParser()
-    
-    # Handle cache options
-    cache_enabled = use_cache and not no_cache
-    processor = CacheAwareProcessor(cache_enabled=cache_enabled)
-    
-    # Enable debug mode if requested
-    if debug_cache:
-        os.environ['HLOGCLI_DEBUG'] = '1'
-        console.print("[yellow]Debug mode enabled for cache operations[/yellow]")
     
     # Process log files with nice progress display
     console.print("[blue]Starting performance analysis...[/blue]")
@@ -958,7 +888,7 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
             return
         analyzer._analyze_entry(log_entry)
     
-    processor.process_with_callback_cached(log_files, analyze_entry, "performance analysis", force_refresh)
+    process_hypernode_logs_with_callback(analyze_entry, "performance analysis")
     
     # Generate performance reports
     if response_time_analysis:
@@ -1012,13 +942,9 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
 @click.option('--llm-bot-analysis', is_flag=True, help='Detailed LLM bot analysis')
 @click.option('--ai-impact-analysis', is_flag=True, help='AI bot resource impact analysis')
 @click.option('--output', '-o', help='Output file for bot analysis report')
-@click.option('--use-cache', is_flag=True, default=True, help='Use SQLite cache for faster processing')
-@click.option('--no-cache', is_flag=True, help='Disable cache and process files fresh')
-@click.option('--force-refresh', is_flag=True, help='Force refresh cache even if data is fresh')
 def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analysis,
          legitimate_vs_malicious, impact_analysis, unknown_only, ai_bots_only, 
-         ai_training_detection, llm_bot_analysis, ai_impact_analysis, output,
-         use_cache, no_cache, force_refresh):
+         ai_training_detection, llm_bot_analysis, ai_impact_analysis, output):
     """🤖 Advanced bot and crawler analysis and classification.
     
     Identify, classify, and analyze bot traffic to understand automated visitors
@@ -1071,27 +997,9 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
       hlogcli bots --ai-impact-analysis         # AI bot resource impact
     """
     
-    # Auto-discover log files by default unless disabled or log files are specified
-    if not log_files and not no_auto_discover:
-        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
-        log_files = discover_nginx_logs(actual_nginx_dir)
-        if not log_files:
-            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
-            return
-        console.print(f"[green]Discovered {len(log_files)} log files for bot analysis[/green]")
-    
-    if not log_files:
-        console.print("[red]No log files specified. Use --help for usage information.[/red]")
-        return
-    
     # Initialize bot analyzer
     from .bots import BotAnalyzer
     analyzer = BotAnalyzer()
-    parser = LogParser()
-    
-    # Handle cache options
-    cache_enabled = use_cache and not no_cache
-    processor = CacheAwareProcessor(cache_enabled=cache_enabled)
     
     # Process log files with nice progress display
     console.print("[blue]Starting bot analysis...[/blue]")
@@ -1100,7 +1008,7 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
         """Analyze a single log entry for bots."""
         analyzer._analyze_entry(log_entry)
     
-    processor.process_with_callback_cached(log_files, analyze_entry, "bot analysis", force_refresh)
+    process_hypernode_logs_with_callback(analyze_entry, "bot analysis")
     
     # Show basic bot overview if no specific options are provided
     show_basic_overview = not any([classify_types, behavior_analysis, legitimate_vs_malicious, 
@@ -1363,11 +1271,8 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
 @click.option('--last-hours', type=int, help='Show entries from last N hours')
 @click.option('--limit', default=100, help='Limit number of results')
 @click.option('--output', '-o', help='Output file for search results')
-@click.option('--use-cache', is_flag=True, default=True, help='Use SQLite cache for faster processing')
-@click.option('--no-cache', is_flag=True, help='Disable cache and process files fresh')
-@click.option('--force-refresh', is_flag=True, help='Force refresh cache even if data is fresh')
 def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent, 
-           country, time_range, last_hours, limit, output, use_cache, no_cache, force_refresh):
+           country, time_range, last_hours, limit, output):
     """🔍 Advanced search and filtering of log entries.
     
     Search through your access logs with powerful filtering capabilities.
@@ -1400,19 +1305,6 @@ def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent,
       --time-range "2024-01-01 to 2024-01-02"  # Specific date range
     """
     
-    # Auto-discover log files by default unless disabled or log files are specified
-    if not log_files and not no_auto_discover:
-        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
-        log_files = discover_nginx_logs(actual_nginx_dir)
-        if not log_files:
-            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
-            return
-        console.print(f"[green]Discovered {len(log_files)} log files for search[/green]")
-    
-    if not log_files:
-        console.print("[red]No log files specified. Use --help for usage information.[/red]")
-        return
-    
     # Initialize search
     from .search import LogSearch
     searcher = LogSearch()
@@ -1435,13 +1327,8 @@ def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent,
     
     console.print("[blue]Starting search...[/blue]")
     
-    # Handle cache options
-    cache_enabled = use_cache and not no_cache
-    processor = CacheAwareProcessor(cache_enabled=cache_enabled)
-    
-    # Search through files with progress display
+    # Search through logs with progress display
     results = []
-    parser = LogParser()
     
     def search_entry(log_entry):
         """Search a single log entry."""
@@ -1451,7 +1338,7 @@ def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent,
         if searcher._matches_criteria(log_entry, criteria):
             results.append(log_entry)
     
-    processor.process_with_callback_cached(log_files, search_entry, "search", force_refresh)
+    process_hypernode_logs_with_callback(search_entry, "search")
     
     # Display results
     console.print(f"\n[bold green]🔍 SEARCH RESULTS ({len(results)} entries)[/bold green]")
@@ -1587,106 +1474,6 @@ def report(log_files, nginx_dir, no_auto_discover, daily, weekly, security_summa
     )
     
     console.print(f"[green]Report generated: {report_file}[/green]")
-
-
-# Cache Management Commands
-@cli.command()
-@click.option('--info', is_flag=True, help='Show cache information and statistics')
-@click.option('--clear', is_flag=True, help='Clear all cached data')
-@click.option('--cleanup', is_flag=True, help='Clean up old cached data (older than 2 days)')
-@click.option('--cleanup-orphans', is_flag=True, help='Clean up cache entries for deleted files')
-@click.option('--max-age-days', default=2, help='Maximum age for cleanup in days (default: 2)')
-def cache(info, clear, cleanup, cleanup_orphans, max_age_days):
-    """🗄️ Manage SQLite cache for faster log processing.
-    
-    The cache system stores parsed log data in a SQLite database to dramatically
-    speed up repeated analysis. This command provides tools to manage the cache,
-    view statistics, and perform maintenance operations.
-    
-    \b
-    🚀 Cache Benefits:
-      • 5-10x faster processing for repeated analysis
-      • Automatic freshness detection and updates
-      • Intelligent file change detection
-      • Background cleanup of old data
-    
-    \b
-    💡 Examples:
-      hlogcli cache --info                    # Show cache statistics
-      hlogcli cache --cleanup                 # Clean old data (>2 days)
-      hlogcli cache --cleanup-orphans         # Clean entries for deleted files (NEW!)
-      hlogcli cache --cleanup --max-age-days 7  # Clean data older than 7 days
-      hlogcli cache --clear                   # Clear entire cache
-    """
-    from .cache_processor import CacheAwareProcessor
-    
-    processor = CacheAwareProcessor(cache_enabled=True)
-    
-    if info:
-        cache_stats = processor.get_cache_info()
-        if cache_stats:
-            console.print(f"\n[bold blue]📊 CACHE STATISTICS[/bold blue]")
-            console.print(f"  Database: [cyan]{cache_stats['database_path']}[/cyan]")
-            console.print(f"  Size: [yellow]{cache_stats['database_size_mb']:.2f} MB[/yellow]")
-            console.print(f"  Total entries: [green]{cache_stats['total_entries']:,}[/green]")
-            console.print(f"  Cached files: [green]{cache_stats['total_files']:,}[/green]")
-            
-            if cache_stats['oldest_entry'] and cache_stats['newest_entry']:
-                console.print(f"  Date range: [cyan]{cache_stats['oldest_entry']} to {cache_stats['newest_entry']}[/cyan]")
-            
-            console.print(f"\n[bold green]💡 CACHE BENEFITS[/bold green]")
-            console.print(f"  • Faster processing: Skip parsing for unchanged files")
-            console.print(f"  • Automatic cleanup: Old data removed after {max_age_days} days")
-            console.print(f"  • Smart updates: Only process new/changed content")
-            console.print(f"  • Background maintenance: Keeps cache fresh and efficient")
-        else:
-            console.print("[yellow]No cache data available[/yellow]")
-    
-    elif clear:
-        from .cache import get_cache_manager
-        with get_cache_manager(enabled=True) as cache_manager:
-            if cache_manager:
-                cache_manager.clear_cache()
-                console.print("[green]✅ Cache cleared successfully[/green]")
-            else:
-                console.print("[red]❌ Unable to access cache[/red]")
-    
-    elif cleanup:
-        from .cache import get_cache_manager
-        with get_cache_manager(enabled=True) as cache_manager:
-            if cache_manager:
-                removed_count = cache_manager.cleanup_old_data(max_age_days)
-                if removed_count > 0:
-                    console.print(f"[green]✅ Cleaned up {removed_count:,} old entries (older than {max_age_days} days)[/green]")
-                else:
-                    console.print(f"[yellow]No old data found (older than {max_age_days} days)[/yellow]")
-            else:
-                console.print("[red]❌ Unable to access cache[/red]")
-    
-    elif cleanup_orphans:
-        from .cache import get_cache_manager
-        with get_cache_manager(enabled=True) as cache_manager:
-            if cache_manager:
-                removed_count = cache_manager.cleanup_orphaned_entries()
-                if removed_count > 0:
-                    console.print(f"[green]✅ Cleaned up {removed_count:,} orphaned cache entries[/green]")
-                else:
-                    console.print("[yellow]No orphaned cache entries found[/yellow]")
-            else:
-                console.print("[red]❌ Unable to access cache[/red]")
-    
-    else:
-        # Default: show cache info
-        cache_stats = processor.get_cache_info()
-        if cache_stats:
-            console.print(f"\n[bold blue]📊 CACHE STATUS[/bold blue]")
-            console.print(f"  Entries: [green]{cache_stats['total_entries']:,}[/green]")
-            console.print(f"  Files: [green]{cache_stats['total_files']:,}[/green]")
-            console.print(f"  Size: [yellow]{cache_stats['database_size_mb']:.2f} MB[/yellow]")
-            console.print(f"\n[dim]💡 Use --info for detailed statistics, --cleanup to remove old data, or --clear to reset cache[/dim]")
-        else:
-            console.print("[yellow]Cache is empty or not available[/yellow]")
-            console.print("[dim]💡 Cache will be created automatically when you run analysis commands[/dim]")
 
 
 # Configuration Management Commands
