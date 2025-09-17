@@ -139,8 +139,11 @@ class SimpleLogApp(App):
         
         # Reset statistics
         self.stats.reset()
-        self.security.reset()
-        self.performance.reset()
+        # SecurityAnalyzer and PerformanceAnalyzer don't have reset() - create new instances
+        from logcli.security import SecurityAnalyzer
+        from logcli.performance import PerformanceAnalyzer
+        self.security = SecurityAnalyzer()
+        self.performance = PerformanceAnalyzer()
         
         total_lines = 0
         processed_entries = 0
