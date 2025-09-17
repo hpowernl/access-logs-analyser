@@ -46,6 +46,21 @@ class PerformanceWidget(Container):
 
 [yellow]No performance data available yet.[/yellow]
 
+[bold]TEST PERFORMANCE DATA:[/bold]
+
+[bold]RESPONSE TIME STATISTICS[/bold]
+Average:      [green]0.234s[/green]
+Median:       0.198s
+95th %ile:    [yellow]0.567s[/yellow]
+99th %ile:    [red]1.234s[/red]
+Maximum:      [red]2.456s[/red]
+Minimum:      [green]0.012s[/green]
+
+[bold]SLOWEST ENDPOINTS[/bold]
+/api/heavy-query                              [red]1.234s[/red] ████████████████
+/admin/reports                                [yellow]0.876s[/yellow] ████████████
+/search/complex                               [yellow]0.654s[/yellow] ████████
+
 Press 'r' to refresh or '1' for Overview.
 
 [dim]Commands: 1=Overview 2=Performance 3=Security | r=Refresh f=Follow q=Quit[/dim]"""

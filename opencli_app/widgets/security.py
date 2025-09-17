@@ -46,6 +46,23 @@ class SecurityWidget(Container):
 
 [yellow]No security data available yet.[/yellow]
 
+[bold]TEST SECURITY DATA:[/bold]
+
+[bold]THREAT OVERVIEW[/bold]
+Total Requests:      1,234
+Error Requests:      [yellow]45[/yellow]
+4xx Client Errors:   [yellow]32[/yellow]
+5xx Server Errors:   [red]13[/red]
+
+[bold]TOP ERROR CODES[/bold]
+[yellow]404[/yellow] Not Found             23 (1.9%) ████████
+[red]500[/red] Internal Server Error  8 (0.6%) ███
+[yellow]403[/yellow] Forbidden             6 (0.5%) ██
+
+[bold]SUSPICIOUS ACTIVITY[/bold]
+[red]192.168.1.100[/red]  234 (19.0%) [red]HIGH[/red] ████████████
+[yellow]10.0.0.50[/yellow]     123 (10.0%) [yellow]MED[/yellow]  ██████
+
 Press 'r' to refresh or '1' for Overview.
 
 [dim]Commands: 1=Overview 2=Performance 3=Security | r=Refresh f=Follow q=Quit[/dim]"""

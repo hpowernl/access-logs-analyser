@@ -49,9 +49,20 @@ class OverviewWidget(Container):
 
 [yellow]No log data available yet.[/yellow]
 
+[bold]TEST DATA:[/bold]
+Total Requests:  1,234
+Unique Visitors: 567
+Error Rate:      2.3%
+Bandwidth:       45.6 MB
+
+[bold]TOP PAGES[/bold]
+1. /index.php                               456 (37.0%) ████████████████████
+2. /api/graphql                             234 (19.0%) ██████████
+3. /admin/login                             123 (10.0%) █████
+
 [bold]Troubleshooting:[/bold]
 • Check if /var/log/nginx/access.log exists
-• Verify file permissions
+• Verify file permissions  
 • Ensure JSON log format
 • Press 'r' to refresh
 
