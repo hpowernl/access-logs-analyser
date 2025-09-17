@@ -35,6 +35,10 @@ class TimelineAggregator:
             
         # Track bytes sent
         bytes_sent = log_entry.get('bytes_sent', 0) or log_entry.get('body_bytes_sent', 0)
+        try:
+            bytes_sent = int(bytes_sent) if bytes_sent else 0
+        except (ValueError, TypeError):
+            bytes_sent = 0
         if bytes_sent > 0:
             self.bytes_sent[time_key].append(bytes_sent)
     
@@ -145,7 +149,8 @@ class StatisticsAggregator:
         # Basic aggregations
         self.hits_per_country[log_entry.get('country', 'Unknown')] += 1
         self.hits_per_status[log_entry.get('status', 0)] += 1
-        self.hits_per_ip[str(log_entry.get('ip', 'Unknown'))] += 1
+        ip = log_entry.get('ip') or log_entry.get('remote_addr', 'Unknown')
+        self.hits_per_ip[str(ip)] += 1
         self.hits_per_method[log_entry.get('method', 'Unknown')] += 1
         self.hits_per_path[log_entry.get('path', 'Unknown')] += 1
         self.hits_per_referer[log_entry.get('referer', 'Unknown')] += 1
@@ -202,6 +207,10 @@ class StatisticsAggregator:
         
         # Bandwidth tracking
         bytes_sent = log_entry.get('bytes_sent', 0) or log_entry.get('body_bytes_sent', 0)
+        try:
+            bytes_sent = int(bytes_sent) if bytes_sent else 0
+        except (ValueError, TypeError):
+            bytes_sent = 0
         if bytes_sent > 0:
             self.total_bytes += bytes_sent
             self.bytes_per_status[status] += bytes_sent

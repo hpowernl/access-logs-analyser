@@ -217,10 +217,131 @@ class HypernodeLogCommand:
             entry['method'] = 'GET'
             entry['path'] = '/'
         
+        # Parse user agent to extract browser, OS, and device info
+        entry['parsed_ua'] = self._parse_user_agent(entry.get('user_agent', ''))
+        
+        # Bot detection
+        entry['is_bot'] = self._is_bot(entry.get('user_agent', ''))
+        
         # Keep empty values as empty strings for compatibility
         # (analyzers expect strings, not None values)
         
         return entry
+    
+    def _parse_user_agent(self, user_agent: str) -> Dict[str, str]:
+        """
+        Parse user agent string to extract browser, OS, and device information.
+        
+        Args:
+            user_agent: User agent string to parse
+            
+        Returns:
+            Dictionary with browser, os, and device information
+        """
+        if not user_agent:
+            return {'browser': 'Unknown', 'os': 'Unknown', 'device': 'Unknown'}
+        
+        ua_lower = user_agent.lower()
+        
+        # Browser detection
+        browser = 'Unknown'
+        if 'chrome' in ua_lower and 'edg' not in ua_lower:
+            browser = 'Chrome'
+        elif 'firefox' in ua_lower:
+            browser = 'Firefox'
+        elif 'safari' in ua_lower and 'chrome' not in ua_lower:
+            browser = 'Safari'
+        elif 'edg' in ua_lower:
+            browser = 'Edge'
+        elif 'opera' in ua_lower or 'opr' in ua_lower:
+            browser = 'Opera'
+        elif 'bot' in ua_lower or 'crawler' in ua_lower or 'spider' in ua_lower:
+            browser = 'Bot'
+        elif any(bot in ua_lower for bot in ['googlebot', 'bingbot', 'slurp', 'duckduckbot']):
+            browser = 'Bot'
+        
+        # OS detection
+        os = 'Unknown'
+        if 'windows nt 10' in ua_lower:
+            os = 'Windows 10'
+        elif 'windows nt 6.3' in ua_lower:
+            os = 'Windows 8.1'
+        elif 'windows nt 6.1' in ua_lower:
+            os = 'Windows 7'
+        elif 'windows' in ua_lower:
+            os = 'Windows'
+        elif 'mac os x' in ua_lower or 'macos' in ua_lower:
+            os = 'macOS'
+        elif 'linux' in ua_lower:
+            os = 'Linux'
+        elif 'android' in ua_lower:
+            os = 'Android'
+        elif 'iphone' in ua_lower or 'ios' in ua_lower:
+            os = 'iOS'
+        
+        # Device detection
+        device = 'Unknown'
+        if 'mobile' in ua_lower or 'iphone' in ua_lower or 'android' in ua_lower:
+            device = 'Mobile'
+        elif 'tablet' in ua_lower or 'ipad' in ua_lower:
+            device = 'Tablet'
+        else:
+            device = 'Desktop'
+        
+        return {
+            'browser': browser,
+            'os': os,
+            'device': device
+        }
+    
+    def _is_bot(self, user_agent: str) -> bool:
+        """
+        Detect if the user agent represents a bot/crawler.
+        
+        Args:
+            user_agent: User agent string to analyze
+            
+        Returns:
+            True if the user agent appears to be a bot
+        """
+        if not user_agent:
+            return False
+        
+        ua_lower = user_agent.lower()
+        
+        # Common bot indicators
+        bot_keywords = [
+            'bot', 'crawler', 'spider', 'scraper', 'crawl',
+            'slurp', 'wget', 'curl', 'python-requests', 'http',
+            'monitor', 'check', 'test', 'scan', 'fetch',
+            'archive', 'index', 'search'
+        ]
+        
+        # Known bot user agents
+        known_bots = [
+            'googlebot', 'bingbot', 'slurp', 'duckduckbot',
+            'facebookexternalhit', 'twitterbot', 'linkedinbot',
+            'whatsapp', 'telegram', 'discord', 'slack',
+            'semrushbot', 'ahrefsbot', 'mj12bot', 'dotbot',
+            'yandexbot', 'baiduspider', 'sogou', 'exabot',
+            'pinterestbot', 'facebot', 'ia_archiver',
+            'censysinspect', 'genomecrawler', 'gptbot'
+        ]
+        
+        # Check for bot keywords
+        if any(keyword in ua_lower for keyword in bot_keywords):
+            return True
+            
+        # Check for known bot names
+        if any(bot in ua_lower for bot in known_bots):
+            return True
+            
+        # Check for simple patterns (like "python/3.8" or "curl/7.68")
+        import re
+        if re.match(r'^[a-z-]+/[\d.]+$', ua_lower):
+            return True
+            
+        return False
     
     def get_log_entries(self, additional_args: Optional[List[str]] = None) -> Iterator[Dict[str, Any]]:
         """

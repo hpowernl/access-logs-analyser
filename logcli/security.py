@@ -228,7 +228,7 @@ class SecurityAnalyzer:
     
     def _analyze_entry(self, log_entry: Dict[str, Any]):
         """Analyze a single log entry for security threats."""
-        ip = str(log_entry.get('ip', 'unknown'))
+        ip = str(log_entry.get('ip') or log_entry.get('remote_addr', 'unknown'))
         path = log_entry.get('path', '')
         user_agent = log_entry.get('user_agent', '')
         status = log_entry.get('status', 0)
