@@ -35,12 +35,13 @@ class HypernodeLogCommand:
         except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
             return False
     
-    def execute_command(self, additional_args: Optional[List[str]] = None) -> Iterator[str]:
+    def execute_command(self, additional_args: Optional[List[str]] = None, use_yesterday: bool = False) -> Iterator[str]:
         """
         Execute the hypernode-parse-nginx-log command and yield lines.
         
         Args:
-            additional_args: Additional command arguments (default uses --today)
+            additional_args: Additional command arguments (default uses --today or --yesterday)
+            use_yesterday: If True, use --yesterday instead of --today
             
         Yields:
             Raw log lines from the command output
@@ -57,11 +58,14 @@ class HypernodeLogCommand:
         # Add field specification
         cmd.extend(["--field", ",".join(self.fields)])
         
-        # Add additional arguments (default to --today)
+        # Add additional arguments (default to --today or --yesterday)
         if additional_args:
             cmd.extend(additional_args)
         else:
-            cmd.append("--today")
+            if use_yesterday:
+                cmd.append("--yesterday")
+            else:
+                cmd.append("--today")
         
         console.print(f"[blue]Executing: {' '.join(cmd)}[/blue]")
         
@@ -344,12 +348,13 @@ class HypernodeLogCommand:
             
         return False
     
-    def get_log_entries(self, additional_args: Optional[List[str]] = None) -> Iterator[Dict[str, Any]]:
+    def get_log_entries(self, additional_args: Optional[List[str]] = None, use_yesterday: bool = False) -> Iterator[Dict[str, Any]]:
         """
         Get parsed log entries from the command.
         
         Args:
             additional_args: Additional command arguments
+            use_yesterday: If True, use --yesterday instead of --today
             
         Yields:
             Parsed log entry dictionaries
@@ -366,7 +371,7 @@ class HypernodeLogCommand:
             task = progress.add_task("Fetching log data from Hypernode...", total=None)
             
             try:
-                for line in self.execute_command(additional_args):
+                for line in self.execute_command(additional_args, use_yesterday):
                     total_lines += 1
                     
                     # Update progress occasionally
@@ -400,9 +405,13 @@ class MockHypernodeCommand(HypernodeLogCommand):
         """Mock is always available for testing."""
         return True
     
-    def execute_command(self, additional_args: Optional[List[str]] = None) -> Iterator[str]:
+    def execute_command(self, additional_args: Optional[List[str]] = None, use_yesterday: bool = False) -> Iterator[str]:
         """
         Mock command execution using sample data.
+        
+        Args:
+            additional_args: Additional command arguments (ignored in mock)
+            use_yesterday: If True, simulate --yesterday data (ignored in mock)
         
         Yields:
             Mock TSV formatted lines

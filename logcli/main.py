@@ -118,7 +118,7 @@ def is_hypernode_platform() -> bool:
     # Check for common Hypernode indicators
     hypernode_indicators = [
         '/data/web',  # Common Hypernode directory structure
-        '/data/log/nginx',  # Hypernode nginx logs location
+        '/var/log/nginx',  # Hypernode nginx logs location
         os.path.exists('/etc/hypernode'),  # Hypernode config directory
     ]
     
@@ -136,7 +136,7 @@ def get_platform_nginx_dir() -> str:
     return '/var/log/nginx'  # Standard default
 
 
-@click.group(invoke_without_command=True)
+@click.group(invoke_without_command=True, context_settings={'help_option_names': ['-h', '--help']})
 @click.option('--install-completion', is_flag=True, help='Install shell completion for bash/zsh/fish')
 @click.pass_context
 def cli(ctx, install_completion):
@@ -148,10 +148,13 @@ def cli(ctx, install_completion):
     
     \b
     Quick Start:
-      hlogcli analyze                    # Analyze current day logs
-      hlogcli analyze --summary-only     # Quick overview
-      hlogcli security --scan-attacks    # Security analysis
-      hlogcli perf --response-time-analysis  # Performance analysis
+      hlogcli analyze                           # Analyze current day logs
+      hlogcli analyze --summary-only            # Quick overview
+      hlogcli security                          # Security analysis
+      hlogcli perf --response-time-analysis     # Performance analysis
+      hlogcli bots                              # Bot analysis and classification
+      hlogcli search --status 404               # Search for specific entries
+      hlogcli report --format html              # Generate comprehensive reports
     
     \b
     Features:
@@ -159,10 +162,11 @@ def cli(ctx, install_completion):
       • Real-time log data retrieval (always fresh, no cache needed)
       • Security threat detection and analysis
       • Performance optimization insights
-      • Bot behavior analysis and classification
+      • Advanced bot behavior analysis and AI bot detection
       • Advanced search and filtering capabilities
       • Multiple export formats (CSV, JSON, HTML charts)
-      • Mock mode for development and testing
+      • Comprehensive reporting with interactive visualizations
+      • Configuration management and user profiles
     """
     if install_completion:
         import subprocess
@@ -205,9 +209,25 @@ eval "$(_HLOGCLI_COMPLETE={shell}_source hlogcli)"
         
         return
     
-    # If no command is specified, show help
+    # If no command is specified, show custom help without usage line
     if ctx.invoked_subcommand is None:
-        console.print(ctx.get_help())
+        # Show custom help without the "Usage:" line
+        help_text = ctx.get_help()
+        lines = help_text.split('\n')
+        # Skip the first line which contains "Usage: python -m logcli.main..."
+        filtered_lines = []
+        skip_usage = True
+        for line in lines:
+            if skip_usage and line.strip().startswith('Usage:'):
+                continue
+            elif skip_usage and line.strip() == '':
+                skip_usage = False
+                continue
+            else:
+                skip_usage = False
+                filtered_lines.append(line)
+        
+        console.print('\n'.join(filtered_lines))
         return
 
 @cli.command()
@@ -227,10 +247,11 @@ eval "$(_HLOGCLI_COMPLETE={shell}_source hlogcli)"
 @click.option('--export-json', is_flag=True, help='Export results to JSON')
 @click.option('--export-charts', is_flag=True, help='Export charts to HTML')
 @click.option('--summary-only', is_flag=True, help='Show only summary statistics')
+@click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
 @click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 def analyze(log_files, follow, interactive, output, filter_preset, countries, status_codes, 
-         exclude_bots, from_time, to_time, last_hours, last_days, export_csv, export_json, export_charts, summary_only, nginx_dir, no_auto_discover):
+         exclude_bots, from_time, to_time, last_hours, last_days, export_csv, export_json, export_charts, summary_only, yesterday, nginx_dir, no_auto_discover):
     """📊 Analyze Nginx JSON access logs with comprehensive statistics and insights.
     
     This is the main analysis command that provides detailed insights into your web traffic,
@@ -254,14 +275,12 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
     
     \b
     💡 Examples:
-      hlogcli analyze                           # Full analysis
+      hlogcli analyze                           # Full analysis (today's logs)
+      hlogcli analyze --yesterday               # Analyze yesterday's logs
       hlogcli analyze --summary-only            # Quick overview only
-      hlogcli analyze -i                        # Interactive TUI mode
-      hlogcli analyze -f                        # Real-time monitoring
       hlogcli analyze --countries US,NL,DE     # Filter by countries
       hlogcli analyze --exclude-bots            # Exclude bot traffic
       hlogcli analyze --export-csv --export-charts  # Export results
-      hlogcli analyze                           # Analyze current logs
       
       # Time filtering:
       hlogcli analyze --last-hours 24          # Last 24 hours only
@@ -330,11 +349,11 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
             run_realtime_console(log_files, parser, log_filter, stats)
         elif interactive:
             # Interactive mode with existing data
-            process_hypernode_logs(log_filter, stats)
+            process_hypernode_logs(log_filter, stats, use_yesterday=yesterday)
             run_interactive_static(stats, log_filter)
         else:
             # Batch processing mode
-            process_hypernode_logs(log_filter, stats)
+            process_hypernode_logs(log_filter, stats, use_yesterday=yesterday)
             
             if summary_only:
                 display_summary_only(stats)
@@ -377,7 +396,7 @@ def discover_nginx_logs(nginx_dir: str) -> List[str]:
     return log_files
 
 
-def process_hypernode_logs(log_filter: LogFilter, stats: StatisticsAggregator, additional_args: Optional[List[str]] = None):
+def process_hypernode_logs(log_filter: LogFilter, stats: StatisticsAggregator, additional_args: Optional[List[str]] = None, use_yesterday: bool = False):
     """Process logs using hypernode-parse-nginx-log command."""
     command = get_hypernode_command()
     
@@ -385,7 +404,7 @@ def process_hypernode_logs(log_filter: LogFilter, stats: StatisticsAggregator, a
     total_entries = 0
     
     try:
-        for log_entry in command.get_log_entries(additional_args):
+        for log_entry in command.get_log_entries(additional_args, use_yesterday):
             total_entries += 1
             
             # Apply filters
@@ -400,7 +419,7 @@ def process_hypernode_logs(log_filter: LogFilter, stats: StatisticsAggregator, a
     console.print(f"[green]Processed {processed_entries:,} entries from {total_entries:,} total entries[/green]")
 
 
-def process_hypernode_logs_with_callback(callback_func, analysis_type: str = "analysis", additional_args: Optional[List[str]] = None):
+def process_hypernode_logs_with_callback(callback_func, analysis_type: str = "analysis", additional_args: Optional[List[str]] = None, use_yesterday: bool = False):
     """Process logs using hypernode command with callback function."""
     command = get_hypernode_command()
     
@@ -408,7 +427,7 @@ def process_hypernode_logs_with_callback(callback_func, analysis_type: str = "an
     total_entries = 0
     
     try:
-        for log_entry in command.get_log_entries(additional_args):
+        for log_entry in command.get_log_entries(additional_args, use_yesterday):
             total_entries += 1
             callback_func(log_entry)
             processed_entries += 1
@@ -642,12 +661,13 @@ def handle_exports(stats: StatisticsAggregator, output_dir: Optional[str],
 @click.option('--min-threat-score', default=10.0, help='Minimum threat score for IP reporting (default: 10.0)')
 @click.option('--detailed', is_flag=True, help='Show all detailed analysis sections')
 @click.option('--quiet', is_flag=True, help='Only show summary, suppress detailed output')
+@click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--export-blacklist', help='Export recommended IP blacklist to file')
 @click.option('--output', '-o', help='Output file for security report')
 def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_detection, 
             sql_injection_patterns, suspicious_user_agents, show_summary, show_top_threats,
             show_geographic, show_timeline, threshold, min_threat_score, detailed, quiet,
-            export_blacklist, output):
+            yesterday, export_blacklist, output):
     """🔒 Advanced security analysis and threat detection.
     
     Analyze your access logs for security threats, attack patterns, and suspicious activity.
@@ -704,7 +724,7 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
         """Analyze a single log entry for security."""
         analyzer._analyze_entry(log_entry)
     
-    process_hypernode_logs_with_callback(analyze_entry, "security analysis")
+    process_hypernode_logs_with_callback(analyze_entry, "security analysis", use_yesterday=yesterday)
     
     # Get comprehensive security data
     summary = analyzer.get_security_summary()
@@ -846,9 +866,10 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
 @click.option('--bandwidth-analysis', is_flag=True, help='Analyze bandwidth usage')
 @click.option('--cache-analysis', is_flag=True, help='Analyze cache effectiveness')
 @click.option('--handler', help='Filter by handler (e.g., varnish, phpfpm)')
+@click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--output', '-o', help='Output file for performance report')
 def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest, 
-         percentiles, bandwidth_analysis, cache_analysis, handler, output):
+         percentiles, bandwidth_analysis, cache_analysis, handler, yesterday, output):
     """⚡ Performance analysis and optimization insights.
     
     Analyze response times, bandwidth usage, and identify performance bottlenecks.
@@ -888,7 +909,7 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
             return
         analyzer._analyze_entry(log_entry)
     
-    process_hypernode_logs_with_callback(analyze_entry, "performance analysis")
+    process_hypernode_logs_with_callback(analyze_entry, "performance analysis", use_yesterday=yesterday)
     
     # Generate performance reports
     if response_time_analysis:
@@ -941,10 +962,11 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
 @click.option('--ai-training-detection', is_flag=True, help='Detect potential AI training data crawlers')
 @click.option('--llm-bot-analysis', is_flag=True, help='Detailed LLM bot analysis')
 @click.option('--ai-impact-analysis', is_flag=True, help='AI bot resource impact analysis')
+@click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--output', '-o', help='Output file for bot analysis report')
 def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analysis,
          legitimate_vs_malicious, impact_analysis, unknown_only, ai_bots_only, 
-         ai_training_detection, llm_bot_analysis, ai_impact_analysis, output):
+         ai_training_detection, llm_bot_analysis, ai_impact_analysis, yesterday, output):
     """🤖 Advanced bot and crawler analysis and classification.
     
     Identify, classify, and analyze bot traffic to understand automated visitors
@@ -1008,7 +1030,7 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
         """Analyze a single log entry for bots."""
         analyzer._analyze_entry(log_entry)
     
-    process_hypernode_logs_with_callback(analyze_entry, "bot analysis")
+    process_hypernode_logs_with_callback(analyze_entry, "bot analysis", use_yesterday=yesterday)
     
     # Show basic bot overview if no specific options are provided
     show_basic_overview = not any([classify_types, behavior_analysis, legitimate_vs_malicious, 
@@ -1269,10 +1291,11 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
 @click.option('--country', help='Filter by country code(s) (comma-separated)')
 @click.option('--time-range', help='Time range (e.g., "2024-01-01 to 2024-01-02")')
 @click.option('--last-hours', type=int, help='Show entries from last N hours')
+@click.option('--yesterday', is_flag=True, help='Search yesterday\'s logs instead of today\'s')
 @click.option('--limit', default=100, help='Limit number of results')
 @click.option('--output', '-o', help='Output file for search results')
 def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent, 
-           country, time_range, last_hours, limit, output):
+           country, time_range, last_hours, yesterday, limit, output):
     """🔍 Advanced search and filtering of log entries.
     
     Search through your access logs with powerful filtering capabilities.
@@ -1338,7 +1361,7 @@ def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent,
         if searcher._matches_criteria(log_entry, criteria):
             results.append(log_entry)
     
-    process_hypernode_logs_with_callback(search_entry, "search")
+    process_hypernode_logs_with_callback(search_entry, "search", use_yesterday=yesterday)
     
     # Display results
     console.print(f"\n[bold green]🔍 SEARCH RESULTS ({len(results)} entries)[/bold green]")
