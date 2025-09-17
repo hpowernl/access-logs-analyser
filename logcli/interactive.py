@@ -38,6 +38,55 @@ from .log_reader import LogReader
 from .main import discover_nginx_logs
 
 
+class HelpScreen(Screen):
+    """Help screen showing keybindings and usage."""
+    
+    def compose(self) -> ComposeResult:
+        help_text = """
+[bold blue] Access Log Analyzer - Help[/bold blue]
+
+[bold yellow]Navigation:[/bold yellow]
+• F1 / ?     - Show this help screen
+• F2         - Setup/Configuration
+• F3         - Security Analysis View
+• F4         - Performance Analysis View
+• F5         - Bot Analysis View
+• F6         - Export Options
+• F7         - Search Interface
+• 1          - Overview Dashboard
+• 2          - Security Monitor
+• 3          - Performance Monitor
+
+[bold yellow]Controls:[/bold yellow]
+• r          - Refresh current view
+• p          - Pause/Resume live updates
+• q          - Quit application
+
+[bold yellow]Troubleshooting:[/bold yellow]
+If you see no data:
+1. Check if log files exist in /data/web/nginx/
+2. Ensure log files are readable (permissions)
+3. Verify logs are in JSON format
+4. Press 'r' to refresh
+
+[bold yellow]Log Locations Checked:[/bold yellow]
+• /data/web/nginx/ (Hypernode)
+• /var/log/nginx/ (Standard)
+• Current directory (sample_access.log)
+
+[dim]Press any key to close this help screen[/dim]
+        """
+        
+        yield Container(
+            Static(help_text, id="help-content"),
+            id="help-container"
+        )
+    
+    def on_key(self, event) -> None:
+        """Close help on any key press."""
+        self.app.pop_screen()
+
+
 class LoadingScreen(Screen):
     """Loading screen shown during startup."""
     
@@ -112,6 +161,7 @@ class OverviewDashboard(Static):
     
     def on_mount(self) -> None:
         """Start periodic updates."""
+        print(f"📊 OverviewDashboard mounted with {self.stats.total_requests} total requests")
         self.update_display()
         self.update_timer = self.set_interval(2.0, self.update_display)
     
@@ -123,10 +173,15 @@ class OverviewDashboard(Static):
         total_requests = summary.get('total_requests', 0)
         
         if total_requests == 0:
-            stats_text = """
+            stats_text = f"""
 [yellow]No log data available yet[/yellow]
 
-Checking for logs in:
+[bold]Debug Info:[/bold]
+• Stats object exists: {self.stats is not None}
+• Total requests: {self.stats.total_requests if self.stats else 'N/A'}
+• Summary keys: {list(summary.keys()) if summary else 'No summary'}
+
+[bold]Checking for logs in:[/bold]
 • /data/web/nginx/
 • /var/log/nginx/
 • Current directory
@@ -375,6 +430,7 @@ class InteractiveLogAnalyzer(App):
     /* Embedded CSS for the TUI */
     #main-container {
         height: 100%;
+        layout: vertical;
     }
     
     .status-bar {
@@ -398,11 +454,17 @@ class InteractiveLogAnalyzer(App):
         padding: 0 1;
     }
     
+    #main-content {
+        height: 100%;
+        width: 100%;
+    }
+    
     .panel {
         border: solid $primary;
         margin: 1;
         padding: 1;
         background: $surface;
+        height: 100%;
     }
     
     .panel-title {
@@ -416,6 +478,15 @@ class InteractiveLogAnalyzer(App):
         grid-size: 3 2;
         grid-gutter: 1;
         height: 100%;
+        width: 100%;
+    }
+    
+    .overview-panel {
+        grid-column-span: 2;
+    }
+    
+    .live-panel {
+        grid-row-span: 2;
     }
     
     .security-grid {
@@ -439,6 +510,20 @@ class InteractiveLogAnalyzer(App):
     RichLog {
         height: 100%;
         border: solid $primary;
+    }
+    
+    #help-container {
+        align: center middle;
+        background: $surface;
+        border: solid $primary;
+        width: 80%;
+        height: 80%;
+    }
+    
+    #help-content {
+        padding: 2;
+        height: 100%;
+        overflow-y: auto;
     }
     """
     TITLE = " Access Log Analyzer"
@@ -488,10 +573,14 @@ class InteractiveLogAnalyzer(App):
         self.push_screen(LoadingScreen())
         
         # Discover log files
+        print("🔍 Discovering log files...")
         self.discover_logs()
+        print(f"📁 Found {len(self.log_files)} log files: {self.log_files}")
         
         # Start log processing
+        print("⚡ Starting log processing...")
         self.start_log_processing()
+        print("✅ Initialization complete")
         
     def compose(self) -> ComposeResult:
         """Compose the main interface."""
@@ -559,7 +648,58 @@ class InteractiveLogAnalyzer(App):
                 self.log_files = [str(sample_log)]
                 print("Using sample log file for demo")
             else:
-                print("No log files found - running in empty demo mode")
+                print("No log files found - creating demo data")
+                # Create some demo data for testing
+                self._create_demo_data()
+    
+    def _create_demo_data(self) -> None:
+        """Create demo data when no log files are available."""
+        from datetime import datetime
+        
+        # Create some sample log entries
+        demo_entries = [
+            {
+                'timestamp': datetime.now(),
+                'ip': '192.168.1.100',
+                'status': 200,
+                'method': 'GET',
+                'path': '/api/products',
+                'country': 'NL',
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'response_time': 0.250,
+                'bytes_sent': 1024,
+                'is_bot': False
+            },
+            {
+                'timestamp': datetime.now(),
+                'ip': '10.0.0.50',
+                'status': 404,
+                'method': 'POST',
+                'path': '/admin/login',
+                'country': 'US',
+                'user_agent': 'curl/7.68.0',
+                'response_time': 0.010,
+                'bytes_sent': 150,
+                'is_bot': False
+            },
+            {
+                'timestamp': datetime.now(),
+                'ip': '203.0.113.42',
+                'status': 200,
+                'method': 'GET',
+                'path': '/favicon.ico',
+                'country': 'AU',
+                'user_agent': 'Googlebot/2.1',
+                'response_time': 0.005,
+                'bytes_sent': 0,
+                'is_bot': True
+            }
+        ]
+        
+        print(f"Adding {len(demo_entries)} demo entries...")
+        for entry in demo_entries:
+            self.stats.add_entry(entry)
+        print(f"Demo data created - total requests: {self.stats.total_requests}")
     
     def start_log_processing(self) -> None:
         """Start background log processing."""
@@ -642,12 +782,14 @@ class InteractiveLogAnalyzer(App):
     
     def switch_to_overview(self) -> None:
         """Switch to overview dashboard."""
+        print(f"🔄 Switching to overview view (stats total: {self.stats.total_requests})")
         self.current_view = "overview"
         main_content = self.query_one("#main-content", Container)
         main_content.remove_children()
         
         self.overview = OverviewDashboard(self.stats)
         main_content.mount(self.overview)
+        print("✅ Overview dashboard mounted")
     
     def switch_to_security(self) -> None:
         """Switch to security monitor."""
@@ -685,7 +827,7 @@ class InteractiveLogAnalyzer(App):
     # Action handlers
     def action_help(self) -> None:
         """Show help."""
-        self.bell()  # For now, just ring bell
+        self.push_screen(HelpScreen())
     
     def action_setup(self) -> None:
         """Show setup screen."""
