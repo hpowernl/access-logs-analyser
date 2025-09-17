@@ -948,7 +948,7 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
     
     \b
     💡 Examples:
-      hlogcli bots                              # Basic bot overview
+      hlogcli bots                              # Comprehensive bot analysis (default)
       hlogcli bots --classify-types             # Detailed bot classification
       hlogcli bots --behavior-analysis          # Bot behavior patterns
       hlogcli bots --legitimate-vs-malicious    # Good vs. bad bot scoring
@@ -992,6 +992,146 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
         analyzer._analyze_entry(log_entry)
     
     processor.process_with_callback_cached(log_files, analyze_entry, "bot analysis", force_refresh)
+    
+    # Show basic bot overview if no specific options are provided
+    show_basic_overview = not any([classify_types, behavior_analysis, legitimate_vs_malicious, 
+                                   impact_analysis, unknown_only, ai_bots_only, ai_training_detection, 
+                                   llm_bot_analysis, ai_impact_analysis])
+    
+    if show_basic_overview:
+        console.print("\n[bold blue]🤖 COMPREHENSIVE BOT ANALYSIS[/bold blue]")
+        
+        # Basic classification
+        bot_types = analyzer.get_bot_classification()
+        total_bot_requests = sum(bot_types.values())
+        
+        if total_bot_requests > 0:
+            # Overall statistics
+            console.print(f"  [bold cyan]📊 OVERALL STATISTICS[/bold cyan]")
+            console.print(f"    • Total bot requests: [cyan]{total_bot_requests:,}[/cyan]")
+            console.print(f"    • Unique bot types detected: [green]{len(analyzer.bot_requests)}[/green]")
+            console.print(f"    • Unknown/unclassified bots: [yellow]{len(analyzer.unknown_bots)}[/yellow]")
+            
+            # Resource impact details
+            impact = analyzer.get_resource_impact()
+            console.print(f"\n  [bold orange1]📈 RESOURCE IMPACT[/bold orange1]")
+            console.print(f"    • Bot traffic percentage: [orange1]{impact['percentage_of_traffic']:.1f}%[/orange1] of total traffic")
+            console.print(f"    • Total bandwidth consumed: [yellow]{impact['bandwidth_gb']:.2f} GB[/yellow]")
+            console.print(f"    • Average response time: [cyan]{impact['avg_response_time']:.3f}s[/cyan]")
+            console.print(f"    • Server load from bots: [red]{impact['server_load_pct']:.1f}%[/red]")
+            
+            # Bot categories breakdown
+            console.print(f"\n  [bold green]🔍 BOT CATEGORIES BREAKDOWN[/bold green]")
+            for bot_type, count in sorted(bot_types.items(), key=lambda x: x[1], reverse=True):
+                percentage = (count / total_bot_requests) * 100
+                bar_length = int(percentage / 5)  # Scale bar
+                bar = "▓" * bar_length + "░" * (20 - bar_length)
+                console.print(f"    • {bot_type.replace('_', ' ').title()}: [green]{count:,}[/green] ({percentage:.1f}%) [{bar}]")
+            
+            # Top individual bots with more details
+            individual_bots = []
+            for bot_type, requests in analyzer.bot_requests.items():
+                if bot_type in analyzer.bot_signatures:
+                    description = analyzer.bot_signatures[bot_type].get('description', bot_type)
+                    legitimate = analyzer.bot_signatures[bot_type].get('legitimate', False)
+                    bot_category = analyzer.bot_signatures[bot_type].get('type', 'unknown')
+                    avg_response = sum(analyzer.bot_response_times.get(bot_type, [0])) / max(len(analyzer.bot_response_times.get(bot_type, [1])), 1)
+                    bandwidth_mb = analyzer.bot_bandwidth.get(bot_type, 0) / (1024 * 1024)
+                    unique_ips = len(set(req['ip'] for req in requests))
+                    individual_bots.append((bot_type, len(requests), description, legitimate, bot_category, avg_response, bandwidth_mb, unique_ips))
+            
+            if individual_bots:
+                top_bots = sorted(individual_bots, key=lambda x: x[1], reverse=True)[:10]
+                console.print(f"\n  [bold bright_blue]🏆 TOP 10 INDIVIDUAL BOTS[/bold bright_blue]")
+                for i, (bot_name, count, description, legitimate, category, avg_response, bandwidth_mb, unique_ips) in enumerate(top_bots, 1):
+                    legit_icon = "✅" if legitimate else "❌"
+                    console.print(f"    {i:2}. {legit_icon} [bright_blue]{bot_name}[/bright_blue] ([dim]{category}[/dim])")
+                    console.print(f"        └─ [green]{count:,}[/green] requests from [cyan]{unique_ips}[/cyan] IPs")
+                    console.print(f"        └─ Avg response: [yellow]{avg_response:.3f}s[/yellow], Bandwidth: [magenta]{bandwidth_mb:.1f}MB[/magenta]")
+                    console.print(f"        └─ {description}")
+            
+            # AI bot detailed analysis
+            ai_analysis = analyzer.get_ai_bot_analysis()
+            if ai_analysis['total_ai_requests'] > 0:
+                console.print(f"\n  [bold magenta]🤖 AI BOT DETAILED ANALYSIS[/bold magenta]")
+                console.print(f"    • Total AI bot requests: [magenta]{ai_analysis['total_ai_requests']:,}[/magenta]")
+                console.print(f"    • AI percentage of bot traffic: [yellow]{ai_analysis['ai_percentage']:.1f}%[/yellow]")
+                console.print(f"    • AI categories detected: [cyan]{len(ai_analysis['ai_categories'])}[/cyan]")
+                
+                for category, data in ai_analysis['ai_categories'].items():
+                    console.print(f"      ◦ {category.replace('_', ' ').title()}: [green]{data['total_requests']:,}[/green] requests")
+                    console.print(f"        └─ {data['unique_ips']} IPs, {data['avg_response_time']:.3f}s avg, {data['bandwidth_mb']:.1f}MB")
+            else:
+                console.print(f"\n  [bold magenta]🤖 AI BOT ANALYSIS[/bold magenta]")
+                console.print(f"    • [yellow]No AI bot activity detected[/yellow]")
+            
+            # Legitimacy and security analysis
+            scores = analyzer.get_legitimacy_scores()
+            if scores:
+                legitimate_bots = [(bot, score) for bot, score in scores.items() if score > 0.7]
+                suspicious_bots = [(bot, score) for bot, score in scores.items() if score < 0.3]
+                neutral_bots = [(bot, score) for bot, score in scores.items() if 0.3 <= score <= 0.7]
+                
+                console.print(f"\n  [bold green]🛡️  LEGITIMACY & SECURITY ANALYSIS[/bold green]")
+                console.print(f"    • Legitimate bots: [green]{len(legitimate_bots)}[/green]")
+                console.print(f"    • Suspicious bots: [red]{len(suspicious_bots)}[/red]")
+                console.print(f"    • Neutral bots: [yellow]{len(neutral_bots)}[/yellow]")
+                
+                if suspicious_bots:
+                    console.print(f"\n    [red]⚠️  SUSPICIOUS BOTS:[/red]")
+                    for bot, score in sorted(suspicious_bots, key=lambda x: x[1])[:5]:
+                        requests_count = len(analyzer.bot_requests.get(bot, []))
+                        console.print(f"      • [red]{bot}[/red]: score [bold red]{score:.2f}[/bold red] ({requests_count:,} requests)")
+                
+                if legitimate_bots:
+                    top_legitimate = sorted(legitimate_bots, key=lambda x: len(analyzer.bot_requests.get(x[0], [])), reverse=True)[:3]
+                    console.print(f"\n    [green]✅ TOP LEGITIMATE BOTS:[/green]")
+                    for bot, score in top_legitimate:
+                        requests_count = len(analyzer.bot_requests.get(bot, []))
+                        console.print(f"      • [green]{bot}[/green]: score [bold green]{score:.2f}[/bold green] ({requests_count:,} requests)")
+            
+            # Behavior patterns analysis
+            patterns = analyzer.get_behavior_patterns()
+            if patterns:
+                console.print(f"\n  [bold yellow]📊 BEHAVIOR PATTERNS[/bold yellow]")
+                for pattern_name, details in list(patterns.items())[:5]:  # Top 5 patterns
+                    console.print(f"    • [bright_blue]{pattern_name}[/bright_blue]:")
+                    console.print(f"      └─ {details['description']}")
+                    console.print(f"      └─ Frequency: {details['frequency']}, Impact: {details['impact']}")
+            
+            # Bot recommendations
+            recommendations = analyzer.get_bot_recommendations()
+            ai_recommendations = analyzer.get_ai_bot_recommendations()
+            all_recommendations = recommendations + ai_recommendations
+            
+            if all_recommendations:
+                console.print(f"\n  [bold green]💡 RECOMMENDATIONS[/bold green]")
+                for rec in all_recommendations[:3]:  # Top 3 recommendations
+                    priority_color = "red" if rec['priority'] == 'High' else "yellow" if rec['priority'] == 'Medium' else "green"
+                    console.print(f"    • [{priority_color}]{rec['category']} ({rec['priority']} Priority)[/{priority_color}]")
+                    console.print(f"      └─ {rec['recommendation']}")
+            
+            # Unknown bots analysis
+            if analyzer.unknown_bots:
+                top_unknown = analyzer.unknown_bots.most_common(5)
+                console.print(f"\n  [bold orange1]❓ TOP UNKNOWN USER AGENTS[/bold orange1]")
+                for ua, count in top_unknown:
+                    ua_display = (ua[:60] + "...") if len(ua) > 60 else ua
+                    console.print(f"    • [yellow]{count:,}x[/yellow] [dim]{ua_display}[/dim]")
+            
+            console.print(f"\n[dim]💡 Use specific options for even more detailed analysis:[/dim]")
+            console.print(f"[dim]  • --classify-types for detailed classification[/dim]")
+            console.print(f"[dim]  • --ai-bots-only for AI bot analysis[/dim]")
+            console.print(f"[dim]  • --behavior-analysis for behavior patterns[/dim]")
+            console.print(f"[dim]  • --legitimate-vs-malicious for legitimacy scoring[/dim]")
+            console.print(f"[dim]  • --ai-training-detection for AI training crawler detection[/dim]")
+            console.print(f"[dim]  • --help for all available options[/dim]")
+        else:
+            console.print(f"  [yellow]No bot traffic detected in the analyzed logs[/yellow]")
+            console.print(f"  [dim]This could mean:[/dim]")
+            console.print(f"[dim]    • The logs contain only human traffic[/dim]")
+            console.print(f"[dim]    • Bot signatures need updating[/dim]")
+            console.print(f"[dim]    • Logs are filtered or incomplete[/dim]")
     
     # Generate bot analysis reports
     if classify_types:
