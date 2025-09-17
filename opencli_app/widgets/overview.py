@@ -19,7 +19,7 @@ class OverviewWidget(Container):
         self.stats = stats
         self.log_files = log_files or []
         self.following = following
-        self._content = Static("", classes="content-area scrollable")
+        self._content = Static(self._generate_content(), classes="content-area scrollable")
     
     def compose(self):
         yield self._content

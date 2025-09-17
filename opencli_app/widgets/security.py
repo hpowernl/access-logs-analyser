@@ -18,7 +18,7 @@ class SecurityWidget(Container):
         super().__init__()
         self.stats = stats
         self.security = security_analyzer
-        self._content = Static("", classes="content-area scrollable")
+        self._content = Static(self._generate_content(), classes="content-area scrollable")
     
     def compose(self):
         yield self._content
