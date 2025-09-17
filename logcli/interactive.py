@@ -144,17 +144,22 @@ class OverviewDashboard(Static):
             Container(
                 Static("📊 OVERVIEW", classes="panel-title"),
                 Static("", id="overview-stats"),
-                classes="panel overview-panel"
-            ),
-            Container(
-                Static("🔥 LIVE ACTIVITY", classes="panel-title"),
-                RichLog(id="live-log", auto_scroll=True, max_lines=15),
-                classes="panel live-panel"
+                classes="panel"
             ),
             Container(
                 Static("📈 TRENDS", classes="panel-title"),
                 Static("", id="trends-chart"),
-                classes="panel trends-panel"
+                classes="panel"
+            ),
+            Container(
+                Static("🔥 LIVE ACTIVITY", classes="panel-title"),
+                RichLog(id="live-log", auto_scroll=True, max_lines=15),
+                classes="panel"
+            ),
+            Container(
+                Static("ℹ️ INFO", classes="panel-title"),
+                Static("Press F1 for help\nPress 'r' to refresh\nPress 'q' to quit", id="info-panel"),
+                classes="panel"
             ),
             classes="dashboard-grid"
         )
@@ -475,18 +480,10 @@ class InteractiveLogAnalyzer(App):
     
     .dashboard-grid {
         layout: grid;
-        grid-size: 3 2;
+        grid-size: 2 2;
         grid-gutter: 1;
         height: 100%;
         width: 100%;
-    }
-    
-    .overview-panel {
-        grid-column-span: 2;
-    }
-    
-    .live-panel {
-        grid-row-span: 2;
     }
     
     .security-grid {
