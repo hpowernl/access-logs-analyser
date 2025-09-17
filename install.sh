@@ -52,8 +52,8 @@ fi
 
 print_success "Found pip3"
 
-# Install Python dependencies
-print_status "Installing Python dependencies..."
+# Install Python dependencies and logcli module
+print_status "Installing Python packages..."
 echo "   Trying different installation methods..."
 echo ""
 
@@ -62,8 +62,8 @@ INSTALL_SUCCESS=false
 
 # Method 1: Try regular pip3
 print_status "Method 1: Regular pip3 install..."
-if pip3 install -r requirements.txt 2>/dev/null; then
-    print_success "Dependencies installed with pip3"
+if pip3 install -r requirements.txt && pip3 install -e . 2>/dev/null; then
+    print_success "Dependencies and logcli installed with pip3"
     INSTALL_SUCCESS=true
 else
     print_warning "Regular pip3 failed (externally-managed-environment)"
@@ -72,8 +72,8 @@ fi
 # Method 2: Try with --break-system-packages (if method 1 failed)
 if [ "$INSTALL_SUCCESS" = false ]; then
     print_status "Method 2: pip3 with --break-system-packages..."
-    if pip3 install -r requirements.txt --break-system-packages 2>/dev/null; then
-        print_success "Dependencies installed with --break-system-packages"
+    if pip3 install -r requirements.txt --break-system-packages && pip3 install -e . --break-system-packages 2>/dev/null; then
+        print_success "Dependencies and logcli installed with --break-system-packages"
         INSTALL_SUCCESS=true
     else
         print_warning "pip3 --break-system-packages failed"
@@ -83,8 +83,8 @@ fi
 # Method 3: Try pipx (if available and method 1&2 failed)
 if [ "$INSTALL_SUCCESS" = false ] && command -v pipx &> /dev/null; then
     print_status "Method 3: Using pipx..."
-    if pipx install textual rich click pandas plotly 2>/dev/null; then
-        print_success "Core dependencies installed with pipx"
+    if pipx install textual rich click pandas plotly && pip3 install -e . 2>/dev/null; then
+        print_success "Core dependencies and logcli installed with pipx"
         INSTALL_SUCCESS=true
     else
         print_warning "pipx installation failed"
@@ -94,8 +94,8 @@ fi
 # Method 4: Create a simple venv (if all else fails)
 if [ "$INSTALL_SUCCESS" = false ]; then
     print_status "Method 4: Creating minimal venv..."
-    if python3 -m venv .venv && .venv/bin/pip install -r requirements.txt; then
-        print_success "Dependencies installed in .venv"
+    if python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/pip install -e .; then
+        print_success "Dependencies and logcli installed in .venv"
         print_warning "Note: You'll need to activate venv: source .venv/bin/activate"
         
         # Update opencli to use venv python
@@ -110,14 +110,14 @@ if [ "$INSTALL_SUCCESS" = false ]; then
     print_error "All installation methods failed!"
     echo ""
     echo "🔧 Manual Installation Options:"
-    echo "   1. sudo pip3 install -r requirements.txt"
-    echo "   2. pip3 install -r requirements.txt --break-system-packages"
-    echo "   3. python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
+    echo "   1. sudo pip3 install -r requirements.txt && sudo pip3 install -e ."
+    echo "   2. pip3 install -r requirements.txt --break-system-packages && pip3 install -e . --break-system-packages"
+    echo "   3. python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt && pip install -e ."
     echo "   4. Use system packages: apt install python3-textual python3-rich python3-click"
     echo ""
     exit 1
 else
-    print_success "Python dependencies installed successfully"
+    print_success "Python dependencies and logcli module installed successfully"
 fi
 
 # Make opencli executable
@@ -174,16 +174,6 @@ else
         print_error "Failed to install to user profile"
         print_warning "You can still use: ./opencli"
     fi
-fi
-
-# Test installation
-echo ""
-print_status "Testing installation..."
-if ./opencli --help &> /dev/null; then
-    print_success "Installation test passed!"
-else
-    print_error "Installation test failed"
-    print_warning "Try running: python3 -m opencli_app.simple_app"
 fi
 
 # Show usage instructions

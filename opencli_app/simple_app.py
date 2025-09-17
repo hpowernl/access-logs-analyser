@@ -57,31 +57,53 @@ class SimpleLogApp(App):
     
     def discover_logs_simple(self):
         """Simple log discovery - copy logcli approach."""
-        print("🔍 Discovering log files...")
+        print("\n=== 🔍 DEBUG: Log Discovery ===")
+        print("Current directory:", os.getcwd())
         
         # Try nginx directories
         nginx_dirs = ["/var/log/nginx/", "/var/log/", "/data/web/nginx/"]
         
         for nginx_dir in nginx_dirs:
+            print(f"\nChecking {nginx_dir}...")
             if os.path.exists(nginx_dir):
-                print(f"📂 Checking {nginx_dir}...")
+                print(f"✅ Directory exists")
                 log_files = self.discover_nginx_logs_simple(nginx_dir)
                 if log_files:
-                    print(f"✅ Found {len(log_files)} files in {nginx_dir}")
+                    print(f"✅ Found {len(log_files)} files:")
+                    for f in log_files:
+                        print(f"   📄 {f}")
                     return log_files
                 else:
-                    print(f"⚠️ No access.log files in {nginx_dir}")
+                    print("⚠️ No access.log files found")
             else:
-                print(f"⚠️ Directory not found: {nginx_dir}")
+                print("⚠️ Directory not found")
         
         # Fallback to sample log
-        print("📄 Trying sample log...")
+        print("\nTrying sample log...")
         sample_log = Path(__file__).parent.parent / "sample_access.log"
+        print(f"Looking for: {sample_log.absolute()}")
+        
         if sample_log.exists():
-            print(f"✅ Using sample: {sample_log}")
-            return [str(sample_log)]
+            print("✅ Sample log exists")
+            try:
+                with open(sample_log, 'r') as f:
+                    first_line = f.readline().strip()
+                    print(f"First line preview: {first_line[:100]}...")
+                print(f"✅ Using sample log: {sample_log}")
+                return [str(sample_log)]
+            except Exception as e:
+                print(f"❌ Error reading sample log: {e}")
+                return []
         else:
-            print("❌ No sample log found")
+            print("❌ Sample log not found")
+            print("\nDebug: Listing parent directory...")
+            try:
+                parent = sample_log.parent
+                print(f"Contents of {parent}:")
+                for f in parent.iterdir():
+                    print(f"   {f.name}")
+            except Exception as e:
+                print(f"❌ Error listing directory: {e}")
             return []
     
     def discover_nginx_logs_simple(self, nginx_dir: str):
@@ -135,7 +157,8 @@ class SimpleLogApp(App):
     
     def process_logs_simple(self):
         """Process log files - simplified like logcli."""
-        print("📊 Processing logs...")
+        print("\n=== 🔍 DEBUG: Processing Logs ===")
+        print("Starting log processing...")
         
         # Reset statistics
         self.stats.reset()
@@ -147,7 +170,6 @@ class SimpleLogApp(App):
         
         total_lines = 0
         processed_entries = 0
-        max_lines = 500  # Keep small for testing
         
         for log_file in self.log_files:
             print(f"📄 Reading {Path(log_file).name}...")
@@ -155,9 +177,6 @@ class SimpleLogApp(App):
             try:
                 with open(log_file, 'r', encoding='utf-8') as f:
                     for line_num, line in enumerate(f, 1):
-                        if total_lines >= max_lines:
-                            print(f"⚠️ Reached max lines ({max_lines})")
-                            break
                         
                         line = line.strip()
                         if not line:
@@ -166,13 +185,8 @@ class SimpleLogApp(App):
                         total_lines += 1
                         
                         try:
-                            # Parse log entry - try both methods
-                            log_entry = None
-                            try:
-                                log_entry = self.parser.parse_log_line(line)
-                            except AttributeError:
-                                log_entry = self.parser.parse_line(line)
-                            
+                            # Parse log entry with correct method name
+                            log_entry = self.parser.parse_log_line(line)
                             if not log_entry:
                                 continue
                             
