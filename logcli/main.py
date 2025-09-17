@@ -174,9 +174,10 @@ eval "$(_HLOGCLI_COMPLETE={shell}_source hlogcli)"
 @click.option('--no-cache', is_flag=True, help='Disable cache and process files fresh')
 @click.option('--force-refresh', is_flag=True, help='Force refresh cache even if data is fresh')
 @click.option('--cache-info', is_flag=True, help='Show cache information and statistics')
+@click.option('--aggressive-cache', is_flag=True, help='Trust cache more aggressively (faster but may miss recent changes)')
 def analyze(log_files, follow, interactive, output, filter_preset, countries, status_codes, 
          exclude_bots, export_csv, export_json, export_charts, summary_only, nginx_dir, no_auto_discover,
-         use_cache, no_cache, force_refresh, cache_info):
+         use_cache, no_cache, force_refresh, cache_info, aggressive_cache):
     """📊 Analyze Nginx JSON access logs with comprehensive statistics and insights.
     
     This is the main analysis command that provides detailed insights into your web traffic,
@@ -219,6 +220,7 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
       hlogcli analyze --no-cache                # Disable cache, process fresh
       hlogcli analyze --force-refresh           # Force refresh cached data
       hlogcli analyze --cache-info              # Show cache statistics
+      hlogcli analyze --aggressive-cache        # Maximum speed (trust cache for 2h)
     """
     
     # Auto-discover log files by default unless disabled or log files are specified
@@ -267,6 +269,14 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
     log_filter = LogFilter()
     stats = StatisticsAggregator()
     processor = CacheAwareProcessor(cache_enabled=cache_enabled)
+    
+    # Configure aggressive cache mode if requested
+    if aggressive_cache and cache_enabled:
+        # Set longer freshness threshold for aggressive caching
+        processor.cache_manager_settings = {
+            'freshness_threshold_minutes': 120,  # 2 hours instead of 10 minutes
+            'aggressive_cache': True
+        }
     
     # Apply filter preset
     if filter_preset:

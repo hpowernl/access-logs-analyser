@@ -39,6 +39,7 @@ class CacheManager:
         self.max_age_days = 2
         self.freshness_threshold_minutes = 10
         self.batch_size = 1000
+        self.aggressive_cache = False  # When True, trust cache more aggressively
         
     def _get_connection(self) -> sqlite3.Connection:
         """Get database connection (create if needed)."""
@@ -104,6 +105,7 @@ class CacheManager:
                 file_size INTEGER NOT NULL,
                 file_mtime REAL NOT NULL,
                 file_hash TEXT NOT NULL,
+                file_signature TEXT,
                 lines_processed INTEGER NOT NULL,
                 last_processed DATETIME DEFAULT CURRENT_TIMESTAMP,
                 processing_time_seconds REAL
@@ -164,6 +166,38 @@ class CacheManager:
         except (IOError, OSError):
             return ""
     
+    def _calculate_file_signature(self, file_path: str) -> str:
+        """Calculate fast file signature (first 8KB + last 8KB + size + mtime).
+        
+        This is much faster than full MD5 for large files and catches most changes.
+        """
+        try:
+            stat = os.stat(file_path)
+            file_size = stat.st_size
+            file_mtime = stat.st_mtime
+            
+            hash_md5 = hashlib.md5()
+            
+            with open(file_path, "rb") as f:
+                # Read first 8KB
+                first_chunk = f.read(8192)
+                hash_md5.update(first_chunk)
+                
+                # If file is large enough, read last 8KB too
+                if file_size > 16384:
+                    f.seek(-8192, 2)  # Seek to 8KB from end
+                    last_chunk = f.read(8192)
+                    hash_md5.update(last_chunk)
+                
+                # Include file size and mtime in signature
+                hash_md5.update(str(file_size).encode())
+                hash_md5.update(str(file_mtime).encode())
+            
+            return hash_md5.hexdigest()
+            
+        except (IOError, OSError):
+            return ""
+    
     def is_file_cached_and_fresh(self, file_path: str) -> Tuple[bool, Dict[str, Any]]:
         """Check if file is cached and up-to-date.
         
@@ -196,15 +230,21 @@ class CacheManager:
                 metadata['file_mtime'] != current_mtime):
                 return False, metadata
             
-            # Check if cache is too old (freshness check)
+            # Quick freshness check - only do expensive hash check if file seems to have changed
             last_processed = datetime.fromisoformat(metadata['last_processed'])
             age_minutes = (datetime.now() - last_processed).total_seconds() / 60
             
+            # If cache is old, only check signature if file modification time is newer than last processing
             if age_minutes > self.freshness_threshold_minutes:
-                # Check if file is still being actively written to
-                current_hash = self._calculate_file_hash(file_path)
-                if current_hash != metadata['file_hash']:
-                    return False, metadata
+                # Only do signature check if mtime suggests file might have changed
+                if current_mtime > last_processed.timestamp():
+                    # Use fast signature instead of full hash for better performance
+                    current_signature = self._calculate_file_signature(file_path)
+                    # Compare with stored hash (fallback if no signature stored)
+                    stored_signature = metadata.get('file_signature', metadata['file_hash'])
+                    if current_signature != stored_signature:
+                        return False, metadata
+                # If mtime hasn't changed since last processing, trust the cache even if it's old
             
             return True, metadata
             
@@ -264,6 +304,7 @@ class CacheManager:
             file_size = stat.st_size
             file_mtime = stat.st_mtime
             file_hash = self._calculate_file_hash(file_path)
+            file_signature = self._calculate_file_signature(file_path)
             
             # Clear existing entries for this file
             conn.execute("DELETE FROM log_entries WHERE file_path = ?", (file_path,))
@@ -320,11 +361,11 @@ class CacheManager:
             # Update file metadata
             conn.execute("""
                 INSERT OR REPLACE INTO file_metadata 
-                (file_path, file_size, file_mtime, file_hash, lines_processed, 
+                (file_path, file_size, file_mtime, file_hash, file_signature, lines_processed, 
                  last_processed, processing_time_seconds)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                file_path, file_size, file_mtime, file_hash, len(entries),
+                file_path, file_size, file_mtime, file_hash, file_signature, len(entries),
                 datetime.now(), processing_time
             ))
             

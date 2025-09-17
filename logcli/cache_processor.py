@@ -24,6 +24,7 @@ class CacheAwareProcessor:
         self.cache_enabled = cache_enabled
         self.cache_dir = cache_dir
         self.parser = LogParser()
+        self.cache_manager_settings = {}
         
     def process_log_files_cached(self, 
                                 log_files: List[str], 
@@ -56,6 +57,11 @@ class CacheAwareProcessor:
         
         with get_cache_manager(self.cache_dir, self.cache_enabled) as cache_manager:
             if cache_manager and not force_refresh:
+                # Apply custom cache settings if provided
+                if self.cache_manager_settings:
+                    for key, value in self.cache_manager_settings.items():
+                        setattr(cache_manager, key, value)
+                
                 # First, cleanup old data
                 cache_manager.cleanup_old_data()
             
