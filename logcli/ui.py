@@ -418,6 +418,120 @@ class SimpleConsoleUI:
             )
         
         self.console.print(status_table)
+        self.console.print()
+        
+        # Top User Agents
+        ua_table = Table(title="Top User Agents", show_header=True)
+        ua_table.add_column("User Agent", style="bold", max_width=80)
+        ua_table.add_column("Hits", justify="right", style="green")
+        ua_table.add_column("Type", justify="center", style="cyan")
+        
+        for ua, hits in self.stats.get_top_n(self.stats.hits_per_user_agent, 15):
+            # Determine if it's a bot
+            ua_type = "Bot" if any(bot_sig in ua.lower() for bot_sig in ['bot', 'crawler', 'spider', 'curl', 'wget']) else "Browser"
+            
+            # Truncate long user agents
+            display_ua = ua[:77] + "..." if len(ua) > 80 else ua
+            
+            ua_table.add_row(
+                display_ua,
+                f"{hits:,}",
+                ua_type
+            )
+        
+        self.console.print(ua_table)
+        self.console.print()
+        
+        # Top IPs
+        ip_table = Table(title="Top IP Addresses", show_header=True)
+        ip_table.add_column("IP Address", style="bold")
+        ip_table.add_column("Hits", justify="right", style="green")
+        ip_table.add_column("Percentage", justify="right", style="cyan")
+        
+        for ip, hits in self.stats.get_top_n(self.stats.hits_per_ip, 15):
+            percentage = (hits / total) * 100
+            ip_table.add_row(
+                ip,
+                f"{hits:,}",
+                f"{percentage:.1f}%"
+            )
+        
+        self.console.print(ip_table)
+        self.console.print()
+        
+        # Top Paths
+        path_table = Table(title="Top Requested Paths", show_header=True)
+        path_table.add_column("Path", style="bold", max_width=60)
+        path_table.add_column("Hits", justify="right", style="green")
+        path_table.add_column("Percentage", justify="right", style="cyan")
+        
+        for path, hits in self.stats.get_top_n(self.stats.hits_per_path, 15):
+            percentage = (hits / total) * 100
+            # Truncate long paths
+            display_path = path[:57] + "..." if len(path) > 60 else path
+            
+            path_table.add_row(
+                display_path,
+                f"{hits:,}",
+                f"{percentage:.1f}%"
+            )
+        
+        self.console.print(path_table)
+        self.console.print()
+        
+        # Bot Analysis
+        if self.stats.bot_traffic:
+            bot_table = Table(title="Bot Analysis", show_header=True)
+            bot_table.add_column("Bot Type", style="bold")
+            bot_table.add_column("Requests", justify="right", style="green")
+            bot_table.add_column("Percentage", justify="right", style="cyan")
+            
+            total_bot_requests = self.stats.bot_traffic.get('Bot', 0)
+            if total_bot_requests > 0:
+                for bot_type, count in self.stats.get_top_n(self.stats.bot_types, 10):
+                    percentage = (count / total_bot_requests) * 100
+                    bot_table.add_row(
+                        bot_type,
+                        f"{count:,}",
+                        f"{percentage:.1f}%"
+                    )
+                
+                self.console.print(bot_table)
+                self.console.print()
+        
+        # Browser/OS Statistics
+        if self.stats.hits_per_browser:
+            browser_table = Table(title="Top Browsers", show_header=True)
+            browser_table.add_column("Browser", style="bold")
+            browser_table.add_column("Hits", justify="right", style="green")
+            browser_table.add_column("Percentage", justify="right", style="cyan")
+            
+            for browser, hits in self.stats.get_top_n(self.stats.hits_per_browser, 10):
+                percentage = (hits / total) * 100
+                browser_table.add_row(
+                    browser,
+                    f"{hits:,}",
+                    f"{percentage:.1f}%"
+                )
+            
+            self.console.print(browser_table)
+            self.console.print()
+        
+        if self.stats.hits_per_os:
+            os_table = Table(title="Top Operating Systems", show_header=True)
+            os_table.add_column("Operating System", style="bold")
+            os_table.add_column("Hits", justify="right", style="green")
+            os_table.add_column("Percentage", justify="right", style="cyan")
+            
+            for os, hits in self.stats.get_top_n(self.stats.hits_per_os, 10):
+                percentage = (hits / total) * 100
+                os_table.add_row(
+                    os,
+                    f"{hits:,}",
+                    f"{percentage:.1f}%"
+                )
+            
+            self.console.print(os_table)
     
     def display_live_stats(self, refresh_interval: float = 2.0) -> None:
         """Display live updating statistics."""

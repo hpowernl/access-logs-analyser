@@ -1,6 +1,7 @@
 """Main CLI entry point for the log analyzer."""
 
 import sys
+import os
 import glob
 import signal
 import asyncio
@@ -17,9 +18,33 @@ from .aggregators import StatisticsAggregator, RealTimeAggregator
 from .log_reader import LogReader
 from .ui import LogAnalyzerTUI, SimpleConsoleUI
 from .export import DataExporter, create_report_summary
+from .config import HYPERNODE_SETTINGS
 
 
 console = Console()
+
+
+def is_hypernode_platform() -> bool:
+    """Detect if running on Hypernode platform."""
+    # Check for common Hypernode indicators
+    hypernode_indicators = [
+        '/data/web',  # Common Hypernode directory structure
+        '/data/log/nginx',  # Hypernode nginx logs location
+        os.path.exists('/etc/hypernode'),  # Hypernode config directory
+    ]
+    
+    return any(os.path.exists(path) for path in hypernode_indicators[:2]) or hypernode_indicators[2]
+
+
+def get_platform_nginx_dir() -> str:
+    """Get the appropriate nginx directory for the current platform."""
+    if is_hypernode_platform():
+        # Check both common Hypernode locations
+        for path in ['/data/log/nginx', '/var/log/nginx']:
+            if os.path.exists(path):
+                return path
+        return '/data/log/nginx'  # Default for Hypernode
+    return '/var/log/nginx'  # Standard default
 
 
 @click.group()
@@ -40,31 +65,45 @@ def cli():
 @click.option('--export-json', is_flag=True, help='Export results to JSON')
 @click.option('--export-charts', is_flag=True, help='Export charts to HTML')
 @click.option('--summary-only', is_flag=True, help='Show only summary statistics')
-@click.option('--nginx-dir', default='/var/log/nginx', help='Nginx log directory (default: /var/log/nginx)')
-@click.option('--auto-discover', is_flag=True, help='Auto-discover access.log files in nginx directory')
+@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
+@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 def analyze(log_files, follow, interactive, output, filter_preset, countries, status_codes, 
-         exclude_bots, export_csv, export_json, export_charts, summary_only, nginx_dir, auto_discover):
+         exclude_bots, export_csv, export_json, export_charts, summary_only, nginx_dir, no_auto_discover):
     """ Access Log Analyzer - Analyze Nginx JSON access logs with advanced filtering and real-time monitoring.
     
+    By default, logcli will auto-discover access.log files in /var/log/nginx.
+    
     Examples:
+        # Auto-discover and analyze all access logs (default behavior)
+        logcli analyze
+        
         # Analyze specific log files
-        python -m logcli /var/log/nginx/access.log
+        logcli analyze /var/log/nginx/access.log
         
         # Follow logs in real-time with interactive UI
-        python -m logcli -f -i /var/log/nginx/access.log
+        logcli analyze -f -i
         
-        # Auto-discover and analyze all access logs
-        python -m logcli --auto-discover
+        # Use different nginx directory
+        logcli analyze --nginx-dir /custom/log/path
+        
+        # Disable auto-discovery and require manual file specification
+        logcli analyze --no-auto-discover /path/to/specific.log
         
         # Filter and export
-        python -m logcli --countries US,GB --exclude-bots --export-csv /var/log/nginx/access.log
+        logcli analyze --countries US,GB --exclude-bots --export-csv
     """
     
-    # Auto-discover log files if requested
-    if auto_discover:
-        log_files = discover_nginx_logs(nginx_dir)
+    # Auto-discover log files by default unless disabled or log files are specified
+    if not log_files and not no_auto_discover:
+        # Use platform-specific nginx directory if not specified
+        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
+        log_files = discover_nginx_logs(actual_nginx_dir)
         if not log_files:
-            console.print(f"[red]No access.log files found in {nginx_dir}[/red]")
+            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
+            if is_hypernode_platform():
+                console.print(f"[yellow]Hint: This appears to be a Hypernode platform. Logs might be in /data/log/nginx or /var/log/nginx[/yellow]")
+            else:
+                console.print(f"[yellow]Hint: Specify log files manually or use --nginx-dir to set the correct directory[/yellow]")
             sys.exit(1)
         console.print(f"[green]Discovered {len(log_files)} log files[/green]")
     
@@ -301,28 +340,29 @@ def handle_exports(stats: StatisticsAggregator, output_dir: Optional[str],
 # Security Analysis Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default='/var/log/nginx', help='Nginx log directory')
-@click.option('--auto-discover', is_flag=True, help='Auto-discover access.log files')
+@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
+@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--scan-attacks', is_flag=True, help='Scan for attack patterns')
 @click.option('--brute-force-detection', is_flag=True, help='Detect brute force attempts')
 @click.option('--sql-injection-patterns', is_flag=True, help='Look for SQL injection attempts')
 @click.option('--suspicious-user-agents', is_flag=True, help='Find suspicious user agents')
 @click.option('--threshold', default=10, help='Threshold for brute force detection')
 @click.option('--output', '-o', help='Output file for security report')
-def security(log_files, nginx_dir, auto_discover, scan_attacks, brute_force_detection, 
+def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_detection, 
             sql_injection_patterns, suspicious_user_agents, threshold, output):
     """Security analysis of access logs."""
     
-    # Auto-discover log files if requested
-    if auto_discover:
-        log_files = discover_nginx_logs(nginx_dir)
+    # Auto-discover log files by default unless disabled or log files are specified
+    if not log_files and not no_auto_discover:
+        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
+        log_files = discover_nginx_logs(actual_nginx_dir)
         if not log_files:
-            console.print(f"[red]No access.log files found in {nginx_dir}[/red]")
+            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
             return
         console.print(f"[green]Discovered {len(log_files)} log files for security analysis[/green]")
     
     if not log_files:
-        console.print("[red]No log files specified. Use --auto-discover or specify files.[/red]")
+        console.print("[red]No log files specified. Use --help for usage information.[/red]")
         return
     
     # Initialize security analyzer
@@ -370,8 +410,8 @@ def security(log_files, nginx_dir, auto_discover, scan_attacks, brute_force_dete
 # Performance Analysis Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default='/var/log/nginx', help='Nginx log directory')
-@click.option('--auto-discover', is_flag=True, help='Auto-discover access.log files')
+@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
+@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--response-time-analysis', is_flag=True, help='Analyze response times')
 @click.option('--slowest', default=10, help='Show N slowest endpoints')
 @click.option('--percentiles', is_flag=True, help='Show response time percentiles')
@@ -379,20 +419,21 @@ def security(log_files, nginx_dir, auto_discover, scan_attacks, brute_force_dete
 @click.option('--cache-analysis', is_flag=True, help='Analyze cache effectiveness')
 @click.option('--handler', help='Filter by handler (e.g., varnish, phpfpm)')
 @click.option('--output', '-o', help='Output file for performance report')
-def perf(log_files, nginx_dir, auto_discover, response_time_analysis, slowest, 
+def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest, 
          percentiles, bandwidth_analysis, cache_analysis, handler, output):
     """Performance analysis of access logs."""
     
-    # Auto-discover log files if requested
-    if auto_discover:
-        log_files = discover_nginx_logs(nginx_dir)
+    # Auto-discover log files by default unless disabled or log files are specified
+    if not log_files and not no_auto_discover:
+        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
+        log_files = discover_nginx_logs(actual_nginx_dir)
         if not log_files:
-            console.print(f"[red]No access.log files found in {nginx_dir}[/red]")
+            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
             return
         console.print(f"[green]Discovered {len(log_files)} log files for performance analysis[/green]")
     
     if not log_files:
-        console.print("[red]No log files specified. Use --auto-discover or specify files.[/red]")
+        console.print("[red]No log files specified. Use --help for usage information.[/red]")
         return
     
     # Initialize performance analyzer
@@ -446,28 +487,29 @@ def perf(log_files, nginx_dir, auto_discover, response_time_analysis, slowest,
 # Bot Analysis Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default='/var/log/nginx', help='Nginx log directory')
-@click.option('--auto-discover', is_flag=True, help='Auto-discover access.log files')
+@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
+@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--classify-types', is_flag=True, help='Classify bot types')
 @click.option('--behavior-analysis', is_flag=True, help='Analyze bot behavior patterns')
 @click.option('--legitimate-vs-malicious', is_flag=True, help='Score bots as good/bad')
 @click.option('--impact-analysis', is_flag=True, help='Analyze bot resource impact')
 @click.option('--unknown-only', is_flag=True, help='Show only unclassified bots')
 @click.option('--output', '-o', help='Output file for bot analysis report')
-def bots(log_files, nginx_dir, auto_discover, classify_types, behavior_analysis,
+def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analysis,
          legitimate_vs_malicious, impact_analysis, unknown_only, output):
     """Advanced bot and crawler analysis."""
     
-    # Auto-discover log files if requested
-    if auto_discover:
-        log_files = discover_nginx_logs(nginx_dir)
+    # Auto-discover log files by default unless disabled or log files are specified
+    if not log_files and not no_auto_discover:
+        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
+        log_files = discover_nginx_logs(actual_nginx_dir)
         if not log_files:
-            console.print(f"[red]No access.log files found in {nginx_dir}[/red]")
+            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
             return
         console.print(f"[green]Discovered {len(log_files)} log files for bot analysis[/green]")
     
     if not log_files:
-        console.print("[red]No log files specified. Use --auto-discover or specify files.[/red]")
+        console.print("[red]No log files specified. Use --help for usage information.[/red]")
         return
     
     # Initialize bot analyzer
@@ -520,8 +562,8 @@ def bots(log_files, nginx_dir, auto_discover, classify_types, behavior_analysis,
 # Search and Filter Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default='/var/log/nginx', help='Nginx log directory')
-@click.option('--auto-discover', is_flag=True, help='Auto-discover access.log files')
+@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
+@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--ip', help='Search for specific IP address')
 @click.option('--path', help='Search for path pattern (supports regex)')
 @click.option('--status', help='Filter by status code(s) (comma-separated)')
@@ -531,20 +573,21 @@ def bots(log_files, nginx_dir, auto_discover, classify_types, behavior_analysis,
 @click.option('--last-hours', type=int, help='Show entries from last N hours')
 @click.option('--limit', default=100, help='Limit number of results')
 @click.option('--output', '-o', help='Output file for search results')
-def search(log_files, nginx_dir, auto_discover, ip, path, status, user_agent, 
+def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent, 
            country, time_range, last_hours, limit, output):
     """Search and filter log entries with advanced criteria."""
     
-    # Auto-discover log files if requested
-    if auto_discover:
-        log_files = discover_nginx_logs(nginx_dir)
+    # Auto-discover log files by default unless disabled or log files are specified
+    if not log_files and not no_auto_discover:
+        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
+        log_files = discover_nginx_logs(actual_nginx_dir)
         if not log_files:
-            console.print(f"[red]No access.log files found in {nginx_dir}[/red]")
+            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
             return
         console.print(f"[green]Discovered {len(log_files)} log files for search[/green]")
     
     if not log_files:
-        console.print("[red]No log files specified. Use --auto-discover or specify files.[/red]")
+        console.print("[red]No log files specified. Use --help for usage information.[/red]")
         return
     
     # Initialize search
@@ -621,8 +664,8 @@ def search(log_files, nginx_dir, auto_discover, ip, path, status, user_agent,
 # Report Generation Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default='/var/log/nginx', help='Nginx log directory')
-@click.option('--auto-discover', is_flag=True, help='Auto-discover access.log files')
+@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
+@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--daily', is_flag=True, help='Generate daily report')
 @click.option('--weekly', is_flag=True, help='Generate weekly report')
 @click.option('--security-summary', is_flag=True, help='Include security summary')
@@ -630,20 +673,21 @@ def search(log_files, nginx_dir, auto_discover, ip, path, status, user_agent,
 @click.option('--bot-summary', is_flag=True, help='Include bot analysis summary')
 @click.option('--format', default='html', type=click.Choice(['html', 'json', 'text']), help='Report format')
 @click.option('--output', '-o', help='Output directory for reports')
-def report(log_files, nginx_dir, auto_discover, daily, weekly, security_summary, 
+def report(log_files, nginx_dir, no_auto_discover, daily, weekly, security_summary, 
            performance_summary, bot_summary, format, output):
     """Generate comprehensive analysis reports."""
     
-    # Auto-discover log files if requested
-    if auto_discover:
-        log_files = discover_nginx_logs(nginx_dir)
+    # Auto-discover log files by default unless disabled or log files are specified
+    if not log_files and not no_auto_discover:
+        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
+        log_files = discover_nginx_logs(actual_nginx_dir)
         if not log_files:
-            console.print(f"[red]No access.log files found in {nginx_dir}[/red]")
+            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
             return
         console.print(f"[green]Discovered {len(log_files)} log files for reporting[/green]")
     
     if not log_files:
-        console.print("[red]No log files specified. Use --auto-discover or specify files.[/red]")
+        console.print("[red]No log files specified. Use --help for usage information.[/red]")
         return
     
     # Initialize report generator
@@ -744,10 +788,10 @@ def config(init, show, set, profile):
 @click.option('--export-json', is_flag=True, help='Export results to JSON')
 @click.option('--export-charts', is_flag=True, help='Export charts to HTML')
 @click.option('--summary-only', is_flag=True, help='Show only summary statistics')
-@click.option('--nginx-dir', default='/var/log/nginx', help='Nginx log directory (default: /var/log/nginx)')
-@click.option('--auto-discover', is_flag=True, help='Auto-discover access.log files in nginx directory')
+@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
+@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 def main_compat(log_files, follow, interactive, output, filter_preset, countries, status_codes, 
-         exclude_bots, export_csv, export_json, export_charts, summary_only, nginx_dir, auto_discover):
+         exclude_bots, export_csv, export_json, export_charts, summary_only, nginx_dir, no_auto_discover):
     """Legacy main command for backward compatibility."""
     # Call the analyze command with the same parameters
     from click.testing import CliRunner
@@ -777,10 +821,10 @@ def main_compat(log_files, follow, interactive, output, filter_preset, countries
         args.append('--export-charts')
     if summary_only:
         args.append('--summary-only')
-    if nginx_dir != '/var/log/nginx':
+    if nginx_dir:
         args.extend(['--nginx-dir', nginx_dir])
-    if auto_discover:
-        args.append('--auto-discover')
+    if no_auto_discover:
+        args.append('--no-auto-discover')
     
     # Add log files
     args.extend(log_files)

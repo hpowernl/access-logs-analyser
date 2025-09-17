@@ -100,6 +100,7 @@ if [ "$INSTALL_SUCCESS" = false ]; then
         
         # Update opencli to use venv python
         sed -i '1s|#!/usr/bin/env python3|#!/usr/bin/env ./.venv/bin/python3|' opencli
+        # logcli wrapper will automatically detect and use venv
         INSTALL_SUCCESS=true
     else
         print_warning "venv creation failed"
@@ -125,6 +126,35 @@ print_status "Making opencli executable..."
 chmod +x opencli
 print_success "opencli is now executable"
 
+# Create logcli wrapper script
+print_status "Creating logcli wrapper script..."
+cat > logcli << 'EOF'
+#!/bin/bash
+# Hypernode Log Analyzer - logcli wrapper
+# Auto-discover logs and run analysis
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check if we're in a venv
+if [[ -n "$VIRTUAL_ENV" ]] || [[ -f "$SCRIPT_DIR/.venv/bin/python3" ]]; then
+    if [[ -f "$SCRIPT_DIR/.venv/bin/python3" ]]; then
+        PYTHON_CMD="$SCRIPT_DIR/.venv/bin/python3"
+    else
+        PYTHON_CMD="python3"
+    fi
+else
+    PYTHON_CMD="python3"
+fi
+
+# Run logcli with auto-discover enabled by default
+cd "$SCRIPT_DIR"
+exec $PYTHON_CMD -m logcli.main "$@"
+EOF
+
+chmod +x logcli
+print_success "logcli wrapper script created"
+
 # Check if ~/bin is in PATH
 print_status "Checking user PATH..."
 if [[ ":$PATH:" == *":$HOME/bin:"* ]] || [[ ":$PATH:" == *":~/bin:"* ]]; then
@@ -136,7 +166,7 @@ fi
 # Install in user profile (no root needed)
 echo ""
 echo "🔧 Installation Options:"
-echo "   1. Use locally: ./opencli"
+echo "   1. Use locally: ./opencli (TUI) or ./logcli (CLI)"
 echo "   2. Install to user profile: ~/bin/ (no root needed)"
 echo ""
 read -p "Install to user profile? (Y/n): " -n 1 -r
@@ -145,22 +175,24 @@ echo
 # Default to Yes if just Enter is pressed
 if [[ $REPLY =~ ^[Nn]$ ]]; then
     print_success "Local installation complete!"
-    print_status "Use: ./opencli to run the application"
+    print_status "Use: ./opencli for interactive TUI mode"
+    print_status "Use: ./logcli for command-line analysis"
 else
     print_status "Installing to user profile..."
     
     # Create ~/bin directory if it doesn't exist
     mkdir -p ~/bin
     
-    # Create symlink to ~/bin
-    if ln -sf "$(pwd)/opencli" ~/bin/opencli; then
+    # Create symlinks to ~/bin
+    if ln -sf "$(pwd)/opencli" ~/bin/opencli && ln -sf "$(pwd)/logcli" ~/bin/logcli; then
         print_success "User profile installation complete!"
         print_success "opencli installed to ~/bin/opencli"
+        print_success "logcli installed to ~/bin/logcli"
         
         # Check if ~/bin is in PATH
         if [[ ":$PATH:" == *":$HOME/bin:"* ]] || [[ ":$PATH:" == *":~/bin:"* ]]; then
             print_success "~/bin is already in PATH"
-            print_success "You can now run 'opencli' from anywhere"
+            print_success "You can now run 'opencli' or 'logcli' from anywhere"
         else
             print_warning "~/bin is not in PATH"
             echo ""
@@ -181,20 +213,31 @@ echo ""
 echo "🎉 Installation Complete!"
 echo ""
 echo "📋 Usage:"
-echo "   Local:  ./opencli"
+echo "   Interactive TUI:  ./opencli"
+echo "   Command-line:     ./logcli analyze"
 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-    echo "   User:   opencli (if ~/bin is in PATH)"
-    echo "   Direct: ~/bin/opencli"
+    echo "   User (TUI):       opencli (if ~/bin is in PATH)"
+    echo "   User (CLI):       logcli analyze (if ~/bin is in PATH)"
+    echo "   Direct:           ~/bin/opencli or ~/bin/logcli"
 fi
 echo ""
-echo "📁 Log Analysis:"
-echo "   • Automatically finds nginx logs in /var/log/nginx/"
-echo "   • Falls back to sample_access.log for testing"
+echo "📁 Log Analysis (NEW!):"
+echo "   • Auto-discovers nginx logs by default (no --auto-discover needed)"
+echo "   • Platform detection for Hypernode environments"
+echo "   • Extended output with User Agents, IPs, Paths, Browser/OS stats"
 echo "   • Real-time log monitoring and analysis"
+echo ""
+echo "🚀 Quick Start:"
+echo "   logcli analyze                    # Auto-discover and analyze logs"
+echo "   logcli analyze --summary-only     # Quick summary"
+echo "   logcli analyze -i                 # Interactive mode"
+echo "   logcli security                   # Security analysis"
+echo "   logcli perf --response-time-analysis  # Performance analysis"
 echo ""
 echo "🔧 Troubleshooting:"
 echo "   • If modules not found: pip3 install -r requirements.txt"
-echo "   • If permission denied: chmod +x opencli"
-echo "   • For help: ./opencli --help"
+echo "   • If permission denied: chmod +x opencli logcli"
+echo "   • For TUI help: ./opencli --help"
+echo "   • For CLI help: ./logcli --help"
 echo ""
 print_success "Ready to analyze your logs! 🚀"
