@@ -35,13 +35,14 @@ class HypernodeLogCommand:
         except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
             return False
     
-    def execute_command(self, additional_args: Optional[List[str]] = None, use_yesterday: bool = False) -> Iterator[str]:
+    def execute_command(self, additional_args: Optional[List[str]] = None, use_yesterday: bool = False, days_ago: Optional[int] = None) -> Iterator[str]:
         """
         Execute the hypernode-parse-nginx-log command and yield lines.
         
         Args:
             additional_args: Additional command arguments (default uses --today or --yesterday)
             use_yesterday: If True, use --yesterday instead of --today
+            days_ago: If specified, use --days-ago N instead of --today/--yesterday
             
         Yields:
             Raw log lines from the command output
@@ -58,11 +59,13 @@ class HypernodeLogCommand:
         # Add field specification
         cmd.extend(["--field", ",".join(self.fields)])
         
-        # Add additional arguments (default to --today or --yesterday)
+        # Add additional arguments (default to --today, --yesterday, or --days-ago)
         if additional_args:
             cmd.extend(additional_args)
         else:
-            if use_yesterday:
+            if days_ago is not None:
+                cmd.extend(["--days-ago", str(days_ago)])
+            elif use_yesterday:
                 cmd.append("--yesterday")
             else:
                 cmd.append("--today")
@@ -348,13 +351,14 @@ class HypernodeLogCommand:
             
         return False
     
-    def get_log_entries(self, additional_args: Optional[List[str]] = None, use_yesterday: bool = False) -> Iterator[Dict[str, Any]]:
+    def get_log_entries(self, additional_args: Optional[List[str]] = None, use_yesterday: bool = False, days_ago: Optional[int] = None) -> Iterator[Dict[str, Any]]:
         """
         Get parsed log entries from the command.
         
         Args:
             additional_args: Additional command arguments
             use_yesterday: If True, use --yesterday instead of --today
+            days_ago: If specified, use --days-ago N instead of --today/--yesterday
             
         Yields:
             Parsed log entry dictionaries
@@ -371,7 +375,7 @@ class HypernodeLogCommand:
             task = progress.add_task("Fetching log data from Hypernode...", total=None)
             
             try:
-                for line in self.execute_command(additional_args, use_yesterday):
+                for line in self.execute_command(additional_args, use_yesterday, days_ago):
                     total_lines += 1
                     
                     # Update progress occasionally
@@ -391,6 +395,58 @@ class HypernodeLogCommand:
                 raise
         
         console.print(f"[green]Successfully processed {parsed_entries:,} log entries from {total_lines:,} lines[/green]")
+    
+    def get_historical_data(self, days_ago: int) -> List[Dict[str, Any]]:
+        """
+        Get historical log data for a specific number of days ago.
+        
+        Args:
+            days_ago: Number of days ago to retrieve data for (1-7 recommended)
+            
+        Returns:
+            List of parsed log entry dictionaries
+        """
+        if days_ago < 1:
+            raise ValueError("days_ago must be at least 1")
+            
+        console.print(f"[blue]Fetching historical data from {days_ago} days ago...[/blue]")
+        
+        entries = []
+        try:
+            for entry in self.get_log_entries(days_ago=days_ago):
+                entries.append(entry)
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not fetch historical data for {days_ago} days ago: {e}[/yellow]")
+            return []
+            
+        console.print(f"[green]Retrieved {len(entries):,} historical entries from {days_ago} days ago[/green]")
+        return entries
+    
+    def get_week_historical_data(self) -> Dict[int, List[Dict[str, Any]]]:
+        """
+        Get historical data for the past 7 days.
+        
+        Returns:
+            Dictionary mapping days_ago (1-7) to list of log entries
+        """
+        console.print("[blue]Fetching historical data for the past week...[/blue]")
+        
+        week_data = {}
+        for days_ago in range(1, 8):
+            try:
+                data = self.get_historical_data(days_ago)
+                if data:
+                    week_data[days_ago] = data
+                else:
+                    console.print(f"[yellow]No data available for {days_ago} days ago[/yellow]")
+            except Exception as e:
+                console.print(f"[yellow]Could not fetch data for {days_ago} days ago: {e}[/yellow]")
+                continue
+                
+        total_entries = sum(len(data) for data in week_data.values())
+        console.print(f"[green]Retrieved {total_entries:,} total historical entries across {len(week_data)} days[/green]")
+        
+        return week_data
 
 
 class MockHypernodeCommand(HypernodeLogCommand):
@@ -405,13 +461,14 @@ class MockHypernodeCommand(HypernodeLogCommand):
         """Mock is always available for testing."""
         return True
     
-    def execute_command(self, additional_args: Optional[List[str]] = None, use_yesterday: bool = False) -> Iterator[str]:
+    def execute_command(self, additional_args: Optional[List[str]] = None, use_yesterday: bool = False, days_ago: Optional[int] = None) -> Iterator[str]:
         """
         Mock command execution using sample data.
         
         Args:
             additional_args: Additional command arguments (ignored in mock)
             use_yesterday: If True, simulate --yesterday data (ignored in mock)
+            days_ago: If specified, simulate --days-ago data (ignored in mock)
         
         Yields:
             Mock TSV formatted lines

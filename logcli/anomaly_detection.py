@@ -1,4 +1,4 @@
-"""Anomaly detection module using statistical and machine learning approaches."""
+"""Anomaly detection module using statistical and machine learning approaches with historical data analysis."""
 
 import json
 import math
@@ -11,13 +11,231 @@ from rich.console import Console
 console = Console()
 
 
-class AnomalyDetector:
-    """Detects traffic anomalies using statistical analysis and pattern recognition."""
+class HistoricalDataManager:
+    """Manages historical data collection using hypernode-parse-nginx-log."""
     
-    def __init__(self, window_size: int = 60, sensitivity: float = 2.5):
-        """Initialize anomaly detector."""
+    def __init__(self, days_back: int = 7, hypernode_command=None):
+        """Initialize historical data manager."""
+        self.days_back = days_back
+        self.historical_cache = {}
+        
+        # Use provided hypernode command or get default one
+        if hypernode_command is not None:
+            self.hypernode_command = hypernode_command
+        else:
+            from .hypernode_command import get_hypernode_command
+            self.hypernode_command = get_hypernode_command()
+        
+    def get_historical_data(self, days_ago: int) -> List[Dict[str, Any]]:
+        """Get historical data for a specific number of days ago."""
+        if days_ago in self.historical_cache:
+            return self.historical_cache[days_ago]
+            
+        try:
+            # Use hypernode command to get historical data
+            data = self.hypernode_command.get_historical_data(days_ago)
+            self.historical_cache[days_ago] = data
+            return data
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not fetch historical data for {days_ago} days ago: {e}[/yellow]")
+            return []
+    
+    def get_same_weekday_data(self, weeks_back: int = 1) -> List[Dict[str, Any]]:
+        """Get data from the same weekday in previous weeks."""
+        days_ago = weeks_back * 7
+        return self.get_historical_data(days_ago)
+    
+    def get_week_data(self) -> Dict[int, List[Dict[str, Any]]]:
+        """Get data for the entire past week."""
+        try:
+            # Use the new week data method from hypernode command
+            return self.hypernode_command.get_week_historical_data()
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not fetch week data: {e}[/yellow]")
+            # Fallback to individual day fetching
+            week_data = {}
+            for day in range(1, 8):  # 1-7 days ago
+                data = self.get_historical_data(day)
+                if data:
+                    week_data[day] = data
+            return week_data
+
+
+class BaselineCalculator:
+    """Calculates dynamic baselines using historical data."""
+    
+    def __init__(self, historical_manager: HistoricalDataManager):
+        """Initialize baseline calculator."""
+        self.historical_manager = historical_manager
+        self.baselines = {
+            'hourly_patterns': defaultdict(lambda: defaultdict(list)),
+            'daily_patterns': defaultdict(list),
+            'weekday_patterns': defaultdict(lambda: defaultdict(list)),
+            'traffic_baselines': defaultdict(list),
+            'performance_baselines': defaultdict(list),
+            'security_baselines': defaultdict(list)
+        }
+        
+    def build_baselines(self) -> Dict[str, Any]:
+        """Build comprehensive baselines from historical data."""
+        console.print("[blue]Building baselines from historical data...[/blue]")
+        
+        # Get historical data for the past week
+        week_data = self.historical_manager.get_week_data()
+        
+        for days_ago, daily_data in week_data.items():
+            if not daily_data:
+                continue
+                
+            # Process data by hour
+            hourly_data = self._group_by_hour(daily_data)
+            
+            for hour, hour_data in hourly_data.items():
+                if not hour_data:
+                    continue
+                    
+                # Calculate metrics for this hour
+                metrics = self._calculate_hour_metrics(hour_data)
+                
+                # Get weekday for this data
+                if hour_data:
+                    sample_timestamp = hour_data[0].get('timestamp')
+                    if sample_timestamp:
+                        weekday = sample_timestamp.weekday() if hasattr(sample_timestamp, 'weekday') else 0
+                        
+                        # Store in appropriate baselines
+                        self.baselines['hourly_patterns'][hour]['requests'].append(metrics['requests'])
+                        self.baselines['hourly_patterns'][hour]['unique_ips'].append(metrics['unique_ips'])
+                        self.baselines['hourly_patterns'][hour]['error_rate'].append(metrics['error_rate'])
+                        self.baselines['hourly_patterns'][hour]['response_time'].append(metrics['avg_response_time'])
+                        
+                        self.baselines['weekday_patterns'][weekday]['requests'].append(metrics['requests'])
+                        self.baselines['weekday_patterns'][weekday]['unique_ips'].append(metrics['unique_ips'])
+                        self.baselines['weekday_patterns'][weekday]['error_rate'].append(metrics['error_rate'])
+        
+        # Calculate statistical baselines
+        calculated_baselines = self._calculate_statistical_baselines()
+        
+        console.print(f"[green]Baselines built from {len([d for d in week_data.values() if d])} days of historical data[/green]")
+        return calculated_baselines
+    
+    def _group_by_hour(self, data: List[Dict[str, Any]]) -> Dict[int, List[Dict[str, Any]]]:
+        """Group log entries by hour of day."""
+        hourly_data = defaultdict(list)
+        
+        for entry in data:
+            timestamp = entry.get('timestamp')
+            if timestamp:
+                if hasattr(timestamp, 'hour'):
+                    hour = timestamp.hour
+                else:
+                    # If timestamp is string, try to parse it
+                    try:
+                        if isinstance(timestamp, str):
+                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            hour = dt.hour
+                        else:
+                            hour = 12  # Default to noon
+                    except:
+                        hour = 12
+                hourly_data[hour].append(entry)
+                
+        return hourly_data
+    
+    def _calculate_hour_metrics(self, hour_data: List[Dict[str, Any]]) -> Dict[str, float]:
+        """Calculate metrics for an hour of data."""
+        if not hour_data:
+            return {'requests': 0, 'unique_ips': 0, 'error_rate': 0, 'avg_response_time': 0}
+            
+        unique_ips = set()
+        errors = 0
+        response_times = []
+        
+        for entry in hour_data:
+            # Count unique IPs
+            ip = entry.get('remote_addr', '')
+            if ip and ip != '-':
+                unique_ips.add(ip)
+            
+            # Count errors
+            status = entry.get('status', 200)
+            if isinstance(status, str):
+                try:
+                    status = int(status)
+                except:
+                    status = 200
+            if status >= 400:
+                errors += 1
+            
+            # Collect response times
+            response_time = entry.get('request_time', 0)
+            if isinstance(response_time, str):
+                try:
+                    response_time = float(response_time)
+                except:
+                    response_time = 0
+            if response_time > 0:
+                response_times.append(response_time)
+        
+        return {
+            'requests': len(hour_data),
+            'unique_ips': len(unique_ips),
+            'error_rate': (errors / len(hour_data) * 100) if hour_data else 0,
+            'avg_response_time': statistics.mean(response_times) if response_times else 0
+        }
+    
+    def _calculate_statistical_baselines(self) -> Dict[str, Any]:
+        """Calculate statistical baselines from collected data."""
+        baselines = {}
+        
+        # Hourly baselines
+        baselines['hourly'] = {}
+        for hour in range(24):
+            hour_data = self.baselines['hourly_patterns'][hour]
+            baselines['hourly'][hour] = {
+                'requests_mean': statistics.mean(hour_data['requests']) if hour_data['requests'] else 0,
+                'requests_stdev': statistics.stdev(hour_data['requests']) if len(hour_data['requests']) > 1 else 0,
+                'unique_ips_mean': statistics.mean(hour_data['unique_ips']) if hour_data['unique_ips'] else 0,
+                'unique_ips_stdev': statistics.stdev(hour_data['unique_ips']) if len(hour_data['unique_ips']) > 1 else 0,
+                'error_rate_mean': statistics.mean(hour_data['error_rate']) if hour_data['error_rate'] else 0,
+                'error_rate_stdev': statistics.stdev(hour_data['error_rate']) if len(hour_data['error_rate']) > 1 else 0,
+                'response_time_mean': statistics.mean(hour_data['response_time']) if hour_data['response_time'] else 0,
+                'response_time_stdev': statistics.stdev(hour_data['response_time']) if len(hour_data['response_time']) > 1 else 0,
+            }
+        
+        # Weekday baselines
+        baselines['weekday'] = {}
+        for weekday in range(7):
+            weekday_data = self.baselines['weekday_patterns'][weekday]
+            baselines['weekday'][weekday] = {
+                'requests_mean': statistics.mean(weekday_data['requests']) if weekday_data['requests'] else 0,
+                'requests_stdev': statistics.stdev(weekday_data['requests']) if len(weekday_data['requests']) > 1 else 0,
+                'unique_ips_mean': statistics.mean(weekday_data['unique_ips']) if weekday_data['unique_ips'] else 0,
+                'error_rate_mean': statistics.mean(weekday_data['error_rate']) if weekday_data['error_rate'] else 0,
+            }
+        
+        return baselines
+
+
+class AnomalyDetector:
+    """Detects traffic anomalies using statistical analysis and pattern recognition with historical data."""
+    
+    def __init__(self, window_size: int = 60, sensitivity: float = 2.5, days_back: int = 7, hypernode_command=None):
+        """Initialize anomaly detector with historical data capabilities."""
         self.window_size = window_size  # Minutes of data to keep in memory
         self.sensitivity = sensitivity   # Z-score threshold for anomaly detection
+        self.days_back = days_back      # Days of historical data to use
+        
+        # Initialize historical data management
+        self.historical_manager = HistoricalDataManager(days_back, hypernode_command)
+        self.baseline_calculator = BaselineCalculator(self.historical_manager)
+        
+        # Build baselines from historical data
+        try:
+            self.historical_baselines = self.baseline_calculator.build_baselines()
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not build historical baselines: {e}[/yellow]")
+            self.historical_baselines = {'hourly': {}, 'weekday': {}}
         
         # Time-series data for anomaly detection
         self.time_series_data = defaultdict(lambda: deque(maxlen=window_size))
@@ -32,7 +250,7 @@ class AnomalyDetector:
             'bandwidth_per_minute': deque(maxlen=window_size)
         }
         
-        # Anomaly tracking
+        # Enhanced anomaly tracking with historical comparisons
         self.detected_anomalies = []
         self.anomaly_types = {
             'traffic_spike': 0,
@@ -43,7 +261,12 @@ class AnomalyDetector:
             'bandwidth_anomaly': 0,
             'geographic_anomaly': 0,
             'user_agent_anomaly': 0,
-            'attack_pattern_anomaly': 0
+            'attack_pattern_anomaly': 0,
+            'historical_comparison_anomaly': 0,
+            'weekday_pattern_anomaly': 0,
+            'hourly_pattern_anomaly': 0,
+            'weekly_trend_anomaly': 0,
+            'same_time_last_week_anomaly': 0
         }
         
         # Behavioral baselines
@@ -204,6 +427,9 @@ class AnomalyDetector:
         
         # Detect behavioral anomalies
         self._detect_behavioral_anomalies(data)
+        
+        # Detect historical comparison anomalies
+        self._detect_historical_anomalies(data, requests, unique_ips, error_rate, avg_response_time)
         
         # Update baselines
         self._update_baselines()
@@ -423,6 +649,225 @@ class AnomalyDetector:
                         'timestamp': minute_data['timestamp']
                     })
     
+    def _detect_historical_anomalies(self, minute_data: Dict[str, Any], requests: int, 
+                                   unique_ips: int, error_rate: float, avg_response_time: float) -> None:
+        """Detect anomalies by comparing current data with historical baselines."""
+        timestamp = minute_data.get('timestamp')
+        if not timestamp:
+            return
+            
+        current_hour = timestamp.hour if hasattr(timestamp, 'hour') else datetime.now().hour
+        current_weekday = timestamp.weekday() if hasattr(timestamp, 'weekday') else datetime.now().weekday()
+        
+        # Compare with hourly historical baselines
+        self._detect_hourly_pattern_anomalies(current_hour, requests, unique_ips, error_rate, avg_response_time, timestamp)
+        
+        # Compare with weekday historical baselines  
+        self._detect_weekday_pattern_anomalies(current_weekday, requests, unique_ips, error_rate, timestamp)
+        
+        # Compare with same time last week
+        self._detect_same_time_last_week_anomalies(requests, unique_ips, error_rate, avg_response_time, timestamp)
+        
+        # Detect weekly trend anomalies
+        self._detect_weekly_trend_anomalies(requests, unique_ips, error_rate, timestamp)
+    
+    def _detect_hourly_pattern_anomalies(self, hour: int, requests: int, unique_ips: int, 
+                                       error_rate: float, response_time: float, timestamp: datetime) -> None:
+        """Detect anomalies based on hourly historical patterns."""
+        if hour not in self.historical_baselines.get('hourly', {}):
+            return
+            
+        hourly_baseline = self.historical_baselines['hourly'][hour]
+        
+        # Check requests anomaly
+        requests_mean = hourly_baseline.get('requests_mean', 0)
+        requests_stdev = hourly_baseline.get('requests_stdev', 0)
+        
+        if requests_mean > 0 and requests_stdev > 0:
+            z_score = (requests - requests_mean) / requests_stdev
+            if abs(z_score) > self.sensitivity:
+                self.anomaly_types['hourly_pattern_anomaly'] += 1
+                self._record_anomaly('hourly_pattern_anomaly', {
+                    'type': 'Hourly Pattern Anomaly',
+                    'metric': 'requests',
+                    'hour': hour,
+                    'z_score': z_score,
+                    'actual_value': requests,
+                    'historical_mean': requests_mean,
+                    'historical_stdev': requests_stdev,
+                    'severity': 'High' if abs(z_score) > 3 else 'Medium',
+                    'timestamp': timestamp
+                })
+        
+        # Check error rate anomaly
+        error_rate_mean = hourly_baseline.get('error_rate_mean', 0)
+        error_rate_stdev = hourly_baseline.get('error_rate_stdev', 0)
+        
+        if error_rate_mean >= 0 and error_rate_stdev > 0 and error_rate > error_rate_mean + (2 * error_rate_stdev):
+            self.anomaly_types['hourly_pattern_anomaly'] += 1
+            self._record_anomaly('hourly_pattern_anomaly', {
+                'type': 'Hourly Error Rate Anomaly',
+                'metric': 'error_rate',
+                'hour': hour,
+                'actual_error_rate': error_rate,
+                'historical_mean': error_rate_mean,
+                'historical_stdev': error_rate_stdev,
+                'severity': 'High',
+                'timestamp': timestamp
+            })
+        
+        # Check unique IPs anomaly
+        unique_ips_mean = hourly_baseline.get('unique_ips_mean', 0)
+        unique_ips_stdev = hourly_baseline.get('unique_ips_stdev', 0)
+        
+        if unique_ips_mean > 0 and unique_ips_stdev > 0:
+            z_score = (unique_ips - unique_ips_mean) / unique_ips_stdev
+            if abs(z_score) > self.sensitivity:
+                self.anomaly_types['hourly_pattern_anomaly'] += 1
+                self._record_anomaly('hourly_pattern_anomaly', {
+                    'type': 'Hourly Unique IPs Anomaly',
+                    'metric': 'unique_ips',
+                    'hour': hour,
+                    'z_score': z_score,
+                    'actual_value': unique_ips,
+                    'historical_mean': unique_ips_mean,
+                    'severity': 'Medium',
+                    'timestamp': timestamp
+                })
+    
+    def _detect_weekday_pattern_anomalies(self, weekday: int, requests: int, unique_ips: int, 
+                                        error_rate: float, timestamp: datetime) -> None:
+        """Detect anomalies based on weekday historical patterns."""
+        if weekday not in self.historical_baselines.get('weekday', {}):
+            return
+            
+        weekday_baseline = self.historical_baselines['weekday'][weekday]
+        
+        # Check requests anomaly for this weekday
+        requests_mean = weekday_baseline.get('requests_mean', 0)
+        requests_stdev = weekday_baseline.get('requests_stdev', 0)
+        
+        if requests_mean > 0 and requests_stdev > 0:
+            z_score = (requests - requests_mean) / requests_stdev
+            if abs(z_score) > self.sensitivity:
+                weekday_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                self.anomaly_types['weekday_pattern_anomaly'] += 1
+                self._record_anomaly('weekday_pattern_anomaly', {
+                    'type': 'Weekday Pattern Anomaly',
+                    'weekday': weekday_names[weekday],
+                    'weekday_number': weekday,
+                    'z_score': z_score,
+                    'actual_requests': requests,
+                    'expected_requests': requests_mean,
+                    'severity': 'Medium' if abs(z_score) < 3 else 'High',
+                    'timestamp': timestamp
+                })
+    
+    def _detect_same_time_last_week_anomalies(self, requests: int, unique_ips: int, 
+                                            error_rate: float, response_time: float, timestamp: datetime) -> None:
+        """Compare current metrics with same time last week."""
+        try:
+            # Get data from exactly 7 days ago
+            last_week_data = self.historical_manager.get_historical_data(7)
+            if not last_week_data:
+                return
+                
+            # Filter to same hour as current timestamp
+            current_hour = timestamp.hour if hasattr(timestamp, 'hour') else datetime.now().hour
+            same_hour_data = [entry for entry in last_week_data 
+                            if hasattr(entry.get('timestamp'), 'hour') and entry['timestamp'].hour == current_hour]
+            
+            if same_hour_data:
+                # Calculate metrics for same hour last week
+                last_week_metrics = self.baseline_calculator._calculate_hour_metrics(same_hour_data)
+                
+                # Compare requests
+                last_week_requests = last_week_metrics['requests']
+                if last_week_requests > 0:
+                    requests_ratio = requests / last_week_requests
+                    if requests_ratio > 2.0 or requests_ratio < 0.5:  # 2x increase or 50% decrease
+                        self.anomaly_types['same_time_last_week_anomaly'] += 1
+                        self._record_anomaly('same_time_last_week_anomaly', {
+                            'type': 'Same Time Last Week Comparison',
+                            'metric': 'requests',
+                            'current_value': requests,
+                            'last_week_value': last_week_requests,
+                            'ratio': requests_ratio,
+                            'severity': 'High' if requests_ratio > 3.0 or requests_ratio < 0.3 else 'Medium',
+                            'timestamp': timestamp
+                        })
+                
+                # Compare error rates
+                last_week_error_rate = last_week_metrics['error_rate']
+                if error_rate > last_week_error_rate + 5.0:  # 5% higher error rate
+                    self.anomaly_types['same_time_last_week_anomaly'] += 1
+                    self._record_anomaly('same_time_last_week_anomaly', {
+                        'type': 'Same Time Last Week Error Rate Increase',
+                        'current_error_rate': error_rate,
+                        'last_week_error_rate': last_week_error_rate,
+                        'increase': error_rate - last_week_error_rate,
+                        'severity': 'High',
+                        'timestamp': timestamp
+                    })
+                    
+        except Exception as e:
+            # Silently handle errors in historical comparison
+            pass
+    
+    def _detect_weekly_trend_anomalies(self, requests: int, unique_ips: int, error_rate: float, timestamp: datetime) -> None:
+        """Detect anomalies based on weekly trends."""
+        try:
+            # Get data for past 7 days to analyze trends
+            weekly_metrics = []
+            for days_ago in range(1, 8):
+                daily_data = self.historical_manager.get_historical_data(days_ago)
+                if daily_data:
+                    daily_metrics = self.baseline_calculator._calculate_hour_metrics(daily_data)
+                    weekly_metrics.append(daily_metrics['requests'])
+            
+            if len(weekly_metrics) >= 3:  # Need at least 3 days of data
+                # Calculate trend
+                trend = self._calculate_trend(weekly_metrics)
+                
+                # Predict expected value based on trend
+                expected_requests = weekly_metrics[-1] + trend
+                
+                # Check if current value deviates significantly from trend
+                if expected_requests > 0:
+                    deviation = abs(requests - expected_requests) / expected_requests
+                    if deviation > 0.5:  # 50% deviation from trend
+                        self.anomaly_types['weekly_trend_anomaly'] += 1
+                        self._record_anomaly('weekly_trend_anomaly', {
+                            'type': 'Weekly Trend Deviation',
+                            'current_requests': requests,
+                            'expected_requests': expected_requests,
+                            'trend': trend,
+                            'deviation_percentage': deviation * 100,
+                            'severity': 'Medium',
+                            'timestamp': timestamp
+                        })
+        except Exception as e:
+            # Silently handle errors in trend analysis
+            pass
+    
+    def _calculate_trend(self, values: List[float]) -> float:
+        """Calculate simple linear trend from a series of values."""
+        if len(values) < 2:
+            return 0
+            
+        # Simple linear regression slope calculation
+        n = len(values)
+        x_sum = sum(range(n))
+        y_sum = sum(values)
+        xy_sum = sum(i * values[i] for i in range(n))
+        x_squared_sum = sum(i * i for i in range(n))
+        
+        if n * x_squared_sum - x_sum * x_sum == 0:
+            return 0
+            
+        slope = (n * xy_sum - x_sum * y_sum) / (n * x_squared_sum - x_sum * x_sum)
+        return slope
+    
     def _calculate_z_score(self, value: float, data_series: deque) -> float:
         """Calculate z-score for anomaly detection."""
         if len(data_series) < 2:
@@ -519,17 +964,30 @@ class AnomalyDetector:
         # Get top anomaly types
         anomaly_type_counts = Counter(a['type'] for a in recent_anomalies)
         
+        # Historical comparison stats
+        historical_anomalies = [a for a in recent_anomalies if 'historical' in a['type'] or 'weekday' in a['type'] or 'hourly' in a['type']]
+        
         return {
             'total_anomalies': total_anomalies,
             'recent_anomalies': len(recent_anomalies),
             'critical_anomalies': len(critical_anomalies),
             'high_severity_anomalies': len(high_anomalies),
             'medium_severity_anomalies': len(medium_anomalies),
+            'historical_comparison_anomalies': len(historical_anomalies),
             'anomaly_types': dict(self.anomaly_types),
-            'top_anomaly_types': dict(anomaly_type_counts.most_common(5)),
+            'top_anomaly_types': dict(anomaly_type_counts.most_common(10)),
             'baseline_metrics': self.baseline_metrics,
+            'historical_baselines_available': len(self.historical_baselines.get('hourly', {})) > 0,
+            'historical_data_days': self.days_back,
             'detection_sensitivity': self.sensitivity,
-            'data_window_minutes': self.window_size
+            'data_window_minutes': self.window_size,
+            'enhanced_features': {
+                'hourly_pattern_detection': True,
+                'weekday_pattern_detection': True,
+                'weekly_trend_analysis': True,
+                'same_time_last_week_comparison': True,
+                'historical_baseline_learning': True
+            }
         }
     
     def get_recent_anomalies(self, hours: int = 1) -> List[Dict[str, Any]]:
@@ -582,6 +1040,60 @@ class AnomalyDetector:
                 'details': 'Attack patterns in URLs suggest active security threats'
             })
         
+        # Historical pattern analysis recommendations
+        hourly_anomalies = [a for a in recent_anomalies if a['type'] == 'hourly_pattern_anomaly']
+        if len(hourly_anomalies) > 5:
+            recommendations.append({
+                'priority': 'Medium',
+                'category': 'Traffic Pattern Analysis',
+                'issue': f'{len(hourly_anomalies)} hourly pattern deviations detected',
+                'recommendation': 'Review traffic patterns and adjust capacity planning',
+                'details': 'Current traffic significantly differs from historical hourly patterns'
+            })
+        
+        # Weekday pattern recommendations
+        weekday_anomalies = [a for a in recent_anomalies if a['type'] == 'weekday_pattern_anomaly']
+        if len(weekday_anomalies) > 3:
+            recommendations.append({
+                'priority': 'Medium',
+                'category': 'Weekly Pattern Analysis',
+                'issue': f'{len(weekday_anomalies)} weekday pattern anomalies detected',
+                'recommendation': 'Investigate changes in weekly traffic patterns',
+                'details': 'Traffic patterns differ significantly from typical weekday behavior'
+            })
+        
+        # Same time last week comparison recommendations
+        weekly_comparison_anomalies = [a for a in recent_anomalies if a['type'] == 'same_time_last_week_anomaly']
+        if len(weekly_comparison_anomalies) > 2:
+            recommendations.append({
+                'priority': 'High',
+                'category': 'Weekly Trend Analysis',
+                'issue': f'{len(weekly_comparison_anomalies)} significant week-over-week changes detected',
+                'recommendation': 'Investigate causes of traffic pattern changes compared to last week',
+                'details': 'Substantial differences in traffic compared to same time periods last week'
+            })
+        
+        # Weekly trend recommendations
+        trend_anomalies = [a for a in recent_anomalies if a['type'] == 'weekly_trend_anomaly']
+        if len(trend_anomalies) > 2:
+            recommendations.append({
+                'priority': 'Medium',
+                'category': 'Trend Analysis',
+                'issue': f'{len(trend_anomalies)} trend deviations detected',
+                'recommendation': 'Analyze traffic growth trends and adjust infrastructure planning',
+                'details': 'Current traffic deviates significantly from established weekly trends'
+            })
+        
+        # Historical baseline recommendations
+        if not self.historical_baselines.get('hourly', {}):
+            recommendations.append({
+                'priority': 'Low',
+                'category': 'Baseline Learning',
+                'issue': 'Limited historical baseline data available',
+                'recommendation': 'Allow more time for historical baseline learning to improve anomaly detection accuracy',
+                'details': 'Enhanced anomaly detection requires at least 7 days of historical data'
+            })
+        
         return recommendations
     
     def export_anomaly_report(self, output_file: str) -> None:
@@ -592,10 +1104,12 @@ class AnomalyDetector:
             'recent_anomalies': self.get_recent_anomalies(hours=24),
             'anomaly_timeline': self._get_anomaly_timeline(),
             'recommendations': self.get_anomaly_recommendations(),
+            'historical_baselines': self._get_historical_baseline_summary(),
             'configuration': {
                 'sensitivity_threshold': self.sensitivity,
                 'window_size_minutes': self.window_size,
-                'detection_methods': ['statistical', 'behavioral', 'pattern-based']
+                'historical_data_days': self.days_back,
+                'detection_methods': ['statistical', 'behavioral', 'pattern-based', 'historical-comparison', 'trend-analysis']
             }
         }
         
@@ -616,3 +1130,88 @@ class AnomalyDetector:
             })
         
         return dict(timeline)
+    
+    def _get_historical_baseline_summary(self) -> Dict[str, Any]:
+        """Get summary of historical baselines for reporting."""
+        summary = {
+            'baseline_data_available': len(self.historical_baselines.get('hourly', {})) > 0,
+            'historical_data_days': self.days_back,
+            'hourly_baselines_count': len(self.historical_baselines.get('hourly', {})),
+            'weekday_baselines_count': len(self.historical_baselines.get('weekday', {})),
+        }
+        
+        # Sample of hourly baselines for verification
+        if self.historical_baselines.get('hourly'):
+            sample_hours = list(self.historical_baselines['hourly'].keys())[:3]
+            summary['sample_hourly_baselines'] = {
+                hour: {
+                    'requests_mean': self.historical_baselines['hourly'][hour].get('requests_mean', 0),
+                    'error_rate_mean': self.historical_baselines['hourly'][hour].get('error_rate_mean', 0),
+                    'unique_ips_mean': self.historical_baselines['hourly'][hour].get('unique_ips_mean', 0)
+                }
+                for hour in sample_hours
+            }
+        
+        # Sample of weekday baselines
+        if self.historical_baselines.get('weekday'):
+            weekday_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            summary['weekday_baselines'] = {
+                weekday_names[day]: {
+                    'requests_mean': self.historical_baselines['weekday'][day].get('requests_mean', 0),
+                    'error_rate_mean': self.historical_baselines['weekday'][day].get('error_rate_mean', 0)
+                }
+                for day in self.historical_baselines['weekday'].keys()
+            }
+        
+        return summary
+    
+    def get_historical_comparison_report(self) -> Dict[str, Any]:
+        """Generate a detailed historical comparison report."""
+        current_time = datetime.now()
+        current_hour = current_time.hour
+        current_weekday = current_time.weekday()
+        
+        report = {
+            'timestamp': current_time.isoformat(),
+            'current_context': {
+                'hour': current_hour,
+                'weekday': current_weekday,
+                'weekday_name': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][current_weekday]
+            },
+            'historical_baselines_available': len(self.historical_baselines.get('hourly', {})) > 0,
+            'data_collection_period': f'{self.days_back} days',
+        }
+        
+        # Current hour baseline comparison
+        if current_hour in self.historical_baselines.get('hourly', {}):
+            hourly_baseline = self.historical_baselines['hourly'][current_hour]
+            report['current_hour_baseline'] = {
+                'hour': current_hour,
+                'historical_requests_mean': hourly_baseline.get('requests_mean', 0),
+                'historical_requests_stdev': hourly_baseline.get('requests_stdev', 0),
+                'historical_error_rate_mean': hourly_baseline.get('error_rate_mean', 0),
+                'historical_unique_ips_mean': hourly_baseline.get('unique_ips_mean', 0),
+            }
+        
+        # Current weekday baseline comparison
+        if current_weekday in self.historical_baselines.get('weekday', {}):
+            weekday_baseline = self.historical_baselines['weekday'][current_weekday]
+            report['current_weekday_baseline'] = {
+                'weekday': current_weekday,
+                'weekday_name': report['current_context']['weekday_name'],
+                'historical_requests_mean': weekday_baseline.get('requests_mean', 0),
+                'historical_error_rate_mean': weekday_baseline.get('error_rate_mean', 0),
+                'historical_unique_ips_mean': weekday_baseline.get('unique_ips_mean', 0),
+            }
+        
+        # Recent historical anomalies
+        recent_anomalies = self.get_recent_anomalies(hours=24)
+        historical_anomalies = [a for a in recent_anomalies if any(keyword in a['type'] for keyword in ['historical', 'hourly', 'weekday', 'weekly', 'trend'])]
+        
+        report['recent_historical_anomalies'] = {
+            'total_count': len(historical_anomalies),
+            'by_type': Counter(a['type'] for a in historical_anomalies),
+            'by_severity': Counter(a['details'].get('severity', 'Unknown') for a in historical_anomalies)
+        }
+        
+        return report
