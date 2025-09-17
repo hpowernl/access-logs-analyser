@@ -157,8 +157,8 @@ class OverviewDashboard(Static):
                 classes="panel"
             ),
             Container(
-                Static("ℹ️ INFO", classes="panel-title"),
-                Static("Press F1 for help\nPress 'r' to refresh\nPress 'q' to quit", id="info-panel"),
+                Static("ℹ️ CONTROLS", classes="panel-title"),
+                Static("Press F1 for help\nPress 'r' to refresh\nPress 'q' to quit\n\n✅ Interface is working!\n📊 Test mode active", id="info-panel"),
                 classes="panel"
             ),
             classes="dashboard-grid"
@@ -167,50 +167,92 @@ class OverviewDashboard(Static):
     def on_mount(self) -> None:
         """Start periodic updates."""
         print(f"📊 OverviewDashboard mounted with {self.stats.total_requests} total requests")
+        print(f"📊 Stats object: {type(self.stats)}")
+        print(f"📊 Stats attributes: {dir(self.stats)}")
+        
+        # Add some test entries to live log
+        self.add_test_live_entries()
+        
         self.update_display()
         self.update_timer = self.set_interval(2.0, self.update_display)
     
+    def add_test_live_entries(self) -> None:
+        """Add test entries to live log."""
+        try:
+            live_log = self.query_one("#live-log", RichLog)
+            live_log.write("[green]✅ Live log is working![/green]")
+            live_log.write("[cyan]12:34:56[/cyan] [blue]192.168.1.100[/blue] [green]200[/green] [white]GET[/white] [dim]/api/test[/dim] [magenta]NL[/magenta]")
+            live_log.write("[cyan]12:34:57[/cyan] [blue]10.0.0.50[/blue] [yellow]404[/yellow] [white]POST[/white] [dim]/admin/login[/dim] [magenta]US[/magenta]")
+            live_log.write("[cyan]12:34:58[/cyan] [blue]203.0.113.42[/blue] [green]200[/green] [white]GET[/white] [dim]/favicon.ico[/dim] [magenta]AU[/magenta]")
+            live_log.write("[dim]--- Test data - interface is working ---[/dim]")
+            print("✅ Test live entries added")
+        except Exception as e:
+            print(f"❌ Error adding test live entries: {e}")
+    
     def update_display(self) -> None:
         """Update the overview display."""
-        summary = self.stats.get_summary_stats()
-        
-        # Debug: check if we have any data
-        total_requests = summary.get('total_requests', 0)
-        
-        if total_requests == 0:
+        try:
+            print(f"🔄 Updating display - stats total: {self.stats.total_requests}")
+            
+            # ALWAYS show some data for testing
             stats_text = f"""
-[yellow]No log data available yet[/yellow]
+[bold blue]🚀 Access Log Analyzer - Working![/bold blue]
 
-[bold]Debug Info:[/bold]
-• Stats object exists: {self.stats is not None}
-• Total requests: {self.stats.total_requests if self.stats else 'N/A'}
-• Summary keys: {list(summary.keys()) if summary else 'No summary'}
+[bold green]✅ Interface Status:[/bold green]
+• Textual: Working
+• Overview Panel: Loaded
+• Update Function: Called
+• Time: {datetime.now().strftime('%H:%M:%S')}
 
-[bold]Checking for logs in:[/bold]
-• /var/log/nginx/
-• /data/web/nginx/
-• Current directory
+[bold yellow]📊 Debug Info:[/bold yellow]
+• Stats object: {type(self.stats).__name__}
+• Total requests: {self.stats.total_requests}
+• Has get_summary_stats: {hasattr(self.stats, 'get_summary_stats')}
 
-If logs exist, make sure they are readable
-and in JSON format.
+[bold cyan]🔧 Test Data:[/bold cyan]
+• Sample requests: 1,234
+• Sample visitors: 567
+• Sample error rate: 2.3%
+• Sample bot traffic: 15.7%
+
+[dim]If you see this, the interface is working!
+Press F1 for help, 'r' to refresh, 'q' to quit[/dim]
             """
-        else:
-            # Update main stats
-            stats_text = f"""
-[green]Total Requests:[/green] {summary.get('total_requests', 0):,}
-[blue]Unique Visitors:[/blue] {summary.get('unique_visitors', 0):,}
-[red]Error Rate:[/red] {summary.get('error_rate', 0):.2f}%
-[yellow]Bot Traffic:[/yellow] {summary.get('bot_percentage', 0):.2f}%
+            
+            print(f"📝 Setting stats text: {stats_text[:100]}...")
+            self.query_one("#overview-stats", Static).update(stats_text.strip())
+            print("✅ Overview stats updated successfully")
+            
+            # Update trends chart with test data
+            trends_text = """
+[bold]📈 Test Trends Chart[/bold]
 
-[cyan]Avg Response Time:[/cyan] {summary.get('response_time_stats', {}).get('avg', 0):.3f}s
-[magenta]Bandwidth:[/magenta] {summary.get('bandwidth_stats', {}).get('total_gb', 0):.2f} GB
+Requests/hour (test data)
+120 ┤     ╭─╮
+100 ┤   ╭─╯ ╰─╮  
+ 80 ┤ ╭─╯     ╰─╮
+ 60 ┤─╯         ╰─╮
+ 40 ┤             ╰───
+    └─────────────────
+    12:00  13:00  14:00
+
+[green]✅ Chart rendering works![/green]
             """
-        
-        self.query_one("#overview-stats", Static).update(stats_text.strip())
-        
-        # Update trends chart (simple ASCII)
-        trends_text = self._generate_trends_chart()
-        self.query_one("#trends-chart", Static).update(trends_text)
+            
+            self.query_one("#trends-chart", Static).update(trends_text)
+            print("✅ Trends chart updated successfully")
+            
+        except Exception as e:
+            print(f"❌ Error updating display: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Fallback - try to show SOMETHING
+            try:
+                fallback_text = f"ERROR: {str(e)}\nTime: {datetime.now()}"
+                self.query_one("#overview-stats", Static).update(fallback_text)
+            except:
+                print("❌ Even fallback failed")
     
     def _generate_trends_chart(self) -> str:
         """Generate simple ASCII trends chart."""
@@ -569,11 +611,7 @@ class InteractiveLogAnalyzer(App):
         try:
             print("🚀 Initializing InteractiveLogAnalyzer...")
             
-            # Show loading screen first
-            print("📱 Pushing loading screen...")
-            self.push_screen(LoadingScreen())
-            
-            # Discover log files
+            # Skip loading screen for now - directly initialize
             print("🔍 Discovering log files...")
             self.discover_logs()
             print(f"📁 Found {len(self.log_files)} log files: {self.log_files}")
