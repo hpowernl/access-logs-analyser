@@ -21,6 +21,37 @@ from .export import DataExporter, create_report_summary
 from .config import HYPERNODE_SETTINGS
 
 
+def complete_countries(ctx, param, incomplete):
+    """Autocomplete function for country codes."""
+    countries = [
+        'US', 'GB', 'DE', 'NL', 'FR', 'ES', 'IT', 'CA', 'AU', 'JP',
+        'CN', 'IN', 'BR', 'RU', 'MX', 'KR', 'SE', 'NO', 'DK', 'FI',
+        'CH', 'AT', 'BE', 'PL', 'CZ', 'PT', 'IE', 'GR', 'HU', 'RO'
+    ]
+    return [country for country in countries if country.lower().startswith(incomplete.lower())]
+
+
+def complete_status_codes(ctx, param, incomplete):
+    """Autocomplete function for HTTP status codes."""
+    status_codes = [
+        '200', '201', '204', '301', '302', '304', '400', '401', '403', 
+        '404', '405', '429', '500', '502', '503', '504'
+    ]
+    return [code for code in status_codes if code.startswith(incomplete)]
+
+
+def complete_filter_presets(ctx, param, incomplete):
+    """Autocomplete function for filter presets."""
+    presets = ['errors_only', 'success_only', 'no_bots', 'api_only', 'recent_activity']
+    return [preset for preset in presets if preset.startswith(incomplete)]
+
+
+def complete_report_formats(ctx, param, incomplete):
+    """Autocomplete function for report formats."""
+    formats = ['html', 'json', 'text']
+    return [fmt for fmt in formats if fmt.startswith(incomplete)]
+
+
 console = Console()
 
 
@@ -47,10 +78,79 @@ def get_platform_nginx_dir() -> str:
     return '/var/log/nginx'  # Standard default
 
 
-@click.group()
-def cli():
-    """ Access Log Analyzer - Advanced CLI tool for Nginx JSON log analysis."""
-    pass
+@click.group(invoke_without_command=True)
+@click.option('--install-completion', is_flag=True, help='Install shell completion for bash/zsh/fish')
+@click.pass_context
+def cli(ctx, install_completion):
+    """🚀 Hypernode Log Analyzer - Advanced CLI tool for Nginx JSON log analysis.
+    
+    A comprehensive log analysis toolkit specifically designed for Hypernode environments,
+    featuring automatic log discovery, real-time monitoring, security analysis, and 
+    performance insights.
+    
+    \b
+    Quick Start:
+      hlogcli analyze                    # Auto-discover and analyze all logs
+      hlogcli analyze --summary-only     # Quick overview
+      hlogcli security --scan-attacks    # Security analysis
+      hlogcli perf --response-time-analysis  # Performance analysis
+    
+    \b
+    Features:
+      • Auto-discovery of nginx logs (no manual file specification needed)
+      • Platform detection for Hypernode environments
+      • Real-time log monitoring and analysis
+      • Security threat detection and analysis
+      • Performance optimization insights
+      • Bot behavior analysis and classification
+      • Advanced search and filtering capabilities
+      • Multiple export formats (CSV, JSON, HTML charts)
+    """
+    if install_completion:
+        import subprocess
+        import sys
+        
+        shell = os.environ.get('SHELL', '').split('/')[-1]
+        if shell in ['bash', 'zsh', 'fish']:
+            try:
+                # Generate completion script
+                completion_script = f"""
+# Hypernode Log Analyzer shell completion
+eval "$(_HLOGCLI_COMPLETE={shell}_source hlogcli)"
+"""
+                
+                if shell == 'bash':
+                    completion_file = os.path.expanduser('~/.bashrc')
+                elif shell == 'zsh':
+                    completion_file = os.path.expanduser('~/.zshrc')
+                elif shell == 'fish':
+                    completion_file = os.path.expanduser('~/.config/fish/config.fish')
+                
+                # Check if completion is already installed
+                if os.path.exists(completion_file):
+                    with open(completion_file, 'r') as f:
+                        if '_HLOGCLI_COMPLETE' in f.read():
+                            console.print(f"[yellow]Shell completion already installed for {shell}[/yellow]")
+                            return
+                
+                # Add completion to shell config
+                with open(completion_file, 'a') as f:
+                    f.write(completion_script)
+                
+                console.print(f"[green]✅ Shell completion installed for {shell}![/green]")
+                console.print(f"[blue]Please restart your shell or run: source {completion_file}[/blue]")
+                
+            except Exception as e:
+                console.print(f"[red]Failed to install completion: {e}[/red]")
+        else:
+            console.print(f"[red]Unsupported shell: {shell}. Supported: bash, zsh, fish[/red]")
+        
+        return
+    
+    # If no command is specified, show help
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
+        return
 
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
@@ -69,28 +169,37 @@ def cli():
 @click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 def analyze(log_files, follow, interactive, output, filter_preset, countries, status_codes, 
          exclude_bots, export_csv, export_json, export_charts, summary_only, nginx_dir, no_auto_discover):
-    """ Access Log Analyzer - Analyze Nginx JSON access logs with advanced filtering and real-time monitoring.
+    """📊 Analyze Nginx JSON access logs with comprehensive statistics and insights.
     
-    By default, logcli will auto-discover access.log files in /var/log/nginx.
+    This is the main analysis command that provides detailed insights into your web traffic,
+    including visitor statistics, geographic distribution, response times, error rates,
+    and bot activity analysis.
     
-    Examples:
-        # Auto-discover and analyze all access logs (default behavior)
-        logcli analyze
-        
-        # Analyze specific log files
-        logcli analyze /var/log/nginx/access.log
-        
-        # Follow logs in real-time with interactive UI
-        logcli analyze -f -i
-        
-        # Use different nginx directory
-        logcli analyze --nginx-dir /custom/log/path
-        
-        # Disable auto-discovery and require manual file specification
-        logcli analyze --no-auto-discover /path/to/specific.log
-        
-        # Filter and export
-        logcli analyze --countries US,GB --exclude-bots --export-csv
+    \b
+    🔍 What you'll see:
+      • Traffic overview (requests, visitors, error rates)
+      • Geographic distribution of visitors
+      • Top IP addresses and requested paths
+      • User agent analysis (browsers, bots, crawlers)
+      • Response time statistics
+      • Status code breakdown
+      • Bot classification and behavior
+    
+    \b
+    📁 Auto-Discovery:
+      By default, automatically finds and analyzes all nginx access logs.
+      Works on Hypernode platforms and standard nginx installations.
+    
+    \b
+    💡 Examples:
+      hlogcli analyze                           # Full analysis (auto-discover)
+      hlogcli analyze --summary-only            # Quick overview only
+      hlogcli analyze -i                        # Interactive TUI mode
+      hlogcli analyze -f                        # Real-time monitoring
+      hlogcli analyze --countries US,NL,DE     # Filter by countries
+      hlogcli analyze --exclude-bots            # Exclude bot traffic
+      hlogcli analyze --export-csv --export-charts  # Export results
+      hlogcli analyze /path/to/specific.log     # Analyze specific file
     """
     
     # Auto-discover log files by default unless disabled or log files are specified
@@ -278,9 +387,14 @@ def process_log_files_with_callback(log_files: List[str], parser: LogParser, cal
                             callback_func(log_entry)
                             processed_lines += 1
                         
-                        # Update progress occasionally
-                        if total_lines % 1000 == 0:
+                        # Update progress more frequently for better user feedback
+                        if total_lines % 500 == 0:
                             progress.update(task, description=f"Processing {Path(log_file).name}... ({total_lines:,} lines)")
+                            
+                        # Yield control occasionally for better responsiveness
+                        if total_lines % 5000 == 0:
+                            import time
+                            time.sleep(0.001)  # Brief yield
             
             except Exception as e:
                 console.print(f"[red]Error processing {log_file}: {str(e)}[/red]")
@@ -383,15 +497,68 @@ def handle_exports(stats: StatisticsAggregator, output_dir: Optional[str],
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
 @click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
 @click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
-@click.option('--scan-attacks', is_flag=True, help='Scan for attack patterns')
-@click.option('--brute-force-detection', is_flag=True, help='Detect brute force attempts')
-@click.option('--sql-injection-patterns', is_flag=True, help='Look for SQL injection attempts')
-@click.option('--suspicious-user-agents', is_flag=True, help='Find suspicious user agents')
-@click.option('--threshold', default=10, help='Threshold for brute force detection')
+@click.option('--scan-attacks', is_flag=True, help='Show detailed attack patterns (default: enabled)')
+@click.option('--brute-force-detection', is_flag=True, help='Show detailed brute force attempts (default: enabled)')
+@click.option('--sql-injection-patterns', is_flag=True, help='Show detailed SQL injection attempts (default: enabled)')
+@click.option('--suspicious-user-agents', is_flag=True, help='Show detailed suspicious user agents (default: enabled)')
+@click.option('--show-summary', is_flag=True, default=True, help='Show security summary (default: enabled)')
+@click.option('--show-top-threats', is_flag=True, default=True, help='Show top threat IPs (default: enabled)')
+@click.option('--show-geographic', is_flag=True, help='Show geographic threat distribution')
+@click.option('--show-timeline', is_flag=True, help='Show attack timeline analysis')
+@click.option('--threshold', default=5, help='Threshold for brute force detection (default: 5)')
+@click.option('--min-threat-score', default=10.0, help='Minimum threat score for IP reporting (default: 10.0)')
+@click.option('--detailed', is_flag=True, help='Show all detailed analysis sections')
+@click.option('--quiet', is_flag=True, help='Only show summary, suppress detailed output')
+@click.option('--export-blacklist', help='Export recommended IP blacklist to file')
 @click.option('--output', '-o', help='Output file for security report')
 def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_detection, 
-            sql_injection_patterns, suspicious_user_agents, threshold, output):
-    """Security analysis of access logs."""
+            sql_injection_patterns, suspicious_user_agents, show_summary, show_top_threats,
+            show_geographic, show_timeline, threshold, min_threat_score, detailed, quiet,
+            export_blacklist, output):
+    """🔒 Advanced security analysis and threat detection.
+    
+    Analyze your access logs for security threats, attack patterns, and suspicious activity.
+    By default, shows a comprehensive security summary with top threats and recommendations.
+    Use specific flags for detailed analysis of different threat categories.
+    
+    \b
+    🚨 Threat Detection (All Enabled by Default):
+      • SQL injection attempts and patterns
+      • Cross-site scripting (XSS) attacks
+      • Directory traversal attempts
+      • Command injection patterns
+      • File inclusion attacks
+      • Web shell detection
+      • Brute force login attempts
+      • Suspicious user agents and bots
+      • High error rate IPs (potential attacks)
+      • Threat scoring and IP reputation
+    
+    \b
+    📊 Default Output:
+      • Security summary with key metrics
+      • Top threat IPs with threat scores
+      • Attack type distribution
+      • Security recommendations
+    
+    \b
+    💡 Examples:
+      hlogcli security                              # Full security analysis (default)
+      hlogcli security --quiet                      # Only show summary stats
+      hlogcli security --detailed                   # Show all detailed sections
+      hlogcli security --threshold 3                # Lower brute force threshold
+      hlogcli security --min-threat-score 25        # Higher threat threshold
+      hlogcli security --export-blacklist block.txt # Export IPs to block
+      hlogcli security --show-geographic            # Geographic threat analysis
+      hlogcli security --show-timeline              # Timeline analysis
+      hlogcli security -o security-report.json      # Export full report
+      
+      # Detailed analysis of specific threats:
+      hlogcli security --scan-attacks               # Show attack pattern details
+      hlogcli security --brute-force-detection      # Show brute force details
+      hlogcli security --sql-injection-patterns     # Show SQL injection details
+      hlogcli security --suspicious-user-agents     # Show user agent details
+    """
     
     # Auto-discover log files by default unless disabled or log files are specified
     if not log_files and not no_auto_discover:
@@ -420,35 +587,133 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
     
     process_log_files_with_callback(log_files, parser, analyze_entry, "security analysis")
     
-    # Generate security report
-    if scan_attacks:
-        console.print("\n[bold red]🚨 ATTACK PATTERNS DETECTED[/bold red]")
-        attacks = analyzer.get_attack_patterns()
-        for attack_type, count in attacks.items():
-            console.print(f"  {attack_type}: {count} attempts")
+    # Get comprehensive security data
+    summary = analyzer.get_security_summary()
+    suspicious_ips = analyzer.get_suspicious_ips()
     
-    if brute_force_detection:
-        console.print(f"\n[bold yellow]🔒 BRUTE FORCE ANALYSIS (threshold: {threshold})[/bold yellow]")
-        brute_force = analyzer.get_brute_force_attempts(threshold)
-        for ip, attempts in brute_force.items():
-            console.print(f"  {ip}: {attempts} failed login attempts")
+    # Show security summary by default (unless quiet mode)
+    if show_summary and not quiet:
+        console.print("\n[bold blue]🛡️  SECURITY ANALYSIS SUMMARY[/bold blue]")
+        console.print(f"  📊 Total Requests: [cyan]{summary['total_requests']:,}[/cyan]")
+        console.print(f"  ❌ Total Errors: [red]{summary['total_errors']:,}[/red] ({summary['global_error_rate']:.1f}%)")
+        console.print(f"  🌐 Unique IPs: [cyan]{summary['unique_ips']:,}[/cyan]")
+        console.print(f"  🚨 Attack Attempts: [red]{summary['total_attack_attempts']:,}[/red]")
+        console.print(f"  🎯 Attack Types: [yellow]{summary['attack_types_detected']}[/yellow]")
+        
+        console.print(f"\n  ⚠️  Threat Analysis:")
+        console.print(f"    • Suspicious IPs: [red]{summary['suspicious_ips']}[/red] ({summary['suspicious_ip_percentage']:.1f}%)")
+        console.print(f"    • Potential DDoS IPs: [orange1]{summary['potential_ddos_ips']}[/orange1]")
+        console.print(f"    • Scanning IPs: [yellow]{summary['scanning_ips']}[/yellow]")
+        console.print(f"    • Admin Access IPs: [red]{summary['admin_access_ips']}[/red]")
+        
+        console.print(f"\n  🔍 Attack Categories:")
+        console.print(f"    • Brute Force: [orange1]{summary['brute_force_ips']}[/orange1] IPs")
+        console.print(f"    • SQL Injection: [red]{summary['sql_injection_ips']}[/red] IPs")
+        console.print(f"    • XSS Attempts: [red]{summary['xss_attempt_ips']}[/red] IPs")
+        console.print(f"    • Directory Traversal: [red]{summary['directory_traversal_ips']}[/red] IPs")
+        console.print(f"    • Command Injection: [red]{summary['command_injection_ips']}[/red] IPs")
+        console.print(f"    • Suspicious User Agents: [yellow]{summary['suspicious_user_agents']}[/yellow]")
+        
+        if summary['top_attack_types']:
+            console.print("\n  🏆 Top Attack Types:")
+            for attack_type, count in summary['top_attack_types'].items():
+                console.print(f"    • {attack_type}: [red]{count:,}[/red] attempts")
     
-    if sql_injection_patterns:
-        console.print("\n[bold red]💉 SQL INJECTION ATTEMPTS[/bold red]")
-        sql_attacks = analyzer.get_sql_injection_attempts()
-        for ip, patterns in sql_attacks.items():
-            console.print(f"  {ip}: {len(patterns)} SQL injection patterns")
+    # Show top threats by default (unless quiet mode)
+    if show_top_threats and not quiet and suspicious_ips:
+        console.print(f"\n[bold red]⚠️  TOP THREAT IPs (threat score ≥ {min_threat_score})[/bold red]")
+        top_threats = [ip for ip in suspicious_ips if ip['threat_score'] >= min_threat_score][:10]
+        
+        if top_threats:
+            for i, ip_data in enumerate(top_threats, 1):
+                console.print(f"  {i:2}. [red]{ip_data['ip']}[/red] (Score: [bold red]{ip_data['threat_score']:.1f}[/bold red])")
+                console.print(f"      Requests: {ip_data['total_requests']:,}, Error Rate: {ip_data['error_rate']:.1f}%")
+                console.print(f"      Failed Logins: {ip_data['failed_logins']}, Attacks: {sum(ip_data['attack_attempts'].values())}")
+        else:
+            console.print(f"  [green]✅ No high-threat IPs found (threshold: {min_threat_score})[/green]")
     
-    if suspicious_user_agents:
-        console.print("\n[bold orange]🕵️  SUSPICIOUS USER AGENTS[/bold orange]")
-        suspicious = analyzer.get_suspicious_user_agents()
-        for ua, count in suspicious[:10]:
-            console.print(f"  {ua[:80]}... : {count} requests")
+    # Show detailed sections if requested or --detailed flag is used
+    show_detailed = detailed or scan_attacks or brute_force_detection or sql_injection_patterns or suspicious_user_agents
+    
+    if show_detailed and not quiet:
+        if scan_attacks or detailed:
+            console.print("\n[bold red]🚨 ATTACK PATTERNS DETECTED[/bold red]")
+            attacks = analyzer.get_attack_patterns()
+            if attacks:
+                for attack_type, count in attacks.items():
+                    console.print(f"  • {attack_type}: [red]{count:,}[/red] attempts")
+            else:
+                console.print("  [green]✅ No attack patterns detected[/green]")
+        
+        if brute_force_detection or detailed:
+            console.print(f"\n[bold yellow]🔒 BRUTE FORCE ANALYSIS (threshold: {threshold})[/bold yellow]")
+            brute_force = analyzer.get_brute_force_attempts(threshold)
+            if brute_force:
+                for ip, attempts in list(brute_force.items())[:15]:  # Limit to top 15
+                    console.print(f"  • [red]{ip}[/red]: {attempts} failed login attempts")
+            else:
+                console.print(f"  [green]✅ No brute force attempts detected (threshold: {threshold})[/green]")
+        
+        if sql_injection_patterns or detailed:
+            console.print("\n[bold red]💉 SQL INJECTION ATTEMPTS[/bold red]")
+            sql_attacks = analyzer.get_sql_injection_attempts()
+            if sql_attacks:
+                for ip, patterns in list(sql_attacks.items())[:15]:  # Limit to top 15
+                    console.print(f"  • [red]{ip}[/red]: {len(patterns)} SQL injection patterns")
+            else:
+                console.print("  [green]✅ No SQL injection attempts detected[/green]")
+        
+        if suspicious_user_agents or detailed:
+            console.print("\n[bold orange1]🕵️  SUSPICIOUS USER AGENTS[/bold orange1]")
+            suspicious = analyzer.get_suspicious_user_agents()
+            if suspicious:
+                for ua, count in suspicious[:15]:  # Limit to top 15
+                    ua_display = ua[:80] + "..." if len(ua) > 80 else ua
+                    console.print(f"  • [yellow]{ua_display}[/yellow]: {count:,} requests")
+            else:
+                console.print("  [green]✅ No suspicious user agents detected[/green]")
+    
+    # Show geographic distribution if requested
+    if show_geographic and not quiet:
+        console.print("\n[bold cyan]🌍 GEOGRAPHIC THREAT DISTRIBUTION[/bold cyan]")
+        # This would require geo-IP lookup - placeholder for now
+        console.print("  [dim]Geographic analysis requires GeoIP database (feature coming soon)[/dim]")
+    
+    # Show timeline analysis if requested
+    if show_timeline and not quiet:
+        console.print("\n[bold magenta]📈 ATTACK TIMELINE ANALYSIS[/bold magenta]")
+        # This would require time-based analysis - placeholder for now
+        console.print("  [dim]Timeline analysis feature coming soon[/dim]")
+    
+    # Export blacklist if requested
+    if export_blacklist:
+        blacklist_ips = analyzer.get_blacklist_recommendations(min_threat_score)
+        if blacklist_ips:
+            with open(export_blacklist, 'w') as f:
+                for ip in blacklist_ips:
+                    f.write(f"{ip}\n")
+            console.print(f"[green]Exported {len(blacklist_ips)} IPs to blacklist: {export_blacklist}[/green]")
+        else:
+            console.print(f"[yellow]No IPs meet the blacklist criteria (threat score ≥ {min_threat_score})[/yellow]")
     
     # Export security report if requested
     if output:
         analyzer.export_security_report(output)
         console.print(f"[green]Security report exported to: {output}[/green]")
+    
+    # Show final recommendations unless quiet
+    if not quiet:
+        console.print(f"\n[bold green]💡 RECOMMENDATIONS[/bold green]")
+        if summary['total_attack_attempts'] > 100:
+            console.print("  • Consider implementing rate limiting")
+        if summary['suspicious_ips'] > 10:
+            console.print("  • Review and consider blocking suspicious IPs")
+        if summary['brute_force_ips'] > 0:
+            console.print("  • Implement account lockout policies")
+        if summary['sql_injection_ips'] > 0:
+            console.print("  • Review application input validation")
+        
+        console.print(f"\n[dim]💡 Use --detailed for more information, --export-blacklist to export IPs, or --help for all options[/dim]")
 
 
 # Performance Analysis Commands
@@ -465,7 +730,30 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
 @click.option('--output', '-o', help='Output file for performance report')
 def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest, 
          percentiles, bandwidth_analysis, cache_analysis, handler, output):
-    """Performance analysis of access logs."""
+    """⚡ Performance analysis and optimization insights.
+    
+    Analyze response times, bandwidth usage, and identify performance bottlenecks.
+    Get detailed insights into your application's performance characteristics and
+    discover optimization opportunities.
+    
+    \b
+    📈 Performance Metrics:
+      • Response time statistics (avg, median, 95th/99th percentiles)
+      • Slowest endpoints identification
+      • Bandwidth usage analysis
+      • Cache effectiveness metrics
+      • Geographic performance variations
+      • Handler-specific performance (PHP-FPM, Varnish, etc.)
+    
+    \b
+    💡 Examples:
+      hlogcli perf                              # Basic performance overview
+      hlogcli perf --response-time-analysis     # Detailed response time stats
+      hlogcli perf --slowest 20                 # Top 20 slowest endpoints
+      hlogcli perf --bandwidth-analysis         # Bandwidth usage analysis
+      hlogcli perf --cache-analysis --handler varnish  # Cache performance
+      hlogcli perf --percentiles -o perf-report.json   # Export with percentiles
+    """
     
     # Auto-discover log files by default unless disabled or log files are specified
     if not log_files and not no_auto_discover:
@@ -547,7 +835,38 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
 @click.option('--output', '-o', help='Output file for bot analysis report')
 def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analysis,
          legitimate_vs_malicious, impact_analysis, unknown_only, output):
-    """Advanced bot and crawler analysis."""
+    """🤖 Advanced bot and crawler analysis and classification.
+    
+    Identify, classify, and analyze bot traffic to understand automated visitors
+    to your website. Distinguish between legitimate crawlers (Google, Bing) and
+    malicious bots, scrapers, or security scanners.
+    
+    \b
+    🕷️ Bot Classification:
+      • Search engine crawlers (Google, Bing, Yahoo, etc.)
+      • Social media bots (Facebook, Twitter, LinkedIn)
+      • Monitoring services (Pingdom, UptimeRobot)
+      • SEO tools and analyzers
+      • Malicious scrapers and security scanners
+      • Unknown/unclassified bots
+    
+    \b
+    🔍 Analysis Features:
+      • Bot behavior pattern analysis
+      • Legitimacy scoring (good vs. bad bots)
+      • Resource impact assessment
+      • Request frequency analysis
+      • Geographic distribution of bots
+    
+    \b
+    💡 Examples:
+      hlogcli bots                              # Basic bot overview
+      hlogcli bots --classify-types             # Detailed bot classification
+      hlogcli bots --behavior-analysis          # Bot behavior patterns
+      hlogcli bots --legitimate-vs-malicious    # Good vs. bad bot scoring
+      hlogcli bots --impact-analysis            # Resource usage by bots
+      hlogcli bots --unknown-only -o unknown-bots.json  # Export unclassified
+    """
     
     # Auto-discover log files by default unless disabled or log files are specified
     if not log_files and not no_auto_discover:
@@ -628,7 +947,37 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
 @click.option('--output', '-o', help='Output file for search results')
 def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent, 
            country, time_range, last_hours, limit, output):
-    """Search and filter log entries with advanced criteria."""
+    """🔍 Advanced search and filtering of log entries.
+    
+    Search through your access logs with powerful filtering capabilities.
+    Find specific requests, investigate issues, or extract data matching
+    complex criteria using regex patterns and multiple filters.
+    
+    \b
+    🎯 Search Capabilities:
+      • IP address matching (exact or partial)
+      • Path pattern matching (supports regex)
+      • Status code filtering
+      • User agent pattern matching (supports regex)
+      • Geographic filtering by country codes
+      • Time range filtering (absolute or relative)
+      • HTTP method filtering
+    
+    \b
+    💡 Examples:
+      hlogcli search --ip 192.168.1.100         # Find requests from specific IP
+      hlogcli search --status 404,500           # Find all 404 and 500 errors
+      hlogcli search --path "/api/.*"           # Find all API requests (regex)
+      hlogcli search --user-agent "bot"         # Find bot traffic
+      hlogcli search --country US,GB,NL         # Requests from specific countries
+      hlogcli search --last-hours 24            # Last 24 hours only
+      hlogcli search --status 404 --limit 50 -o 404s.json  # Export 404 errors
+      
+    \b
+    🕐 Time Filtering:
+      --last-hours 6                            # Last 6 hours
+      --time-range "2024-01-01 to 2024-01-02"  # Specific date range
+    """
     
     # Auto-discover log files by default unless disabled or log files are specified
     if not log_files and not no_auto_discover:
@@ -731,7 +1080,38 @@ def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent,
 @click.option('--output', '-o', help='Output directory for reports')
 def report(log_files, nginx_dir, no_auto_discover, daily, weekly, security_summary, 
            performance_summary, bot_summary, format, output):
-    """Generate comprehensive analysis reports."""
+    """📋 Generate comprehensive analysis reports in multiple formats.
+    
+    Create detailed reports combining traffic analysis, security insights, performance
+    metrics, and bot activity. Perfect for regular monitoring, compliance reporting,
+    or sharing insights with team members.
+    
+    \b
+    📊 Report Sections:
+      • Traffic overview and trends
+      • Security analysis and threats
+      • Performance metrics and bottlenecks  
+      • Bot activity and classification
+      • Geographic distribution
+      • Top pages and resources
+      • Error analysis and patterns
+    
+    \b
+    📄 Export Formats:
+      • HTML - Interactive charts and visualizations
+      • JSON - Machine-readable structured data
+      • Text - Plain text summary for scripts/emails
+    
+    \b
+    💡 Examples:
+      hlogcli report                            # Comprehensive report (all sections)
+      hlogcli report --daily                    # Daily report format
+      hlogcli report --weekly                   # Weekly report format
+      hlogcli report --security-summary         # Security-focused report
+      hlogcli report --performance-summary      # Performance-focused report
+      hlogcli report --format json -o report.json  # JSON export
+      hlogcli report --format html -o reports/ # HTML with charts
+    """
     
     # Auto-discover log files by default unless disabled or log files are specified
     if not log_files and not no_auto_discover:
@@ -791,7 +1171,29 @@ def report(log_files, nginx_dir, no_auto_discover, daily, weekly, security_summa
 @click.option('--set', help='Set configuration value (key=value)')
 @click.option('--profile', help='Configuration profile name')
 def config(init, show, set, profile):
-    """Manage logcli configuration and profiles."""
+    """⚙️ Manage logcli configuration and user profiles.
+    
+    Create and manage configuration profiles for different environments
+    or use cases. Store frequently used settings, custom thresholds,
+    and default options to streamline your workflow.
+    
+    \b
+    🔧 Configuration Features:
+      • Multiple named profiles (production, staging, development)
+      • Custom default directories and filters
+      • Alert thresholds and notification settings
+      • Export preferences and output formats
+      • Analysis preferences and display options
+    
+    \b
+    💡 Examples:
+      hlogcli config --init                     # Initialize default config
+      hlogcli config --init --profile staging  # Create staging profile
+      hlogcli config --show                    # Show current configuration
+      hlogcli config --show --profile prod     # Show production profile
+      hlogcli config --set nginx_dir=/var/log/nginx  # Set default directory
+      hlogcli config --set threshold=20 --profile staging  # Profile-specific setting
+    """
     
     from .configuration import ConfigManager
     config_manager = ConfigManager()

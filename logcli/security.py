@@ -30,7 +30,21 @@ class SecurityAnalyzer:
         # IP-based tracking
         self.ip_request_counts = defaultdict(int)
         self.ip_error_rates = defaultdict(lambda: {'total': 0, 'errors': 0})
+        self.ip_status_codes = defaultdict(lambda: defaultdict(int))
+        self.ip_methods = defaultdict(lambda: defaultdict(int))
+        self.ip_paths = defaultdict(lambda: defaultdict(int))
         self.suspicious_ips = set()
+        
+        # Rate limiting detection
+        self.ip_request_times = defaultdict(list)
+        self.potential_ddos_ips = set()
+        
+        # Additional metrics
+        self.total_requests = 0
+        self.total_errors = 0
+        self.unique_ips = set()
+        self.scan_attempts = defaultdict(list)  # Directory/file scanning
+        self.admin_access_attempts = defaultdict(list)
         
         # Define attack patterns
         self._init_attack_patterns()
@@ -138,6 +152,31 @@ class SecurityAnalyzer:
                 re.compile(pattern, re.IGNORECASE) for pattern in pattern_list
             ]
         
+        # Pre-compile scanning and admin patterns for performance
+        self.compiled_scan_patterns = [
+            re.compile(pattern, re.IGNORECASE) for pattern in [
+                r'\.php$', r'\.asp$', r'\.jsp$', r'\.cgi$',
+                r'/backup/', r'/bak/', r'/old/', r'/tmp/',
+                r'\.bak$', r'\.backup$', r'\.old$', r'\.orig$',
+                r'\.sql$', r'\.zip$', r'\.tar$', r'\.gz$',
+                r'/config/', r'/configuration/', r'/settings/',
+                r'/test/', r'/testing/', r'/debug/',
+                r'\.git/', r'\.svn/', r'\.env$',
+                r'/robots\.txt$', r'/sitemap\.xml$'
+            ]
+        ]
+        
+        self.compiled_admin_patterns = [
+            re.compile(pattern, re.IGNORECASE) for pattern in [
+                r'/admin', r'/administrator', r'/wp-admin', r'/wp-login',
+                r'/phpmyadmin', r'/pma/', r'/mysql/', r'/database/',
+                r'/control', r'/panel/', r'/dashboard/', r'/manage/',
+                r'/config/', r'/configuration/', r'/settings/',
+                r'/server-info', r'/server-status', r'/info\.php',
+                r'/phpinfo', r'/test\.php', r'/shell\.php'
+            ]
+        ]
+        
         # Suspicious user agent patterns
         self.suspicious_ua_patterns = [
             r'sqlmap',
@@ -196,11 +235,42 @@ class SecurityAnalyzer:
         method = log_entry.get('method', 'GET')
         timestamp = log_entry.get('timestamp')
         
-        # Track IP activity
+        # Update global counters
+        self.total_requests += 1
+        self.unique_ips.add(ip)
+        if status >= 400:
+            self.total_errors += 1
+        
+        # Track IP activity with more detail
         self.ip_request_counts[ip] += 1
         self.ip_error_rates[ip]['total'] += 1
+        self.ip_status_codes[ip][status] += 1
+        self.ip_methods[ip][method] += 1
+        self.ip_paths[ip][path] += 1
+        
         if status >= 400:
             self.ip_error_rates[ip]['errors'] += 1
+        
+        # Track request timing for rate limiting detection
+        if timestamp:
+            self.ip_request_times[ip].append(timestamp)
+            # Keep only recent requests (last hour)
+            cutoff_time = timestamp - timedelta(hours=1) if isinstance(timestamp, datetime) else None
+            if cutoff_time:
+                self.ip_request_times[ip] = [
+                    t for t in self.ip_request_times[ip] 
+                    if isinstance(t, datetime) and t >= cutoff_time
+                ]
+                
+                # Check for potential DDoS (>100 requests per hour from single IP)
+                if len(self.ip_request_times[ip]) > 100:
+                    self.potential_ddos_ips.add(ip)
+        
+        # Check for scanning behavior
+        self._check_scanning_behavior(ip, path, status)
+        
+        # Check for admin access attempts
+        self._check_admin_access(ip, path, status, timestamp)
         
         # Analyze path for attack patterns
         full_request = f"{method} {path}"
@@ -332,6 +402,26 @@ class SecurityAnalyzer:
             if not any(bot in ua_lower for bot in legitimate_bots):
                 self.suspicious_user_agents[user_agent] += 1
     
+    def _check_scanning_behavior(self, ip: str, path: str, status: int):
+        """Check for directory/file scanning behavior."""
+        # Use pre-compiled patterns for better performance
+        if any(pattern.search(path) for pattern in self.compiled_scan_patterns):
+            self.scan_attempts[ip].append({
+                'path': path,
+                'status': status,
+                'timestamp': datetime.now()
+            })
+    
+    def _check_admin_access(self, ip: str, path: str, status: int, timestamp: datetime):
+        """Check for admin/sensitive area access attempts."""
+        # Use pre-compiled patterns for better performance
+        if any(pattern.search(path) for pattern in self.compiled_admin_patterns):
+            self.admin_access_attempts[ip].append({
+                'path': path,
+                'status': status,
+                'timestamp': timestamp
+            })
+    
     def get_attack_patterns(self) -> Dict[str, int]:
         """Get detected attack patterns."""
         return dict(self.attack_patterns.most_common())
@@ -385,15 +475,30 @@ class SecurityAnalyzer:
         total_ips_analyzed = len(self.ip_request_counts)
         suspicious_ip_count = len(self.suspicious_ips)
         
+        # Calculate additional metrics
+        error_rate = (self.total_errors / max(self.total_requests, 1)) * 100
+        scanning_ips = len([ip for ip, scans in self.scan_attempts.items() if len(scans) >= 5])
+        admin_access_ips = len([ip for ip, attempts in self.admin_access_attempts.items() if len(attempts) >= 3])
+        
         return {
+            'total_requests': self.total_requests,
+            'total_errors': self.total_errors,
+            'global_error_rate': error_rate,
+            'unique_ips': len(self.unique_ips),
             'total_attack_attempts': total_attacks,
             'attack_types_detected': len(self.attack_patterns),
             'total_ips_analyzed': total_ips_analyzed,
             'suspicious_ips': suspicious_ip_count,
             'suspicious_ip_percentage': (suspicious_ip_count / max(total_ips_analyzed, 1)) * 100,
+            'potential_ddos_ips': len(self.potential_ddos_ips),
+            'scanning_ips': scanning_ips,
+            'admin_access_ips': admin_access_ips,
             'top_attack_types': dict(self.attack_patterns.most_common(5)),
-            'brute_force_ips': len([ip for ip, count in self.failed_logins.items() if count >= 10]),
+            'brute_force_ips': len([ip for ip, count in self.failed_logins.items() if count >= 5]),
             'sql_injection_ips': len(self.sql_injection_attempts),
+            'xss_attempt_ips': len(self.xss_attempts),
+            'directory_traversal_ips': len(self.directory_traversal),
+            'command_injection_ips': len(self.command_injection),
             'suspicious_user_agents': len(self.suspicious_user_agents)
         }
     
@@ -438,3 +543,30 @@ class SecurityAnalyzer:
         """Get IP addresses recommended for blacklisting."""
         suspicious_ips = self.get_suspicious_ips()
         return [ip['ip'] for ip in suspicious_ips if ip['threat_score'] >= min_threat_score]
+    
+    def get_scanning_ips(self, min_scans: int = 5) -> Dict[str, int]:
+        """Get IPs with scanning behavior above threshold."""
+        return {ip: len(scans) for ip, scans in self.scan_attempts.items() if len(scans) >= min_scans}
+    
+    def get_admin_access_ips(self, min_attempts: int = 3) -> Dict[str, int]:
+        """Get IPs with admin access attempts above threshold."""
+        return {ip: len(attempts) for ip, attempts in self.admin_access_attempts.items() if len(attempts) >= min_attempts}
+    
+    def get_ddos_candidates(self) -> List[str]:
+        """Get IPs that might be performing DDoS attacks."""
+        return list(self.potential_ddos_ips)
+    
+    def get_top_error_ips(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get IPs with highest error rates."""
+        error_ips = []
+        for ip, error_data in self.ip_error_rates.items():
+            if error_data['total'] >= 10:  # Only consider IPs with significant activity
+                error_rate = (error_data['errors'] / error_data['total']) * 100
+                error_ips.append({
+                    'ip': ip,
+                    'total_requests': error_data['total'],
+                    'errors': error_data['errors'],
+                    'error_rate': error_rate
+                })
+        
+        return sorted(error_ips, key=lambda x: x['error_rate'], reverse=True)[:limit]
