@@ -1,20 +1,19 @@
-# Access Log Analyzer
+# Hypernode Log Analyzer
 
-An **enterprise-grade, interactive log analysis platform** for Nginx JSON access logs. Far beyond traditional tools like GoAccess, this platform offers real-time monitoring, advanced security analysis, performance optimization, and intelligent bot detection - all through both an intuitive **interactive TUI** and powerful **CLI commands**.
+A **comprehensive command-line log analysis platform** specifically designed for Hypernode environments. This tool provides advanced security analysis, performance optimization, bot detection, and intelligent log insights through powerful CLI commands.
 
 ## ✨ Key Features
 
-### 🎮 **Interactive Terminal Interface**
-- **Modern TUI**: Like htop/GoAccess but for log analysis
-- **Real-time Updates**: Live streaming data with auto-refresh
-- **Multiple Views**: Security, Performance, Bot Analysis, Search
-- **Zero Configuration**: Start with `./opencli` - works immediately
-- **Intuitive Navigation**: Function keys, arrow keys, shortcuts
+### 🔧 **Command Line Interface**
+- **Hypernode Integration**: Direct integration with `hypernode-parse-nginx-log` command
+- **Real-time Analysis**: Live log data retrieval (always fresh, no cache needed)
+- **Multiple Analysis Types**: Security, Performance, Bot Analysis, API Analysis, Content Analysis
+- **Export Capabilities**: Multiple output formats (JSON, CSV, HTML charts)
 
 ### 🔐 **Advanced Security Analysis**
 - **Attack Pattern Detection**: SQL injection, XSS, directory traversal
 - **Brute Force Detection**: Configurable thresholds and alerts
-- **Suspicious IP Tracking**: Threat scoring and blacklist recommendations  
+- **Suspicious IP Tracking**: Threat scoring and blacklist recommendations
 - **Real-time Security Alerts**: Live monitoring of security events
 - **Comprehensive Reports**: Detailed security analysis exports
 
@@ -23,42 +22,42 @@ An **enterprise-grade, interactive log analysis platform** for Nginx JSON access
 - **Cache Effectiveness**: Varnish/PHP-FPM performance analysis
 - **Bandwidth Monitoring**: Usage patterns and optimization tips
 - **Performance Recommendations**: Automated suggestions
-- **Resource Impact Analysis**: Server load and capacity planning
+- **Handler Analysis**: Monitor backend handlers (php-fpm, varnish, etc.)
 
 ### 🤖 **Intelligent Bot Management**
 - **Advanced Classification**: Search engines, social media, security scanners
+- **AI Bot Detection**: Modern AI/LLM bot identification and analysis
 - **Behavior Analysis**: Request patterns, intervals, legitimacy scoring
 - **Resource Impact**: Bot bandwidth usage and server load
-- **Whitelist/Blacklist**: Automated recommendations
-- **Unknown Bot Detection**: Pattern-based identification
+- **Training Data Detection**: Identify potential AI training crawlers
 
 ### 🔍 **Advanced Search & Filtering**
 - **Flexible Search**: IP, path patterns (regex), user agents, countries
-- **Time-based Filtering**: Last N hours, date ranges
-- **Interactive Results**: Real-time search with table display
+- **Time-based Filtering**: Last N hours, date ranges, specific time periods
 - **Export Capabilities**: CSV, JSON, text formats
-- **Anomaly Detection**: Automatic detection of unusual patterns
+- **Anomaly Detection**: Machine learning-based unusual pattern detection
 
 ### 📊 **Comprehensive Reporting**
 - **Multi-format Reports**: HTML dashboards, JSON data, CSV exports
-- **Scheduled Reports**: Daily, weekly, custom intervals
+- **Daily/Weekly Reports**: Automated report generation
 - **Executive Summaries**: High-level KPIs and trends
-- **Technical Deep-dives**: Detailed analysis for DevOps teams
+- **Technical Deep-dives**: Detailed analysis for technical teams
 
-### 🆕 **Enhanced Analytics (New Features)**
-- **Advanced Path Analysis**: Min/Max/Average response times and handler information for each path
-- **Geographic IP Analysis**: Top IP addresses breakdown per country for detailed geographic insights
-- **Reverse DNS Resolution**: Automatic hostname lookup for IP addresses to identify servers and services
-- **Performance Metrics**: Detailed timing statistics for performance optimization
-- **Handler Tracking**: Monitor which backend handlers (php-fpm, static, etc.) serve requests
+### 🆕 **Advanced Analytics**
+- **API Analysis**: REST and GraphQL endpoint performance and security
+- **Content Analysis**: File types, resource optimization, SEO insights
+- **Geographic Analysis**: Country-based traffic distribution and insights
+- **Timeline Analysis**: Traffic patterns over time with trend detection
+- **Anomaly Detection**: ML-based detection of unusual traffic patterns
 
 ## 🚀 Installation
 
 ### Requirements
 - Python 3.8 or higher
 - pip3
+- Access to Hypernode environment (for hypernode-parse-nginx-log command)
 
-### Quick Install (Recommended)
+### Quick Install
 
 1. **Clone the repository:**
 ```bash
@@ -73,9 +72,9 @@ chmod +x install.sh
 ```
 
 This will:
-- Install Python dependencies system-wide (no venv needed)
-- Make opencli executable
-- Optionally install globally to /usr/local/bin
+- Install Python dependencies
+- Make hlogcli executable
+- Optionally install globally to ~/bin
 
 ### Manual Install
 
@@ -85,145 +84,198 @@ If you prefer manual installation:
 pip3 install -r requirements.txt
 
 # Make executable
-chmod +x opencli
+chmod +x hlogcli
 
 # Run locally
-./opencli
+./hlogcli
 ```
 
 ## 📖 Usage
 
-### 🎮 Interactive Mode (Recommended)
+### 🔧 Command Line Interface
 
-**Start the interactive TUI - no configuration needed:**
-
+**Basic analysis:**
 ```bash
-./opencli
+./hlogcli analyze                    # Analyze current day logs
+./hlogcli analyze --yesterday        # Analyze yesterday's logs
+./hlogcli analyze --summary-only     # Quick overview only
 ```
 
-**Navigation:**
-- **F1**: Help system
-- **F2**: Configuration  
-- **F3**: Security analysis
-- **F4**: Performance monitoring
-- **F5**: Bot analysis
-- **F6**: Export/Reports
-- **F7**: Search interface
-- **R**: Refresh data
-- **P**: Pause/Resume
-- **Q**: Quit
-- **1-3**: Quick view switching
+**Available Commands:**
+- `analyze`: Comprehensive log analysis with traffic insights
+- `security`: Security threat detection and analysis
+- `perf`: Performance analysis and optimization insights
+- `bots`: Bot classification and behavior analysis
+- `api`: API endpoint analysis and performance
+- `content`: Content type and resource analysis
+- `anomalies`: Machine learning-based anomaly detection
+- `search`: Advanced search and filtering
+- `report`: Generate comprehensive reports
+- `config`: Configuration management
 
 ### 🔐 Security Analysis
 
 ```bash
 # Comprehensive security scan
-python -m logcli security --auto-discover --scan-attacks --brute-force-detection
+./hlogcli security --scan-attacks --brute-force-detection
 
 # SQL injection detection
-python -m logcli security --auto-discover --sql-injection-patterns
+./hlogcli security --sql-injection-patterns
 
 # Suspicious user agents
-python -m logcli security --auto-discover --suspicious-user-agents
+./hlogcli security --suspicious-user-agents
 
 # Export security report
-python -m logcli security --auto-discover --scan-attacks --output security_report.json
+./hlogcli security --scan-attacks --output security_report.json
+
+# Show security timeline
+./hlogcli security --show-timeline --threshold 5
 ```
 
 ### ⚡ Performance Analysis
 
 ```bash
 # Complete performance analysis
-python -m logcli perf --auto-discover --response-time-analysis --slowest 10
+./hlogcli perf --response-time-analysis --slowest 10
 
 # Cache effectiveness (Varnish)
-python -m logcli perf --auto-discover --cache-analysis --handler varnish
+./hlogcli perf --cache-analysis --handler varnish
 
 # Bandwidth analysis
-python -m logcli perf --auto-discover --bandwidth-analysis
+./hlogcli perf --bandwidth-analysis
 
 # Export performance report
-python -m logcli perf --auto-discover --response-time-analysis --output perf_report.json
+./hlogcli perf --response-time-analysis --output perf_report.json
+
+# Show performance percentiles
+./hlogcli perf --percentiles --handler phpfpm
 ```
 
 ### 🤖 Bot Analysis
 
 ```bash
 # Bot classification and behavior
-python -m logcli bots --auto-discover --classify-types --behavior-analysis
+./hlogcli bots --classify-types --behavior-analysis
+
+# AI bot analysis
+./hlogcli bots --ai-bots-only --llm-bot-analysis
 
 # Legitimacy scoring
-python -m logcli bots --auto-discover --legitimate-vs-malicious
+./hlogcli bots --legitimate-vs-malicious
 
 # Resource impact analysis
-python -m logcli bots --auto-discover --impact-analysis
+./hlogcli bots --impact-analysis
+
+# AI training detection
+./hlogcli bots --ai-training-detection --ai-impact-analysis
 
 # Export bot analysis
-python -m logcli bots --auto-discover --classify-types --output bot_report.json
+./hlogcli bots --classify-types --output bot_report.json
+```
+
+### 🔌 API Analysis
+
+```bash
+# API endpoint analysis
+./hlogcli api --endpoint-analysis --top-endpoints 20
+
+# GraphQL analysis
+./hlogcli api --graphql-analysis --security-analysis
+
+# API performance analysis
+./hlogcli api --performance-analysis --min-requests 5
+
+# Export API analysis
+./hlogcli api --endpoint-analysis --output api_report.json
+```
+
+### 📁 Content Analysis
+
+```bash
+# Content type analysis
+./hlogcli content --content-type-analysis --file-extension-analysis
+
+# Optimization analysis
+./hlogcli content --optimization-analysis --performance-analysis
+
+# SEO analysis
+./hlogcli content --seo-analysis --top-content 15
+
+# Export content analysis
+./hlogcli content --content-type-analysis --output content_report.json
+```
+
+### 🤖 Anomaly Detection
+
+```bash
+# Statistical anomaly detection
+./hlogcli anomalies --statistical-analysis --sensitivity 2.0
+
+# Behavioral analysis
+./hlogcli anomalies --behavioral-analysis --show-timeline
+
+# Real-time alerts
+./hlogcli anomalies --realtime-alerts --recent-hours 2
+
+# Export anomaly report
+./hlogcli anomalies --statistical-analysis --output anomalies_report.json
 ```
 
 ### 🔍 Advanced Search
 
 ```bash
 # Search by IP address
-python -m logcli search --auto-discover --ip 192.168.1.100
+./hlogcli search --ip 192.168.1.100
 
 # Search with regex patterns
-python -m logcli search --auto-discover --path "/admin.*" --status 403
+./hlogcli search --path "/admin.*" --status 403
 
 # Time-based search
-python -m logcli search --auto-discover --last-hours 24 --status 404,500
+./hlogcli search --last-hours 24 --status 404,500
 
 # Complex search with export
-python -m logcli search --auto-discover --country US,GB --status 404 --limit 100 --output results.csv
+./hlogcli search --country US,GB --status 404 --limit 100 --output results.csv
+
+# User agent search
+./hlogcli search --user-agent ".*bot.*" --limit 50
 ```
 
 ### 📊 Report Generation
 
 ```bash
 # Daily HTML report
-python -m logcli report --auto-discover --daily --format html
+./hlogcli report --daily --format html
 
 # Weekly comprehensive report
-python -m logcli report --auto-discover --weekly --security-summary --performance-summary --bot-summary
+./hlogcli report --weekly --security-summary --performance-summary --bot-summary
 
 # Executive summary (JSON)
-python -m logcli report --auto-discover --format json --output executive_summary.json
-```
+./hlogcli report --format json --output executive_summary.json
 
-### 🔧 Basic Analysis (Legacy)
-
-```bash
-# Basic analysis (backward compatible)
-python -m logcli analyze --auto-discover
-
-# Real-time monitoring
-python -m logcli analyze -f -i --auto-discover
-
-# Filter and export
-python -m logcli analyze --countries US,GB,DE --export-csv --auto-discover
+# Text report for email
+./hlogcli report --format text --security-summary --output daily_summary.txt
 ```
 
 ### ⚙️ Configuration
 
 ```bash
 # Initialize configuration
-python -m logcli config --init --profile production
+./hlogcli config --init --profile production
 
 # Show current settings
-python -m logcli config --show
+./hlogcli config --show
 
 # Set configuration values
-python -m logcli config --set nginx_dir=/var/log/nginx --profile production
+./hlogcli config --set nginx_dir=/data/log/nginx --profile production
 ```
 
 ## 🎯 Nginx Log Format
 
-This tool is optimized for Nginx JSON logs with the following format:
+This tool is optimized for Hypernode's Nginx JSON logs with the following format:
 
 ```json
 {
-  "time": "2025-09-17T08:10:17+00:00",
+  "time": "2024-09-17T08:10:17+00:00",
   "remote_addr": "94.124.105.4",
   "host": "example.com",
   "request": "POST /graphql HTTP/1.1",
@@ -258,67 +310,68 @@ This tool is optimized for Nginx JSON logs with the following format:
 ### 🏢 **For System Administrators**
 ```bash
 # Daily security monitoring
-./opencli  # Interactive dashboard
-python -m logcli security --auto-discover --scan-attacks --output daily_security.json
+./hlogcli security --scan-attacks --output daily_security.json
 
 # Performance health check
-python -m logcli perf --auto-discover --response-time-analysis --slowest 20
+./hlogcli perf --response-time-analysis --slowest 20
+
+# Quick overview
+./hlogcli analyze --summary-only
 ```
 
 ### 🔧 **For DevOps Engineers**  
 ```bash
 # Incident investigation
-python -m logcli search --auto-discover --ip 192.168.1.100 --last-hours 48
+./hlogcli search --ip 192.168.1.100 --last-hours 48
 
 # Cache optimization
-python -m logcli perf --auto-discover --cache-analysis --handler varnish --handler phpfpm
+./hlogcli perf --cache-analysis --handler varnish --handler phpfpm
 
 # Bot traffic analysis
-python -m logcli bots --auto-discover --impact-analysis --classify-types
+./hlogcli bots --impact-analysis --classify-types
+
+# Anomaly detection
+./hlogcli anomalies --statistical-analysis --behavioral-analysis
 ```
 
 ### 📊 **For Business Analysts**
 ```bash
 # Weekly traffic report
-python -m logcli report --auto-discover --weekly --format html --output ./reports/
+./hlogcli report --weekly --format html --output ./reports/
 
 # Geographic analysis
-python -m logcli search --auto-discover --country US,GB,DE,FR --output geo_analysis.csv
+./hlogcli search --country US,GB,DE,FR --output geo_analysis.csv
+
+# Content performance
+./hlogcli content --performance-analysis --optimization-analysis
 ```
 
 ### 🚨 **For Security Teams**
 ```bash
-# Real-time security monitoring
-./opencli  # Use F3 for Security view
+# Security monitoring
+./hlogcli security --scan-attacks --brute-force-detection
 
 # Threat hunting
-python -m logcli security --auto-discover --sql-injection-patterns --brute-force-detection
+./hlogcli security --sql-injection-patterns --brute-force-detection
 
 # IP reputation analysis  
-python -m logcli search --auto-discover --status 403,404,500 --limit 500 --output suspicious_activity.csv
+./hlogcli search --status 403,404,500 --limit 500 --output suspicious_activity.csv
+
+# Real-time anomaly alerts
+./hlogcli anomalies --realtime-alerts --recent-hours 1
 ```
 
-## 🎮 Interactive TUI Features
+### 🔌 **For API Teams**
+```bash
+# API endpoint performance
+./hlogcli api --endpoint-analysis --performance-analysis
 
-### **Dashboard Views**
-- **Overview**: Real-time statistics, live log feed, trend charts
-- **Security**: Attack patterns, suspicious IPs, security alerts
-- **Performance**: Response times, slowest endpoints, cache analysis
-- **Bots**: Bot classification, behavior patterns, resource impact
-- **Search**: Interactive filtering with real-time results
+# GraphQL security analysis
+./hlogcli api --graphql-analysis --security-analysis
 
-### **Navigation & Shortcuts**
-- **Function Keys**: F1-F7 for different views and actions
-- **Number Keys**: 1-3 for quick view switching
-- **Letter Keys**: R (refresh), P (pause), Q (quit)
-- **Arrow Keys**: Navigate tables and lists
-- **Enter**: Drill down into details
-
-### **Real-time Features**
-- **Live Updates**: Auto-refresh every 1-5 seconds
-- **Streaming Logs**: Real-time log entries display
-- **Progressive Loading**: Smooth data updates
-- **Pause/Resume**: Control data flow
+# API bot traffic
+./hlogcli bots --ai-bots-only --api-endpoints-only
+```
 
 ## 📈 Export Formats & Reports
 
@@ -347,34 +400,40 @@ python -m logcli search --auto-discover --status 403,404,500 --limit 500 --outpu
 
 ## 🏗️ Architecture & Components
 
-### **Interactive TUI (Primary Interface)**
-```bash
-./opencli                    # Launch interactive dashboard
-```
-
-### **CLI Commands (Advanced Users)**
-- `python -m logcli analyze`   # Basic analysis (legacy)
-- `python -m logcli security`  # Security analysis
-- `python -m logcli perf`      # Performance analysis  
-- `python -m logcli bots`      # Bot analysis
-- `python -m logcli search`    # Advanced search
-- `python -m logcli report`    # Report generation
-- `python -m logcli config`    # Configuration management
+### **CLI Commands**
+- `./hlogcli analyze`     # Basic traffic analysis
+- `./hlogcli security`    # Security threat analysis
+- `./hlogcli perf`        # Performance analysis  
+- `./hlogcli bots`        # Bot classification and analysis
+- `./hlogcli api`         # API endpoint analysis
+- `./hlogcli content`     # Content and resource analysis
+- `./hlogcli anomalies`   # Machine learning anomaly detection
+- `./hlogcli search`      # Advanced search and filtering
+- `./hlogcli report`      # Comprehensive report generation
+- `./hlogcli config`      # Configuration management
 
 ### **Core Modules**
 ```
 logcli/
-├── interactive.py       # Main TUI application
-├── main.py             # CLI command router
-├── security.py         # Security analysis engine
-├── performance.py      # Performance analysis engine  
-├── bots.py             # Bot classification engine
-├── search.py           # Advanced search engine
-├── parser.py           # JSON log parsing
-├── filters.py          # Filtering logic
-├── aggregators.py      # Data aggregation
-├── log_reader.py       # File reading & tailing
-└── export.py           # Export functionality
+├── main.py                  # CLI command router and main entry point
+├── hypernode_command.py     # Hypernode command integration
+├── security.py             # Security analysis engine
+├── performance.py          # Performance analysis engine  
+├── bots.py                 # Bot classification engine
+├── api_analysis.py         # API endpoint analysis
+├── content_analysis.py     # Content type analysis
+├── anomaly_detection.py    # ML-based anomaly detection
+├── search.py               # Advanced search engine
+├── geographic.py           # Geographic analysis
+├── timeline.py             # Timeline and trend analysis
+├── parser.py               # JSON log parsing
+├── filters.py              # Filtering logic
+├── aggregators.py          # Data aggregation
+├── log_reader.py           # File reading & tailing
+├── export.py               # Export functionality
+├── ui.py                   # Console UI components
+├── dns_utils.py            # DNS resolution utilities
+└── config.py               # Configuration management
 ```
 
 ## ⚙️ Configuration & Customization
@@ -382,35 +441,35 @@ logcli/
 ### **Configuration Profiles**
 ```bash
 # Create production profile
-python -m logcli config --init --profile production
+./hlogcli config --init --profile production
 
 # Hypernode-specific settings
-python -m logcli config --set nginx_dir=/var/log/nginx --profile hypernode
-python -m logcli config --set alert_threshold=100 --profile hypernode
-python -m logcli config --set bot_threshold=50 --profile hypernode
+./hlogcli config --set nginx_dir=/data/log/nginx --profile hypernode
+./hlogcli config --set alert_threshold=100 --profile hypernode
+./hlogcli config --set bot_threshold=50 --profile hypernode
 ```
 
 ### **Customizable Settings**
-- **Log Directories**: Auto-discovery paths
 - **Alert Thresholds**: Security and performance alerts
 - **Bot Signatures**: Custom bot detection patterns
 - **Export Formats**: Default output formats
-- **Refresh Intervals**: TUI update frequencies
-- **Color Themes**: Interface customization
+- **Analysis Parameters**: Sensitivity, window sizes, thresholds
+- **Time Ranges**: Default analysis periods
 
 ## 🚀 Performance & Scalability
 
-### **Optimized for Large Files**
-- **Streaming Processing**: Memory-efficient log parsing
-- **Gzip Support**: Automatic compressed file handling
-- **Incremental Analysis**: Process only new data
-- **Background Processing**: Non-blocking UI updates
-
-### **Hypernode Optimizations**
-- **Multi-file Support**: Handle 50+ rotated logs
+### **Optimized for Hypernode**
+- **Direct Integration**: Uses hypernode-parse-nginx-log command
+- **Real-time Processing**: Always fresh data, no caching needed
+- **Memory Efficient**: Streaming processing for large datasets
 - **Handler Detection**: Varnish vs PHP-FPM analysis
 - **Country Integration**: Built-in GeoIP support
-- **JSON Format**: Optimized for Nginx JSON logs
+
+### **Advanced Features**
+- **Machine Learning**: Anomaly detection with statistical analysis
+- **AI Bot Detection**: Modern AI/LLM bot identification
+- **Performance Insights**: Cache effectiveness and optimization tips
+- **Security Intelligence**: Advanced threat pattern recognition
 
 ## 🐛 Troubleshooting & FAQ
 
@@ -420,70 +479,73 @@ python -m logcli config --set bot_threshold=50 --profile hypernode
 python3 --version  # Requires 3.8+
 
 # Install dependencies
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 
 # Verify installation
-python -m logcli --help
+./hlogcli --help
 ```
 
-### **TUI Issues**
+### **Hypernode Integration**
 ```bash
-# Terminal compatibility
-export TERM=xterm-256color
+# Check hypernode command availability
+hypernode-parse-nginx-log --help
 
-# Permission issues
-chmod +x opencli
+# Test with yesterday's logs
+./hlogcli analyze --yesterday
 
-# Fallback to CLI mode
-python -m logcli analyze --auto-discover
-```
-
-### **Log Format Issues**
-```bash
-# Verify JSON format
-head -n 1 /var/log/nginx/access.log | python -m json.tool
-
-# Check file permissions
-ls -la /var/log/nginx/access.log
-
-# Test with sample data
-python -m logcli analyze sample_access.log
+# Manual log directory
+./hlogcli analyze --nginx-dir /data/log/nginx
 ```
 
 ### **Performance Issues**
 ```bash
 # Limit analysis scope
-python -m logcli analyze --last-hours 24 --auto-discover
+./hlogcli analyze --last-hours 24
 
 # Use summary mode
-python -m logcli analyze --summary-only --auto-discover
+./hlogcli analyze --summary-only
 
 # Filter data
-python -m logcli analyze --exclude-bots --filter-preset errors_only --auto-discover
+./hlogcli analyze --exclude-bots --status 200,404
 ```
 
 ## 🎯 Hypernode-Specific Features
 
-### **Perfect for Your 98.11% Error Rate**
+### **Perfect for Production Environments**
 ```bash
-# Analyze all those 404s
-python -m logcli security --auto-discover --scan-attacks
+# Analyze current traffic
+./hlogcli analyze
 
-# Find the real problems vs bot noise
-python -m logcli bots --auto-discover --classify-types --impact-analysis
+# Security monitoring
+./hlogcli security --scan-attacks --brute-force-detection
 
-# Performance impact analysis
-python -m logcli perf --auto-discover --response-time-analysis --cache-analysis
+# Performance optimization
+./hlogcli perf --cache-analysis --response-time-analysis
+
+# Bot management
+./hlogcli bots --ai-bots-only --impact-analysis
 ```
 
 ### **Varnish + PHP-FPM Analysis**
 ```bash
 # Compare cache performance
-python -m logcli perf --auto-discover --cache-analysis --handler varnish
-python -m logcli perf --auto-discover --cache-analysis --handler phpfpm
+./hlogcli perf --cache-analysis --handler varnish
+./hlogcli perf --cache-analysis --handler phpfpm
 
-# Interactive monitoring
-./opencli  # Use F4 for Performance view
+# Handler-specific analysis
+./hlogcli analyze --handler varnish --export-csv
+```
+
+### **AI Bot Detection**
+```bash
+# Modern AI bot analysis
+./hlogcli bots --ai-bots-only --llm-bot-analysis
+
+# Training data detection
+./hlogcli bots --ai-training-detection --ai-impact-analysis
+
+# Resource impact of AI bots
+./hlogcli bots --ai-impact-analysis --behavior-analysis
 ```
 
 ## 🤝 Contributing
@@ -496,4 +558,4 @@ MIT License - see LICENSE file for details.
 
 ## 🙏 Credits
 
-Based on requirements from `idea.md` and optimized for Hypernode/Nginx environments.
+Designed specifically for Hypernode environments with direct integration to hypernode-parse-nginx-log command.

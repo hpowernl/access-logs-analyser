@@ -83,7 +83,7 @@ fi
 # Method 3: Try pipx (if available and method 1&2 failed)
 if [ "$INSTALL_SUCCESS" = false ] && command -v pipx &> /dev/null; then
     print_status "Method 3: Using pipx..."
-    if pipx install textual rich click pandas plotly && pip3 install -e . 2>/dev/null; then
+    if pipx install rich click pandas plotly && pip3 install -e . 2>/dev/null; then
         print_success "Core dependencies and logcli installed with pipx"
         INSTALL_SUCCESS=true
     else
@@ -98,8 +98,6 @@ if [ "$INSTALL_SUCCESS" = false ]; then
         print_success "Dependencies and logcli installed in .venv"
         print_warning "Note: You'll need to activate venv: source .venv/bin/activate"
         
-        # Update opencli to use venv python (temporarily disabled)
-        # sed -i '1s|#!/usr/bin/env python3|#!/usr/bin/env ./.venv/bin/python3|' opencli
         # logcli wrapper will automatically detect and use venv
         INSTALL_SUCCESS=true
     else
@@ -121,10 +119,7 @@ else
     print_success "Python dependencies and logcli module installed successfully"
 fi
 
-# Make opencli executable (temporarily disabled)
-# print_status "Making opencli executable..."
-# chmod +x opencli
-# print_success "opencli is now executable"
+# opencli has been removed - using CLI-only approach
 
 # Create logcli wrapper script
 print_status "Creating logcli wrapper script..."
@@ -166,7 +161,7 @@ fi
 # Install in user profile (no root needed)
 echo ""
 echo "🔧 Installation Options:"
-echo "   1. Use locally: ./hlogcli (CLI) - TUI temporarily disabled"
+echo "   1. Use locally: ./hlogcli (CLI)"
 echo "   2. Install to user profile: ~/bin/ (no root needed)"
 echo ""
 read -p "Install to user profile? (Y/n): " -n 1 -r
@@ -175,7 +170,6 @@ echo
 # Default to Yes if just Enter is pressed
 if [[ $REPLY =~ ^[Nn]$ ]]; then
     print_success "Local installation complete!"
-    # print_status "Use: ./opencli for interactive TUI mode"  # Temporarily disabled
     print_status "Use: ./hlogcli for command-line analysis"
 else
     print_status "Installing to user profile..."
@@ -183,11 +177,9 @@ else
     # Create ~/bin directory if it doesn't exist
     mkdir -p ~/bin
     
-    # Create symlinks to ~/bin (opencli temporarily disabled)
-    # if ln -sf "$(pwd)/opencli" ~/bin/opencli && ln -sf "$(pwd)/hlogcli" ~/bin/hlogcli; then
+    # Create symlink to ~/bin
     if ln -sf "$(pwd)/hlogcli" ~/bin/hlogcli; then
         print_success "User profile installation complete!"
-        # print_success "opencli installed to ~/bin/opencli"  # Temporarily disabled
         print_success "hlogcli installed to ~/bin/hlogcli"
         
         # Check if ~/bin is in PATH
@@ -214,10 +206,8 @@ echo ""
 echo "🎉 Installation Complete!"
 echo ""
 echo "📋 Usage:"
-# echo "   Interactive TUI:  ./opencli"  # Temporarily disabled
 echo "   Command-line:     ./hlogcli analyze"
 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-    # echo "   User (TUI):       opencli (if ~/bin is in PATH)"  # Temporarily disabled
     echo "   User (CLI):       hlogcli analyze (if ~/bin is in PATH)"
     echo "   Direct:           ~/bin/hlogcli"
 fi

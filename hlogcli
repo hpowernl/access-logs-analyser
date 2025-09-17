@@ -8,6 +8,14 @@
 #
 # Quick Start:
 #   hlogcli analyze                    # Auto-discover and analyze all logs
+#   hlogcli security                   # Security analysis and threat detection
+#   hlogcli perf                       # Performance analysis and optimization
+#   hlogcli bots                       # Bot analysis and classification
+#   hlogcli api                        # API endpoint analysis (NEW!)
+#   hlogcli content                    # Content type and resource analysis (NEW!)
+#   hlogcli anomalies                  # ML-based anomaly detection (NEW!)
+#   hlogcli search --status 404        # Search for specific entries
+#   hlogcli report --format html       # Generate comprehensive reports
 #   hlogcli --help                     # Show all available commands
 #   hlogcli --install-completion       # Install shell autocomplete
 #
