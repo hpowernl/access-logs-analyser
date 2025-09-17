@@ -109,24 +109,34 @@ class LogAnalyzerApp(App):
         try:
             print("📁 Discovering log files...")
             self.log_files = discover_nginx_logs()
+            print(f"🔍 Found log files: {self.log_files}")
             
             if not self.log_files:
                 print("⚠️  No log files found, using sample data")
                 sample_log = Path(__file__).parent.parent / "sample_access.log"
+                print(f"🔍 Checking sample log: {sample_log}")
                 if sample_log.exists():
                     self.log_files = [str(sample_log)]
+                    print(f"✅ Using sample log: {sample_log}")
+                else:
+                    print(f"❌ Sample log not found: {sample_log}")
             
-            print(f"📊 Processing {len(self.log_files)} log files...")
-            self.process_logs()
-            
-            # Update widgets
-            self.update_all_widgets()
-            
-            self.last_refresh = datetime.now()
-            print(f"✅ Processed {self.stats.total_requests:,} requests")
+            if self.log_files:
+                print(f"📊 Processing {len(self.log_files)} log files...")
+                self.process_logs()
+                
+                # Update widgets
+                self.update_all_widgets()
+                
+                self.last_refresh = datetime.now()
+                print(f"✅ Processed {self.stats.total_requests:,} requests")
+            else:
+                print("❌ No log files available to process")
             
         except Exception as e:
             print(f"❌ Error loading data: {e}")
+            import traceback
+            traceback.print_exc()
     
     def process_logs(self) -> None:
         """Process log files and update statistics."""
@@ -136,11 +146,16 @@ class LogAnalyzerApp(App):
         self.performance.reset()
         
         line_count = 0
+        parsed_count = 0
         max_lines_per_file = 5000  # Limit for performance
         
         for log_file in self.log_files:
             try:
                 print(f"📄 Processing {log_file}...")
+                
+                if not os.path.exists(log_file):
+                    print(f"❌ File does not exist: {log_file}")
+                    continue
                 
                 with open(log_file, 'r') as f:
                     for line_num, line in enumerate(f, 1):
@@ -152,10 +167,14 @@ class LogAnalyzerApp(App):
                         if not line:
                             continue
                         
+                        line_count += 1
+                        
                         try:
                             # Parse log entry
                             entry = self.parser.parse_line(line)
                             if not entry:
+                                if line_count <= 5:  # Show first few failures
+                                    print(f"🔍 Failed to parse line {line_num}: {line[:100]}...")
                                 continue
                             
                             # Apply filters
@@ -167,38 +186,54 @@ class LogAnalyzerApp(App):
                             self.security.add_entry(entry)
                             self.performance.add_entry(entry)
                             
-                            line_count += 1
+                            parsed_count += 1
+                            
+                            if parsed_count <= 5:  # Show first few successes
+                                print(f"✅ Parsed entry {parsed_count}: {entry.get('path', 'unknown')}")
                             
                         except Exception as e:
-                            # Skip malformed lines
+                            if line_count <= 5:  # Show first few errors
+                                print(f"⚠️ Error parsing line {line_num}: {e}")
                             continue
                             
             except Exception as e:
                 print(f"⚠️ Error processing {log_file}: {e}")
                 continue
         
-        print(f"📊 Processed {line_count} log entries")
+        print(f"📊 Read {line_count} lines, parsed {parsed_count} log entries")
+        print(f"📈 Total requests in stats: {self.stats.total_requests}")
     
     def update_all_widgets(self) -> None:
         """Update all widget contents."""
+        print(f"🔄 Updating widgets with {self.stats.total_requests} requests")
+        
         if self.overview_widget:
+            print("📊 Updating overview widget...")
             self.overview_widget.update_content(
                 stats=self.stats,
                 log_files=self.log_files,
                 following=self.following
             )
+        else:
+            print("⚠️ Overview widget not found")
         
         if self.performance_widget:
+            print("⚡ Updating performance widget...")
             self.performance_widget.update_content(
                 stats=self.stats,
                 performance_analyzer=self.performance
             )
+        else:
+            print("⚠️ Performance widget not found")
         
         if self.security_widget:
+            print("🔒 Updating security widget...")
             self.security_widget.update_content(
                 stats=self.stats,
                 security_analyzer=self.security
             )
+        else:
+            print("⚠️ Security widget not found")
     
     def auto_refresh(self) -> None:
         """Auto refresh data if following is enabled."""
