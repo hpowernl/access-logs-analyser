@@ -6,14 +6,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="-logcli",
+    name="hypernode-logcli",
     version="1.0.0",
-    author="Your Name",
-    author_email="your.email@example.com",
-    description=" Access Log Analyzer - Advanced Nginx JSON log analysis tool",
+    author="Hypernode Team",
+    author_email="support@hypernode.com",
+    description="Hypernode Access Log Analyzer - Advanced Nginx JSON log analysis tool",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/-logcli",
+    url="https://github.com/hypernode/hypernode-logcli",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -43,7 +43,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "logcli=logcli.main:main",
+            "logcli=logcli.main:cli",
         ],
     },
     include_package_data=True,

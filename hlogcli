@@ -1,0 +1,21 @@
+#!/bin/bash
+# Hypernode Log Analyzer - logcli wrapper
+# Auto-discover logs and run analysis
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check if we're in a venv
+if [[ -n "$VIRTUAL_ENV" ]] || [[ -f "$SCRIPT_DIR/.venv/bin/python3" ]]; then
+    if [[ -f "$SCRIPT_DIR/.venv/bin/python3" ]]; then
+        PYTHON_CMD="$SCRIPT_DIR/.venv/bin/python3"
+    else
+        PYTHON_CMD="python3"
+    fi
+else
+    PYTHON_CMD="python3"
+fi
+
+# Run logcli with auto-discover enabled by default
+cd "$SCRIPT_DIR"
+exec $PYTHON_CMD -m logcli.main "$@"

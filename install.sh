@@ -128,7 +128,7 @@ print_success "opencli is now executable"
 
 # Create logcli wrapper script
 print_status "Creating logcli wrapper script..."
-cat > logcli << 'EOF'
+cat > hlogcli << 'EOF'
 #!/bin/bash
 # Hypernode Log Analyzer - logcli wrapper
 # Auto-discover logs and run analysis
@@ -152,8 +152,8 @@ cd "$SCRIPT_DIR"
 exec $PYTHON_CMD -m logcli.main "$@"
 EOF
 
-chmod +x logcli
-print_success "logcli wrapper script created"
+chmod +x hlogcli
+print_success "hlogcli wrapper script created"
 
 # Check if ~/bin is in PATH
 print_status "Checking user PATH..."
@@ -166,7 +166,7 @@ fi
 # Install in user profile (no root needed)
 echo ""
 echo "🔧 Installation Options:"
-echo "   1. Use locally: ./opencli (TUI) or ./logcli (CLI)"
+echo "   1. Use locally: ./opencli (TUI) or ./hlogcli (CLI)"
 echo "   2. Install to user profile: ~/bin/ (no root needed)"
 echo ""
 read -p "Install to user profile? (Y/n): " -n 1 -r
@@ -176,7 +176,7 @@ echo
 if [[ $REPLY =~ ^[Nn]$ ]]; then
     print_success "Local installation complete!"
     print_status "Use: ./opencli for interactive TUI mode"
-    print_status "Use: ./logcli for command-line analysis"
+    print_status "Use: ./hlogcli for command-line analysis"
 else
     print_status "Installing to user profile..."
     
@@ -184,15 +184,15 @@ else
     mkdir -p ~/bin
     
     # Create symlinks to ~/bin
-    if ln -sf "$(pwd)/opencli" ~/bin/opencli && ln -sf "$(pwd)/logcli" ~/bin/logcli; then
+    if ln -sf "$(pwd)/opencli" ~/bin/opencli && ln -sf "$(pwd)/hlogcli" ~/bin/hlogcli; then
         print_success "User profile installation complete!"
         print_success "opencli installed to ~/bin/opencli"
-        print_success "logcli installed to ~/bin/logcli"
+        print_success "hlogcli installed to ~/bin/hlogcli"
         
         # Check if ~/bin is in PATH
         if [[ ":$PATH:" == *":$HOME/bin:"* ]] || [[ ":$PATH:" == *":~/bin:"* ]]; then
             print_success "~/bin is already in PATH"
-            print_success "You can now run 'opencli' or 'logcli' from anywhere"
+            print_success "You can now run 'opencli' or 'hlogcli' from anywhere"
         else
             print_warning "~/bin is not in PATH"
             echo ""
@@ -214,11 +214,11 @@ echo "🎉 Installation Complete!"
 echo ""
 echo "📋 Usage:"
 echo "   Interactive TUI:  ./opencli"
-echo "   Command-line:     ./logcli analyze"
+echo "   Command-line:     ./hlogcli analyze"
 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
     echo "   User (TUI):       opencli (if ~/bin is in PATH)"
-    echo "   User (CLI):       logcli analyze (if ~/bin is in PATH)"
-    echo "   Direct:           ~/bin/opencli or ~/bin/logcli"
+    echo "   User (CLI):       hlogcli analyze (if ~/bin is in PATH)"
+    echo "   Direct:           ~/bin/opencli or ~/bin/hlogcli"
 fi
 echo ""
 echo "📁 Log Analysis (NEW!):"
@@ -228,16 +228,16 @@ echo "   • Extended output with User Agents, IPs, Paths, Browser/OS stats"
 echo "   • Real-time log monitoring and analysis"
 echo ""
 echo "🚀 Quick Start:"
-echo "   logcli analyze                    # Auto-discover and analyze logs"
-echo "   logcli analyze --summary-only     # Quick summary"
-echo "   logcli analyze -i                 # Interactive mode"
-echo "   logcli security                   # Security analysis"
-echo "   logcli perf --response-time-analysis  # Performance analysis"
+echo "   hlogcli analyze                    # Auto-discover and analyze logs"
+echo "   hlogcli analyze --summary-only     # Quick summary"
+echo "   hlogcli analyze -i                 # Interactive mode"
+echo "   hlogcli security                   # Security analysis"
+echo "   hlogcli perf --response-time-analysis  # Performance analysis"
 echo ""
 echo "🔧 Troubleshooting:"
 echo "   • If modules not found: pip3 install -r requirements.txt"
-echo "   • If permission denied: chmod +x opencli logcli"
+echo "   • If permission denied: chmod +x opencli hlogcli"
 echo "   • For TUI help: ./opencli --help"
-echo "   • For CLI help: ./logcli --help"
+echo "   • For CLI help: ./hlogcli --help"
 echo ""
 print_success "Ready to analyze your logs! 🚀"
