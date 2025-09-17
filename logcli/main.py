@@ -250,6 +250,47 @@ def process_log_files(log_files: List[str], parser: LogParser, log_filter: LogFi
     console.print(f"[green]Processed {processed_lines:,} entries from {total_lines:,} total lines[/green]")
 
 
+def process_log_files_with_callback(log_files: List[str], parser: LogParser, callback_func, analysis_type: str = "analysis"):
+    """Process log files with a callback function and nice progress display."""
+    total_lines = 0
+    processed_lines = 0
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        
+        for log_file in log_files:
+            task = progress.add_task(f"Processing {Path(log_file).name}...", total=None)
+            
+            try:
+                # Actually process the file
+                from .log_reader import LogTailer
+                with LogTailer(log_file, follow=False) as tailer:
+                    for line in tailer.tail():
+                        total_lines += 1
+                        
+                        # Parse log entry
+                        log_entry = parser.parse_log_line(line)
+                        if log_entry:
+                            callback_func(log_entry)
+                            processed_lines += 1
+                        
+                        # Update progress occasionally
+                        if total_lines % 1000 == 0:
+                            progress.update(task, description=f"Processing {Path(log_file).name}... ({total_lines:,} lines)")
+            
+            except Exception as e:
+                console.print(f"[red]Error processing {log_file}: {str(e)}[/red]")
+                continue
+            
+            progress.remove_task(task)
+    
+    console.print(f"[green]Processed {processed_lines:,} entries from {total_lines:,} total lines[/green]")
+
+
 def run_realtime_console(log_files: List[str], parser: LogParser, log_filter: LogFilter, stats: StatisticsAggregator):
     """Run real-time analysis in console mode."""
     console.print("[blue]Starting real-time log analysis... Press Ctrl+C to stop[/blue]")
@@ -368,13 +409,16 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
     # Initialize security analyzer
     from .security import SecurityAnalyzer
     analyzer = SecurityAnalyzer()
+    parser = LogParser()
     
-    # Process log files
+    # Process log files with nice progress display
     console.print("[blue]Starting security analysis...[/blue]")
     
-    for log_file in log_files:
-        console.print(f"[cyan]Analyzing {log_file}...[/cyan]")
-        analyzer.analyze_file(log_file)
+    def analyze_entry(log_entry):
+        """Analyze a single log entry for security."""
+        analyzer._analyze_entry(log_entry)
+    
+    process_log_files_with_callback(log_files, parser, analyze_entry, "security analysis")
     
     # Generate security report
     if scan_attacks:
@@ -439,13 +483,19 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
     # Initialize performance analyzer
     from .performance import PerformanceAnalyzer
     analyzer = PerformanceAnalyzer()
+    parser = LogParser()
     
-    # Process log files
+    # Process log files with nice progress display
     console.print("[blue]Starting performance analysis...[/blue]")
     
-    for log_file in log_files:
-        console.print(f"[cyan]Analyzing {log_file}...[/cyan]")
-        analyzer.analyze_file(log_file, handler_filter=handler)
+    def analyze_entry(log_entry):
+        """Analyze a single log entry for performance."""
+        # Apply handler filter if specified
+        if handler and log_entry.get('handler') != handler:
+            return
+        analyzer._analyze_entry(log_entry)
+    
+    process_log_files_with_callback(log_files, parser, analyze_entry, "performance analysis")
     
     # Generate performance reports
     if response_time_analysis:
@@ -515,13 +565,16 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
     # Initialize bot analyzer
     from .bots import BotAnalyzer
     analyzer = BotAnalyzer()
+    parser = LogParser()
     
-    # Process log files
+    # Process log files with nice progress display
     console.print("[blue]Starting bot analysis...[/blue]")
     
-    for log_file in log_files:
-        console.print(f"[cyan]Analyzing {log_file}...[/cyan]")
-        analyzer.analyze_file(log_file)
+    def analyze_entry(log_entry):
+        """Analyze a single log entry for bots."""
+        analyzer._analyze_entry(log_entry)
+    
+    process_log_files_with_callback(log_files, parser, analyze_entry, "bot analysis")
     
     # Generate bot analysis reports
     if classify_types:
@@ -612,16 +665,19 @@ def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent,
     
     console.print("[blue]Starting search...[/blue]")
     
-    # Search through files
+    # Search through files with progress display
     results = []
-    for log_file in log_files:
-        console.print(f"[cyan]Searching {log_file}...[/cyan]")
-        file_results = searcher.search_file(log_file, criteria, limit=limit)
-        results.extend(file_results)
-        
+    parser = LogParser()
+    
+    def search_entry(log_entry):
+        """Search a single log entry."""
+        nonlocal results
         if len(results) >= limit:
-            results = results[:limit]
-            break
+            return
+        if searcher._matches_criteria(log_entry, criteria):
+            results.append(log_entry)
+    
+    process_log_files_with_callback(log_files, parser, search_entry, "search")
     
     # Display results
     console.print(f"\n[bold green]🔍 SEARCH RESULTS ({len(results)} entries)[/bold green]")
@@ -700,7 +756,7 @@ def report(log_files, nginx_dir, no_auto_discover, daily, weekly, security_summa
     from .aggregators import StatisticsAggregator
     stats = StatisticsAggregator()
     
-    # Process log files
+    # Process log files with nice progress display
     process_log_files(log_files, LogParser(), LogFilter(), stats)
     
     # Generate different sections based on options
