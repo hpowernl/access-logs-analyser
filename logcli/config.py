@@ -66,7 +66,6 @@ EXPORT_SETTINGS = {
 
 # Platform-specific settings
 HYPERNODE_SETTINGS = {
-    'default_nginx_dir': '/var/log/nginx',
     'common_log_paths': [
         '/var/log/nginx/access.log',
         '/var/log/nginx/access.log.1',

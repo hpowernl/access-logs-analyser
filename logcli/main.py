@@ -125,17 +125,6 @@ def is_hypernode_platform() -> bool:
     return any(os.path.exists(path) for path in hypernode_indicators[:2]) or hypernode_indicators[2]
 
 
-def get_platform_nginx_dir() -> str:
-    """Get the appropriate nginx directory for the current platform."""
-    if is_hypernode_platform():
-        # Check both common Hypernode locations
-        for path in ['/data/log/nginx', '/var/log/nginx']:
-            if os.path.exists(path):
-                return path
-        return '/data/log/nginx'  # Default for Hypernode
-    return '/var/log/nginx'  # Standard default
-
-
 @click.group(invoke_without_command=True, context_settings={'help_option_names': ['-h', '--help']})
 @click.option('--install-completion', is_flag=True, help='Install shell completion for bash/zsh/fish')
 @click.pass_context
@@ -251,10 +240,8 @@ eval "$(_HLOGCLI_COMPLETE={shell}_source hlogcli)"
 @click.option('--export-charts', is_flag=True, help='Export charts to HTML')
 @click.option('--summary-only', is_flag=True, help='Show only summary statistics')
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
-@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
-@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 def analyze(log_files, follow, interactive, output, filter_preset, countries, status_codes, 
-         exclude_bots, from_time, to_time, last_hours, last_days, export_csv, export_json, export_charts, summary_only, yesterday, nginx_dir, no_auto_discover):
+         exclude_bots, from_time, to_time, last_hours, last_days, export_csv, export_json, export_charts, summary_only, yesterday):
     """📊 Analyze Nginx JSON access logs with comprehensive statistics and insights.
     
     This is the main analysis command that provides detailed insights into your web traffic,
@@ -372,30 +359,6 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/red]")
         sys.exit(1)
-
-
-def discover_nginx_logs(nginx_dir: str) -> List[str]:
-    """Discover all access.log files in nginx directory."""
-    log_dir = Path(nginx_dir)
-    if not log_dir.exists():
-        return []
-    
-    # Find all access.log files (including gzipped ones)
-    log_files = []
-    
-    # Current access.log
-    current_log = log_dir / "access.log"
-    if current_log.exists():
-        log_files.append(str(current_log))
-    
-    # Rotated logs (access.log.1, access.log.2.gz, etc.)
-    for log_file in log_dir.glob("access.log.*"):
-        log_files.append(str(log_file))
-    
-    # Sort by modification time (newest first)
-    log_files.sort(key=lambda x: Path(x).stat().st_mtime, reverse=True)
-    
-    return log_files
 
 
 def process_hypernode_logs(log_filter: LogFilter, stats: StatisticsAggregator, additional_args: Optional[List[str]] = None, use_yesterday: bool = False):
@@ -649,8 +612,6 @@ def handle_exports(stats: StatisticsAggregator, output_dir: Optional[str],
 # Security Analysis Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
-@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--scan-attacks', is_flag=True, help='Show detailed attack patterns (default: enabled)')
 @click.option('--brute-force-detection', is_flag=True, help='Show detailed brute force attempts (default: enabled)')
 @click.option('--sql-injection-patterns', is_flag=True, help='Show detailed SQL injection attempts (default: enabled)')
@@ -666,7 +627,7 @@ def handle_exports(stats: StatisticsAggregator, output_dir: Optional[str],
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--export-blacklist', help='Export recommended IP blacklist to file')
 @click.option('--output', '-o', help='Output file for security report')
-def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_detection, 
+def security(log_files, scan_attacks, brute_force_detection, 
             sql_injection_patterns, suspicious_user_agents, show_summary, show_top_threats,
             show_geographic, show_timeline, threshold, min_threat_score, detailed, quiet,
             yesterday, export_blacklist, output):
@@ -940,8 +901,6 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
 # Performance Analysis Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
-@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--response-time-analysis', is_flag=True, help='Analyze response times')
 @click.option('--slowest', default=10, help='Show N slowest endpoints')
 @click.option('--percentiles', is_flag=True, help='Show response time percentiles')
@@ -950,7 +909,7 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
 @click.option('--handler', help='Filter by handler (e.g., varnish, phpfpm)')
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--output', '-o', help='Output file for performance report')
-def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest, 
+def perf(log_files, response_time_analysis, slowest, 
          percentiles, bandwidth_analysis, cache_analysis, handler, yesterday, output):
     """⚡ Performance analysis and optimization insights.
     
@@ -1033,8 +992,6 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
 # API Analysis Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
-@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--endpoint-analysis', is_flag=True, help='Detailed endpoint performance analysis')
 @click.option('--graphql-analysis', is_flag=True, help='GraphQL-specific analysis')
 @click.option('--security-analysis', is_flag=True, help='API security analysis')
@@ -1043,7 +1000,7 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
 @click.option('--min-requests', default=10, help='Minimum requests for endpoint analysis')
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--output', '-o', help='Output file for API analysis report')
-def api(log_files, nginx_dir, no_auto_discover, endpoint_analysis, graphql_analysis,
+def api(log_files, endpoint_analysis, graphql_analysis,
         security_analysis, performance_analysis, top_endpoints, min_requests, yesterday, output):
     """🔌 Advanced API endpoint analysis and performance insights.
     
@@ -1222,8 +1179,6 @@ def api(log_files, nginx_dir, no_auto_discover, endpoint_analysis, graphql_analy
 # Content Analysis Commands  
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
-@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--content-type-analysis', is_flag=True, help='Detailed content type analysis')
 @click.option('--file-extension-analysis', is_flag=True, help='File extension analysis')
 @click.option('--optimization-analysis', is_flag=True, help='Optimization opportunities analysis')
@@ -1232,7 +1187,7 @@ def api(log_files, nginx_dir, no_auto_discover, endpoint_analysis, graphql_analy
 @click.option('--top-content', default=10, help='Show top N content types/extensions')
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--output', '-o', help='Output file for content analysis report')
-def content(log_files, nginx_dir, no_auto_discover, content_type_analysis, file_extension_analysis,
+def content(log_files, content_type_analysis, file_extension_analysis,
            optimization_analysis, performance_analysis, seo_analysis, top_content, yesterday, output):
     """📁 Content type and resource distribution analysis.
     
@@ -1435,8 +1390,6 @@ def content(log_files, nginx_dir, no_auto_discover, content_type_analysis, file_
 # Anomaly Detection Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
-@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--sensitivity', default=2.5, type=float, help='Anomaly detection sensitivity (lower = more sensitive)')
 @click.option('--window-size', default=60, type=int, help='Analysis window size in minutes')
 @click.option('--realtime-alerts', is_flag=True, help='Show real-time critical alerts')
@@ -1446,7 +1399,7 @@ def content(log_files, nginx_dir, no_auto_discover, content_type_analysis, file_
 @click.option('--recent-hours', default=1, type=int, help='Show anomalies from last N hours')
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--output', '-o', help='Output file for anomaly detection report')
-def anomalies(log_files, nginx_dir, no_auto_discover, sensitivity, window_size, realtime_alerts,
+def anomalies(log_files, sensitivity, window_size, realtime_alerts,
               statistical_analysis, behavioral_analysis, show_timeline, recent_hours, yesterday, output):
     """🤖 Machine learning-based anomaly detection for unusual traffic patterns.
     
@@ -1677,8 +1630,6 @@ def anomalies(log_files, nginx_dir, no_auto_discover, sensitivity, window_size, 
 # Bot Analysis Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
-@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--classify-types', is_flag=True, help='Classify bot types')
 @click.option('--behavior-analysis', is_flag=True, help='Analyze bot behavior patterns')
 @click.option('--legitimate-vs-malicious', is_flag=True, help='Score bots as good/bad')
@@ -1690,7 +1641,7 @@ def anomalies(log_files, nginx_dir, no_auto_discover, sensitivity, window_size, 
 @click.option('--ai-impact-analysis', is_flag=True, help='AI bot resource impact analysis')
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--output', '-o', help='Output file for bot analysis report')
-def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analysis,
+def bots(log_files, classify_types, behavior_analysis,
          legitimate_vs_malicious, impact_analysis, unknown_only, ai_bots_only, 
          ai_training_detection, llm_bot_analysis, ai_impact_analysis, yesterday, output):
     """🤖 Advanced bot and crawler analysis and classification.
@@ -2008,8 +1959,6 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
 # Search and Filter Commands
 @cli.command()
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
-@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 @click.option('--ip', help='Search for specific IP address')
 @click.option('--path', help='Search for path pattern (supports regex)')
 @click.option('--status', help='Filter by status code(s) (comma-separated)')
@@ -2020,7 +1969,7 @@ def bots(log_files, nginx_dir, no_auto_discover, classify_types, behavior_analys
 @click.option('--yesterday', is_flag=True, help='Search yesterday\'s logs instead of today\'s')
 @click.option('--limit', default=100, help='Limit number of results')
 @click.option('--output', '-o', help='Output file for search results')
-def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent, 
+def search(log_files, ip, path, status, user_agent, 
            country, time_range, last_hours, yesterday, limit, output):
     """🔍 Advanced search and filtering of log entries.
     
@@ -2127,170 +2076,8 @@ def search(log_files, nginx_dir, no_auto_discover, ip, path, status, user_agent,
         console.print(f"[green]Search results exported to: {output}[/green]")
 
 
-# Report Generation Commands
-@cli.command()
-@click.argument('log_files', nargs=-1, type=click.Path(exists=True))
-@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
-@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
-@click.option('--daily', is_flag=True, help='Generate daily report')
-@click.option('--weekly', is_flag=True, help='Generate weekly report')
-@click.option('--security-summary', is_flag=True, help='Include security summary')
-@click.option('--performance-summary', is_flag=True, help='Include performance summary')
-@click.option('--bot-summary', is_flag=True, help='Include bot analysis summary')
-@click.option('--format', default='html', type=click.Choice(['html', 'json', 'text']), help='Report format')
-@click.option('--output', '-o', help='Output directory for reports')
-def report(log_files, nginx_dir, no_auto_discover, daily, weekly, security_summary, 
-           performance_summary, bot_summary, format, output):
-    """📋 Generate comprehensive analysis reports in multiple formats.
-    
-    Create detailed reports combining traffic analysis, security insights, performance
-    metrics, and bot activity. Perfect for regular monitoring, compliance reporting,
-    or sharing insights with team members.
-    
-    \b
-    📊 Report Sections:
-      • Traffic overview and trends
-      • Security analysis and threats
-      • Performance metrics and bottlenecks  
-      • Bot activity and classification
-      • Geographic distribution
-      • Top pages and resources
-      • Error analysis and patterns
-    
-    \b
-    📄 Export Formats:
-      • HTML - Interactive charts and visualizations
-      • JSON - Machine-readable structured data
-      • Text - Plain text summary for scripts/emails
-    
-    \b
-    💡 Examples:
-      hlogcli report                            # Comprehensive report (all sections)
-      hlogcli report --daily                    # Daily report format
-      hlogcli report --weekly                   # Weekly report format
-      hlogcli report --security-summary         # Security-focused report
-      hlogcli report --performance-summary      # Performance-focused report
-      hlogcli report --format json -o report.json  # JSON export
-      hlogcli report --format html -o reports/ # HTML with charts
-    """
-    
-    # Auto-discover log files by default unless disabled or log files are specified
-    if not log_files and not no_auto_discover:
-        actual_nginx_dir = nginx_dir or get_platform_nginx_dir()
-        log_files = discover_nginx_logs(actual_nginx_dir)
-        if not log_files:
-            console.print(f"[red]No access.log files found in {actual_nginx_dir}[/red]")
-            return
-        console.print(f"[green]Discovered {len(log_files)} log files for reporting[/green]")
-    
-    if not log_files:
-        console.print("[red]No log files specified. Use --help for usage information.[/red]")
-        return
-    
-    # Initialize report generator
-    from .reports import ReportGenerator
-    generator = ReportGenerator(output_dir=output or "reports")
-    
-    console.print("[blue]Generating comprehensive report...[/blue]")
-    
-    # Analyze logs for report
-    from .aggregators import StatisticsAggregator
-    stats = StatisticsAggregator()
-    
-    # Process log files with nice progress display
-    process_log_files(log_files, LogParser(), LogFilter(), stats)
-    
-    # Generate different sections based on options
-    sections = ['overview']  # Always include overview
-    
-    if security_summary:
-        sections.append('security')
-    if performance_summary:
-        sections.append('performance')
-    if bot_summary:
-        sections.append('bots')
-    
-    # If no specific sections requested, include all
-    if not any([security_summary, performance_summary, bot_summary]):
-        sections.extend(['security', 'performance', 'bots'])
-    
-    # Generate report
-    report_file = generator.generate_report(
-        stats=stats,
-        sections=sections,
-        format=format,
-        report_type='daily' if daily else 'weekly' if weekly else 'comprehensive'
-    )
-    
-    console.print(f"[green]Report generated: {report_file}[/green]")
 
 
-# Configuration Management Commands
-@cli.command()
-@click.option('--init', is_flag=True, help='Initialize configuration')
-@click.option('--show', is_flag=True, help='Show current configuration')
-@click.option('--set', help='Set configuration value (key=value)')
-@click.option('--profile', help='Configuration profile name')
-def config(init, show, set, profile):
-    """⚙️ Manage logcli configuration and user profiles.
-    
-    Create and manage configuration profiles for different environments
-    or use cases. Store frequently used settings, custom thresholds,
-    and default options to streamline your workflow.
-    
-    \b
-    🔧 Configuration Features:
-      • Multiple named profiles (production, staging, development)
-      • Custom default directories and filters
-      • Alert thresholds and notification settings
-      • Export preferences and output formats
-      • Analysis preferences and display options
-    
-    \b
-    💡 Examples:
-      hlogcli config --init                     # Initialize default config
-      hlogcli config --init --profile staging  # Create staging profile
-      hlogcli config --show                    # Show current configuration
-      hlogcli config --show --profile prod     # Show production profile
-      hlogcli config --set nginx_dir=/var/log/nginx  # Set default directory
-      hlogcli config --set threshold=20 --profile staging  # Profile-specific setting
-    """
-    
-    from .configuration import ConfigManager
-    config_manager = ConfigManager()
-    
-    if init:
-        config_manager.init_config(profile or 'default')
-        console.print(f"[green]Configuration initialized for profile: {profile or 'default'}[/green]")
-    
-    elif show:
-        current_config = config_manager.get_config(profile or 'default')
-        console.print(f"[bold blue]Configuration for profile: {profile or 'default'}[/bold blue]")
-        
-        from rich.tree import Tree
-        tree = Tree("Configuration")
-        
-        for section, values in current_config.items():
-            section_tree = tree.add(f"[bold]{section}[/bold]")
-            if isinstance(values, dict):
-                for key, value in values.items():
-                    section_tree.add(f"{key}: [green]{value}[/green]")
-            else:
-                tree.add(f"{section}: [green]{values}[/green]")
-        
-        console.print(tree)
-    
-    elif set:
-        if '=' not in set:
-            console.print("[red]Invalid format. Use key=value[/red]")
-            return
-        
-        key, value = set.split('=', 1)
-        config_manager.set_config_value(profile or 'default', key, value)
-        console.print(f"[green]Set {key} = {value} for profile: {profile or 'default'}[/green]")
-    
-    else:
-        console.print("[yellow]Use --init, --show, or --set option[/yellow]")
 
 
 # Make the main command backward compatible
@@ -2307,10 +2094,8 @@ def config(init, show, set, profile):
 @click.option('--export-json', is_flag=True, help='Export results to JSON')
 @click.option('--export-charts', is_flag=True, help='Export charts to HTML')
 @click.option('--summary-only', is_flag=True, help='Show only summary statistics')
-@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
-@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
 def main_compat(log_files, follow, interactive, output, filter_preset, countries, status_codes, 
-         exclude_bots, export_csv, export_json, export_charts, summary_only, nginx_dir, no_auto_discover):
+         exclude_bots, export_csv, export_json, export_charts, summary_only):
     """Legacy main command for backward compatibility."""
     # Call the analyze command with the same parameters
     from click.testing import CliRunner
@@ -2340,10 +2125,6 @@ def main_compat(log_files, follow, interactive, output, filter_preset, countries
         args.append('--export-charts')
     if summary_only:
         args.append('--summary-only')
-    if nginx_dir:
-        args.extend(['--nginx-dir', nginx_dir])
-    if no_auto_discover:
-        args.append('--no-auto-discover')
     
     # Add log files
     args.extend(log_files)

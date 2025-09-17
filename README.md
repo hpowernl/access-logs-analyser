@@ -15,7 +15,7 @@ A **comprehensive command-line log analysis platform** specifically designed for
 - **Brute Force Detection**: Configurable thresholds and alerts
 - **Suspicious IP Tracking**: Threat scoring and blacklist recommendations
 - **Real-time Security Alerts**: Live monitoring of security events
-- **Comprehensive Reports**: Detailed security analysis exports
+- **Comprehensive Analysis**: Detailed security insights
 
 ### ⚡ **Performance Optimization**
 - **Response Time Analysis**: Percentiles, trends, slowest endpoints
@@ -37,9 +37,9 @@ A **comprehensive command-line log analysis platform** specifically designed for
 - **Export Capabilities**: CSV, JSON, text formats
 - **Anomaly Detection**: Machine learning-based unusual pattern detection
 
-### 📊 **Comprehensive Reporting**
-- **Multi-format Reports**: HTML dashboards, JSON data, CSV exports
-- **Daily/Weekly Reports**: Automated report generation
+### 📊 **Comprehensive Analysis**
+- **Multi-format Exports**: HTML dashboards, JSON data, CSV exports
+- **Real-time Analysis**: Live monitoring and insights
 - **Executive Summaries**: High-level KPIs and trends
 - **Technical Deep-dives**: Detailed analysis for technical teams
 
@@ -61,8 +61,8 @@ A **comprehensive command-line log analysis platform** specifically designed for
 
 1. **Clone the repository:**
 ```bash
-git clone <repository-url>
-cd Hypernode-logs
+git clone https://github.com/hpowernl/access-logs-analyser.git
+cd access-logs-analyser
 ```
 
 2. **Run the installation script:**
@@ -70,6 +70,8 @@ cd Hypernode-logs
 chmod +x install.sh
 ./install.sh
 ```
+
+
 
 This will:
 - Install Python dependencies
@@ -110,8 +112,6 @@ chmod +x hlogcli
 - `content`: Content type and resource analysis
 - `anomalies`: Machine learning-based anomaly detection
 - `search`: Advanced search and filtering
-- `report`: Generate comprehensive reports
-- `config`: Configuration management
 
 ### 🔐 Security Analysis
 
@@ -125,8 +125,8 @@ chmod +x hlogcli
 # Suspicious user agents
 ./hlogcli security --suspicious-user-agents
 
-# Export security report
-./hlogcli security --scan-attacks --output security_report.json
+# Export security analysis
+./hlogcli security --scan-attacks --output security_analysis.json
 
 # Show security timeline
 ./hlogcli security --show-timeline --threshold 5
@@ -144,8 +144,8 @@ chmod +x hlogcli
 # Bandwidth analysis
 ./hlogcli perf --bandwidth-analysis
 
-# Export performance report
-./hlogcli perf --response-time-analysis --output perf_report.json
+# Export performance analysis
+./hlogcli perf --response-time-analysis --output perf_analysis.json
 
 # Show performance percentiles
 ./hlogcli perf --percentiles --handler phpfpm
@@ -170,7 +170,7 @@ chmod +x hlogcli
 ./hlogcli bots --ai-training-detection --ai-impact-analysis
 
 # Export bot analysis
-./hlogcli bots --classify-types --output bot_report.json
+./hlogcli bots --classify-types --output bot_analysis.json
 ```
 
 ### 🔌 API Analysis
@@ -186,7 +186,7 @@ chmod +x hlogcli
 ./hlogcli api --performance-analysis --min-requests 5
 
 # Export API analysis
-./hlogcli api --endpoint-analysis --output api_report.json
+./hlogcli api --endpoint-analysis --output api_analysis.json
 ```
 
 ### 📁 Content Analysis
@@ -202,7 +202,7 @@ chmod +x hlogcli
 ./hlogcli content --seo-analysis --top-content 15
 
 # Export content analysis
-./hlogcli content --content-type-analysis --output content_report.json
+./hlogcli content --content-type-analysis --output content_analysis.json
 ```
 
 ### 🤖 Anomaly Detection
@@ -217,8 +217,8 @@ chmod +x hlogcli
 # Real-time alerts
 ./hlogcli anomalies --realtime-alerts --recent-hours 2
 
-# Export anomaly report
-./hlogcli anomalies --statistical-analysis --output anomalies_report.json
+# Export anomaly analysis
+./hlogcli anomalies --statistical-analysis --output anomalies_analysis.json
 ```
 
 ### 🔍 Advanced Search
@@ -240,34 +240,6 @@ chmod +x hlogcli
 ./hlogcli search --user-agent ".*bot.*" --limit 50
 ```
 
-### 📊 Report Generation
-
-```bash
-# Daily HTML report
-./hlogcli report --daily --format html
-
-# Weekly comprehensive report
-./hlogcli report --weekly --security-summary --performance-summary --bot-summary
-
-# Executive summary (JSON)
-./hlogcli report --format json --output executive_summary.json
-
-# Text report for email
-./hlogcli report --format text --security-summary --output daily_summary.txt
-```
-
-### ⚙️ Configuration
-
-```bash
-# Initialize configuration
-./hlogcli config --init --profile production
-
-# Show current settings
-./hlogcli config --show
-
-# Set configuration values
-./hlogcli config --set nginx_dir=/data/log/nginx --profile production
-```
 
 ## 🎯 Nginx Log Format
 
@@ -336,8 +308,8 @@ This tool is optimized for Hypernode's Nginx JSON logs with the following format
 
 ### 📊 **For Business Analysts**
 ```bash
-# Weekly traffic report
-./hlogcli report --weekly --format html --output ./reports/
+# Weekly traffic analysis
+./hlogcli analyze --export-charts --output ./reports/
 
 # Geographic analysis
 ./hlogcli search --country US,GB,DE,FR --output geo_analysis.csv
@@ -373,10 +345,10 @@ This tool is optimized for Hypernode's Nginx JSON logs with the following format
 ./hlogcli bots --ai-bots-only --api-endpoints-only
 ```
 
-## 📈 Export Formats & Reports
+## 📈 Export Formats & Analysis
 
 ### **CSV Exports**
-- **Security Reports**: Attack patterns, suspicious IPs, threat analysis
+- **Security Analysis**: Attack patterns, suspicious IPs, threat analysis
 - **Performance Data**: Response times, slowest endpoints, cache stats
 - **Bot Analysis**: Classification, behavior patterns, resource usage
 - **Search Results**: Filtered log entries with all fields
@@ -385,15 +357,15 @@ This tool is optimized for Hypernode's Nginx JSON logs with the following format
 - **Complete Data**: All statistics, counters, and analysis
 - **API-Ready**: Structured data for integration
 - **Historical Data**: Timeline and trend information
-- **Detailed Reports**: In-depth analysis with metadata
+- **Detailed Analysis**: In-depth analysis with metadata
 
-### **HTML Reports**
+### **HTML Analysis**
 - **Interactive Dashboards**: Charts, graphs, and visualizations  
 - **Executive Summaries**: High-level KPIs and trends
 - **Technical Deep-dives**: Detailed analysis for technical teams
 - **Mobile-Friendly**: Responsive design for all devices
 
-### **Text Reports**
+### **Text Analysis**
 - **Console Output**: Human-readable summaries
 - **Email-Ready**: Plain text for automated reporting
 - **Log-Friendly**: Structured for log aggregation systems
@@ -409,8 +381,6 @@ This tool is optimized for Hypernode's Nginx JSON logs with the following format
 - `./hlogcli content`     # Content and resource analysis
 - `./hlogcli anomalies`   # Machine learning anomaly detection
 - `./hlogcli search`      # Advanced search and filtering
-- `./hlogcli report`      # Comprehensive report generation
-- `./hlogcli config`      # Configuration management
 
 ### **Core Modules**
 ```
@@ -440,13 +410,7 @@ logcli/
 
 ### **Configuration Profiles**
 ```bash
-# Create production profile
-./hlogcli config --init --profile production
-
-# Hypernode-specific settings
-./hlogcli config --set nginx_dir=/data/log/nginx --profile hypernode
-./hlogcli config --set alert_threshold=100 --profile hypernode
-./hlogcli config --set bot_threshold=50 --profile hypernode
+# Configuration commands have been removed
 ```
 
 ### **Customizable Settings**
@@ -493,8 +457,7 @@ hypernode-parse-nginx-log --help
 # Test with yesterday's logs
 ./hlogcli analyze --yesterday
 
-# Manual log directory
-./hlogcli analyze --nginx-dir /data/log/nginx
+# Log directory detection is now automatic
 ```
 
 ### **Performance Issues**
