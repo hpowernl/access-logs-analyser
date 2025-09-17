@@ -119,8 +119,24 @@ class OverviewDashboard(Static):
         """Update the overview display."""
         summary = self.stats.get_summary_stats()
         
-        # Update main stats
-        stats_text = f"""
+        # Debug: check if we have any data
+        total_requests = summary.get('total_requests', 0)
+        
+        if total_requests == 0:
+            stats_text = """
+[yellow]No log data available yet[/yellow]
+
+Checking for logs in:
+• /data/web/nginx/
+• /var/log/nginx/
+• Current directory
+
+If logs exist, make sure they are readable
+and in JSON format.
+            """
+        else:
+            # Update main stats
+            stats_text = f"""
 [green]Total Requests:[/green] {summary.get('total_requests', 0):,}
 [blue]Unique Visitors:[/blue] {summary.get('unique_visitors', 0):,}
 [red]Error Rate:[/red] {summary.get('error_rate', 0):.2f}%
@@ -128,7 +144,7 @@ class OverviewDashboard(Static):
 
 [cyan]Avg Response Time:[/cyan] {summary.get('response_time_stats', {}).get('avg', 0):.3f}s
 [magenta]Bandwidth:[/magenta] {summary.get('bandwidth_stats', {}).get('total_gb', 0):.2f} GB
-        """
+            """
         
         self.query_one("#overview-stats", Static).update(stats_text.strip())
         
@@ -499,7 +515,7 @@ class InteractiveLogAnalyzer(App):
             
             # Bottom info bar
             Container(
-                Static("", id="info-bar"),
+                Static("Use F1-F7 for navigation | Press 'q' to quit | Press 'r' to refresh", id="info-bar"),
                 classes="info-bar"
             ),
             
@@ -516,26 +532,46 @@ class InteractiveLogAnalyzer(App):
     
     def discover_logs(self) -> None:
         """Discover available log files."""
-        try:
-            self.log_files = discover_nginx_logs("/var/log/nginx")
-            if not self.log_files:
-                # Fallback to current directory for demo
-                sample_log = Path("sample_access.log")
-                if sample_log.exists():
-                    self.log_files = [str(sample_log)]
-        except Exception:
-            # Demo mode with sample data
+        # Try multiple common nginx log locations
+        nginx_locations = [
+            "/data/web/nginx",  # Hypernode location
+            "/var/log/nginx",   # Standard location
+            "/usr/local/var/log/nginx",  # Homebrew on macOS
+            "/opt/nginx/logs"   # Alternative location
+        ]
+        
+        self.log_files = []
+        
+        for location in nginx_locations:
+            try:
+                found_logs = discover_nginx_logs(location)
+                if found_logs:
+                    self.log_files = found_logs
+                    print(f"Found {len(found_logs)} log files in {location}")
+                    break
+            except Exception:
+                continue
+        
+        # If no logs found, try current directory for demo
+        if not self.log_files:
             sample_log = Path("sample_access.log")
             if sample_log.exists():
                 self.log_files = [str(sample_log)]
+                print("Using sample log file for demo")
+            else:
+                print("No log files found - running in empty demo mode")
     
     def start_log_processing(self) -> None:
         """Start background log processing."""
         if not self.log_files:
+            print("No log files available for processing")
             return
+        
+        processed_count = 0
         
         def on_log_entry(line: str):
             """Process new log entry."""
+            nonlocal processed_count
             if self.is_paused:
                 return
                 
@@ -546,8 +582,18 @@ class InteractiveLogAnalyzer(App):
             if self.filter.should_include(log_entry):
                 # Update all analyzers
                 self.stats.add_entry(log_entry)
-                self.security._analyze_entry(log_entry)
-                self.performance._analyze_entry(log_entry)
+                try:
+                    self.security._analyze_entry(log_entry)
+                except AttributeError:
+                    # Security analyzer might not have _analyze_entry method
+                    pass
+                try:
+                    self.performance._analyze_entry(log_entry)
+                except AttributeError:
+                    # Performance analyzer might not have _analyze_entry method
+                    pass
+                
+                processed_count += 1
                 
                 # Update UI if overview is active
                 if self.current_view == "overview" and self.overview:
@@ -559,12 +605,16 @@ class InteractiveLogAnalyzer(App):
         # Start log reader
         self.log_reader = LogReader(on_log_entry)
         
-        # For demo, process existing logs first
+        # Process existing logs first
         try:
-            for log_file in self.log_files[:1]:  # Just first file for demo
+            print(f"Processing {len(self.log_files)} log files...")
+            for log_file in self.log_files:
+                print(f"Reading {log_file}...")
                 self.log_reader.read_file(log_file, follow=False)
+            print(f"Processed {processed_count} log entries")
         except Exception as e:
-            pass  # Ignore errors in demo
+            print(f"Error processing logs: {e}")
+            # Continue anyway - might still have some data
     
     def _check_security_alerts(self, log_entry: Dict[str, Any]) -> None:
         """Check for security alerts."""
@@ -622,6 +672,8 @@ class InteractiveLogAnalyzer(App):
         status_text = f"View: {self.current_view.title()} | "
         status_text += f"Files: {len(self.log_files)} | "
         status_text += f"Requests: {self.stats.total_requests:,} | "
+        if self.log_files:
+            status_text += f"Source: {Path(self.log_files[0]).name} | "
         status_text += f"{'PAUSED' if self.is_paused else 'LIVE'} | "
         status_text += f"Last Update: {datetime.now().strftime('%H:%M:%S')}"
         
