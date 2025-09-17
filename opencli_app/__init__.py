@@ -2,6 +2,6 @@
 OpenCLI - Interactive TUI for Access Log Analysis
 """
 
-from .app import LogAnalyzerApp
+from .simple_app import SimpleLogApp, run_simple_app
 
-__all__ = ["LogAnalyzerApp"]
+__all__ = ["SimpleLogApp", "run_simple_app"]

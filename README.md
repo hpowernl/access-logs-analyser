@@ -49,9 +49,9 @@ An **enterprise-grade, interactive log analysis platform** for Nginx JSON access
 
 ### Requirements
 - Python 3.8 or higher
-- pip
+- pip3
 
-### Installation Steps
+### Quick Install (Recommended)
 
 1. **Clone the repository:**
 ```bash
@@ -59,20 +59,29 @@ git clone <repository-url>
 cd Hypernode-logs
 ```
 
-2. **Create a virtual environment:**
+2. **Run the installation script:**
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\\Scripts\\activate
+chmod +x install.sh
+./install.sh
 ```
 
-3. **Install dependencies:**
-```bash
-pip install -r requirements.txt
-```
+This will:
+- Install Python dependencies system-wide (no venv needed)
+- Make opencli executable
+- Optionally install globally to /usr/local/bin
 
-4. **Install the tool (optional):**
+### Manual Install
+
+If you prefer manual installation:
 ```bash
-pip install -e .
+# Install dependencies
+pip3 install -r requirements.txt
+
+# Make executable
+chmod +x opencli
+
+# Run locally
+./opencli
 ```
 
 ## 📖 Usage
