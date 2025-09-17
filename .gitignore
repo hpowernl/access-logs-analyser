@@ -398,15 +398,3 @@ test_*.py
 # Local Cursor/AI assistant files
 .cursor/
 !.cursor/rules/
-
-logcli/__pycache__/
-logcli/__pycache__/aggregators.cpython-313.pyc 
-logcli/__pycache__/config.cpython-313.pyc
-logcli/__pycache__/filters.cpython-313.pyc
-logcli/__pycache__/main.cpython-313.pyc
-logcli/__pycache__/parser.cpython-313.pyc
-logcli/__pycache__/security.cpython-313.pyc
-logcli/__pycache__/performance.cpython-313.pyc
-logcli/__pycache__/bots.cpython-313.pyc
-logcli/__pycache__/log_reader.cpython-313.pyc
-logcli/__pycache__/export.cpython-313.pyc

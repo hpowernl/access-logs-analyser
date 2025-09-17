@@ -118,8 +118,15 @@ class HypernodeLogCommand:
             parts = line.split('\t')
             
             if len(parts) != len(self.fields):
-                console.print(f"[yellow]Warning: Expected {len(self.fields)} fields, got {len(parts)}[/yellow]")
-                return None
+                # Try to handle malformed data
+                if len(parts) < len(self.fields):
+                    console.print(f"[yellow]Warning: Expected {len(self.fields)} fields, got {len(parts)}. Padding with empty values.[/yellow]")
+                    # Pad with empty strings
+                    parts.extend([''] * (len(self.fields) - len(parts)))
+                else:
+                    console.print(f"[yellow]Warning: Expected {len(self.fields)} fields, got {len(parts)}. Truncating.[/yellow]")
+                    # Truncate to expected length
+                    parts = parts[:len(self.fields)]
             
             # Create log entry dictionary
             log_entry = {}
@@ -187,6 +194,28 @@ class HypernodeLogCommand:
             except Exception:
                 # Keep original string if parsing fails
                 pass
+        
+        # Parse request field to extract method and path
+        if entry.get('request'):
+            try:
+                request_parts = entry['request'].split(' ', 2)
+                if len(request_parts) >= 2:
+                    entry['method'] = request_parts[0]
+                    entry['path'] = request_parts[1]
+                    if len(request_parts) >= 3:
+                        entry['protocol'] = request_parts[2]
+                else:
+                    # Fallback for malformed requests
+                    entry['method'] = 'GET'
+                    entry['path'] = entry['request']
+            except Exception:
+                # Fallback for any parsing errors
+                entry['method'] = 'GET'
+                entry['path'] = entry.get('request', '/')
+        else:
+            # Default values if request is empty
+            entry['method'] = 'GET'
+            entry['path'] = '/'
         
         # Keep empty values as empty strings for compatibility
         # (analyzers expect strings, not None values)
@@ -261,9 +290,9 @@ class MockHypernodeCommand(HypernodeLogCommand):
         # Generate some mock TSV data based on the expected format
         mock_lines = [
             # remote_user, user_agent, time, body_bytes_sent, remote_addr, status, request_time, host, ssl_protocol, country, port, referer, ssl_cipher, request, handler, server_name
-            "\tMozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36\t2025-09-17T16:13:48+00:00\t352248\t217.21.253.1\t200\t0.013\tn8n.hntestmarvinwp.hypernode.io\tTLSv1.3\tNL\t443\thttps://n8n.hntestmarvinwp.hypernode.io/assets/index-C6LoGNAx.css\tTLS_AES_128_GCM_SHA256\tGET /assets/InterVariable-DiVDrmQJ.woff2 HTTP/2.0\t\tn8n.hntestmarvinwp.hypernode.io",
-            "\tMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\t2025-09-17T16:14:02+00:00\t1024\t192.168.1.100\t404\t0.001\ttest.hypernode.io\tTLSv1.3\tUS\t443\t-\tTLS_AES_256_GCM_SHA384\tGET /nonexistent HTTP/2.0\tvarnish\ttest.hypernode.io",
-            "\tGooglebot/2.1 (+http://www.google.com/bot.html)\t2025-09-17T16:14:15+00:00\t4567\t66.249.79.123\t200\t0.245\ttest.hypernode.io\tTLSv1.3\tUS\t443\t-\tTLS_AES_128_GCM_SHA256\tGET / HTTP/2.0\tphpfpm\ttest.hypernode.io",
+            "\tMozilla/5.0 (compatible; SemrushBot/7~bl; +http://www.semrush.com/bot.html)\t2025-09-17T00:00:00+00:00\t37526\t85.208.96.193\t404\t0.075\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /go/category/11212447/dmws-kickoffcountdown-button-url HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tMozilla/5.0 (iPhone; CPU iPhone OS 18_6_2 like Mac OS X) AppleWebKit/605.1.15\t2025-09-17T00:00:02+00:00\t42569\t2a02:a446:69a0:0:eccf:66c8:1db5:889e\t200\t0.048\twww.tessv.nl\tTLSv1.3\t\t443\thttps://www.tiktok.com/\tTLS_AES_128_GCM_SHA256\tGET /friday-denim/wide-leg/ HTTP/2.0\tphpfpm\twww.tessv.nl",
+            "\tGooglebot/2.1 (+http://www.google.com/bot.html)\t2025-09-17T00:00:17+00:00\t63597\t66.249.79.231\t301\t0.062\twww.tessv.nl\tTLSv1.3\tUS\t443\t\tTLS_AES_128_GCM_SHA256\tGET /accessoires/schoenen/boots/?mode=list HTTP/2.0\tphpfpm\twww.tessv.nl",
             "\t\t2025-09-17T16:15:00+00:00\t0\t10.0.0.1\t400\t0.000\ttest.hypernode.io\t\t\t80\t\t\tGET /test HTTP/1.1\t\ttest.hypernode.io",
         ]
         

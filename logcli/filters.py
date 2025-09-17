@@ -63,7 +63,7 @@ class LogFilter:
         
         # IP range filter
         if self._ip_networks:
-            ip = log_entry.get('ip')
+            ip = log_entry.get('ip') or log_entry.get('remote_addr')
             if ip and not any(ip in network for network in self._ip_networks):
                 return False
         
