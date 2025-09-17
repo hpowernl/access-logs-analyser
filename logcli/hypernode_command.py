@@ -67,7 +67,7 @@ class HypernodeLogCommand:
             else:
                 cmd.append("--today")
         
-        console.print(f"[blue]Executing: {' '.join(cmd)}[/blue]")
+        # console.print(f"[blue]Executing: {' '.join(cmd)}[/blue]")  # Debug output removed
         
         try:
             # Execute command with streaming output

@@ -153,6 +153,9 @@ def cli(ctx, install_completion):
       hlogcli security                          # Security analysis
       hlogcli perf --response-time-analysis     # Performance analysis
       hlogcli bots                              # Bot analysis and classification
+      hlogcli api                               # API endpoint analysis
+      hlogcli content                           # Content type and resource analysis
+      hlogcli anomalies                         # Anomaly detection and ML analysis
       hlogcli search --status 404               # Search for specific entries
       hlogcli report --format html              # Generate comprehensive reports
     
@@ -291,7 +294,6 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
     
     # Note: We no longer use file discovery - data comes from hypernode command
     # The log_files parameter is kept for backward compatibility but ignored
-    console.print("[blue]Using Hypernode log parsing command for data retrieval[/blue]")
     
     
     # Initialize components
@@ -815,14 +817,94 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
     # Show geographic distribution if requested
     if show_geographic and not quiet:
         console.print("\n[bold cyan]🌍 GEOGRAPHIC THREAT DISTRIBUTION[/bold cyan]")
-        # This would require geo-IP lookup - placeholder for now
-        console.print("  [dim]Geographic analysis requires GeoIP database (feature coming soon)[/dim]")
+        from .geographic import GeoIPAnalyzer
+        geo_analyzer = GeoIPAnalyzer()
+        
+        # Re-analyze entries for geographic data
+        def geo_analyze_entry(log_entry):
+            geo_analyzer.analyze_entry(log_entry)
+        
+        console.print("  [blue]Re-analyzing entries for geographic patterns...[/blue]")
+        process_hypernode_logs_with_callback(geo_analyze_entry, "geographic analysis", use_yesterday=yesterday)
+        
+        geo_summary = geo_analyzer.get_geographic_summary()
+        threat_map = geo_analyzer.get_threat_map_data()
+        
+        if threat_map:
+            console.print(f"  🚨 Threat Countries Detected: [red]{len(threat_map)}[/red]")
+            for country_code, data in list(threat_map.items())[:10]:
+                threat_level = "🔴" if data['threat_level'] >= 4 else "🟡" if data['threat_level'] >= 2 else "🟢"
+                console.print(f"    {threat_level} [red]{data['country_name']} ({country_code})[/red]: Score {data['threat_score']:.1f}")
+                console.print(f"      └─ {data['suspicious_ips']} suspicious IPs, {data['total_attacks']} attacks")
+        else:
+            console.print("  [green]✅ No significant geographic threats detected[/green]")
+        
+        # Show top countries by requests with threat indicators
+        if geo_summary['countries_by_requests']:
+            console.print(f"\n  📊 Top Countries by Traffic:")
+            for country_code, requests in geo_summary['countries_by_requests'][:5]:
+                country_name = geo_analyzer._get_country_name(country_code)
+                threat_indicator = "🚨" if country_code in threat_map else "✅"
+                console.print(f"    {threat_indicator} {country_name} ({country_code}): {requests:,} requests")
     
     # Show timeline analysis if requested
     if show_timeline and not quiet:
         console.print("\n[bold magenta]📈 ATTACK TIMELINE ANALYSIS[/bold magenta]")
-        # This would require time-based analysis - placeholder for now
-        console.print("  [dim]Timeline analysis feature coming soon[/dim]")
+        from .timeline import TimelineAnalyzer
+        timeline_analyzer = TimelineAnalyzer(granularity='5min')
+        
+        # Re-analyze entries for timeline data
+        def timeline_analyze_entry(log_entry):
+            timeline_analyzer.analyze_entry(log_entry)
+        
+        console.print("  [blue]Analyzing timeline patterns and attack sequences...[/blue]")
+        process_hypernode_logs_with_callback(timeline_analyze_entry, "timeline analysis", use_yesterday=yesterday)
+        
+        timeline_summary = timeline_analyzer.get_timeline_summary()
+        attack_timeline = timeline_analyzer.get_attack_timeline()
+        
+        if timeline_summary.get('total_attacks', 0) > 0:
+            console.print(f"  📊 Timeline Overview:")
+            console.print(f"    • Total Attacks: [red]{timeline_summary['total_attacks']:,}[/red]")
+            console.print(f"    • Attack Rate: [yellow]{timeline_summary['attack_rate']:.1f}%[/yellow]")
+            console.print(f"    • Security Incidents: [red]{timeline_summary['security_incidents']}[/red]")
+            console.print(f"    • Anomalies Detected: [orange1]{timeline_summary['anomalies_detected']}[/orange1]")
+            
+            # Show peak attack times
+            if timeline_summary['peak_analysis']['peak_attacks'] > 0:
+                peak_time = timeline_summary['peak_analysis']['peak_attack_time']
+                peak_attacks = timeline_summary['peak_analysis']['peak_attacks']
+                console.print(f"    • Peak Attack Time: [red]{peak_time.strftime('%H:%M')} ({peak_attacks} attacks)[/red]")
+            
+            # Show attack type distribution
+            if timeline_summary['attack_distribution']:
+                console.print(f"\n  🚨 Attack Types Over Time:")
+                for attack_type, count in sorted(timeline_summary['attack_distribution'].items(), 
+                                               key=lambda x: x[1], reverse=True)[:5]:
+                    console.print(f"    • {attack_type.replace('_', ' ').title()}: [red]{count:,}[/red] attempts")
+            
+            # Show recent high-activity periods
+            if attack_timeline:
+                console.print(f"\n  ⏰ Recent High-Activity Periods:")
+                recent_attacks = sorted(attack_timeline.items(), key=lambda x: x[0], reverse=True)[:3]
+                for time_key, data in recent_attacks:
+                    console.print(f"    • [yellow]{time_key.strftime('%H:%M')}[/yellow]: {data['total_attacks']} attacks")
+                    console.print(f"      └─ {data['unique_attacking_ips']} unique IPs, {data['error_rate']:.1f}% errors")
+        else:
+            console.print("  [green]✅ No significant attack timeline patterns detected[/green]")
+        
+        # Show traffic patterns
+        traffic_patterns = timeline_analyzer.get_traffic_patterns()
+        if traffic_patterns.get('hourly_analysis'):
+            hourly = traffic_patterns['hourly_analysis']
+            console.print(f"\n  📈 Traffic Patterns:")
+            console.print(f"    • Peak Hour: [cyan]{hourly['peak_hour']['hour']:02d}:00[/cyan] ({hourly['peak_hour']['requests']:,} requests)")
+            console.print(f"    • Quiet Hour: [blue]{hourly['quiet_hour']['hour']:02d}:00[/blue] ({hourly['quiet_hour']['requests']:,} requests)")
+            
+            if traffic_patterns.get('trend_analysis'):
+                trend = traffic_patterns['trend_analysis']
+                trend_color = "green" if trend['direction'] == 'increasing' else "red" if trend['direction'] == 'decreasing' else "yellow"
+                console.print(f"    • Traffic Trend: [{trend_color}]{trend['direction']} ({trend['magnitude_percent']:.1f}%)[/{trend_color}]")
     
     # Export blacklist if requested
     if export_blacklist:
@@ -946,6 +1028,650 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
     if output:
         analyzer.export_performance_report(output)
         console.print(f"[green]Performance report exported to: {output}[/green]")
+
+
+# API Analysis Commands
+@cli.command()
+@click.argument('log_files', nargs=-1, type=click.Path(exists=True))
+@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
+@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
+@click.option('--endpoint-analysis', is_flag=True, help='Detailed endpoint performance analysis')
+@click.option('--graphql-analysis', is_flag=True, help='GraphQL-specific analysis')
+@click.option('--security-analysis', is_flag=True, help='API security analysis')
+@click.option('--performance-analysis', is_flag=True, help='API performance analysis')
+@click.option('--top-endpoints', default=10, help='Show top N endpoints')
+@click.option('--min-requests', default=10, help='Minimum requests for endpoint analysis')
+@click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
+@click.option('--output', '-o', help='Output file for API analysis report')
+def api(log_files, nginx_dir, no_auto_discover, endpoint_analysis, graphql_analysis,
+        security_analysis, performance_analysis, top_endpoints, min_requests, yesterday, output):
+    """🔌 Advanced API endpoint analysis and performance insights.
+    
+    Analyze REST APIs, GraphQL endpoints, and API usage patterns to understand
+    performance characteristics, security issues, and optimization opportunities.
+    Specifically designed for modern web applications with heavy API usage.
+    
+    \b
+    🎯 API Analysis Features:
+      • REST API endpoint performance and usage patterns
+      • GraphQL query analysis and complexity metrics
+      • API versioning and deprecation tracking
+      • Authentication and authorization pattern analysis
+      • Rate limiting and abuse detection
+      • Response time and bandwidth analysis
+      • Error rate and reliability metrics
+      • Security vulnerability detection
+    
+    \b
+    📊 Analysis Categories:
+      • Endpoint Performance: Response times, throughput, error rates
+      • Usage Patterns: Most popular endpoints, request methods, parameters
+      • Security Issues: Unauthenticated access, suspicious queries, abuse
+      • GraphQL Specific: Query complexity, introspection, mutations
+      • API Versioning: Version distribution, deprecated endpoint usage
+      • Geographic Distribution: API usage by country and region
+    
+    \b
+    💡 Examples:
+      hlogcli api                                  # Comprehensive API analysis
+      hlogcli api --endpoint-analysis              # Detailed endpoint performance
+      hlogcli api --graphql-analysis               # GraphQL-specific insights
+      hlogcli api --security-analysis              # API security assessment
+      hlogcli api --performance-analysis           # Performance optimization insights
+      hlogcli api --top-endpoints 20               # Show top 20 endpoints
+      hlogcli api --min-requests 50 -o api-report.json  # Export detailed report
+    """
+    
+    # Initialize API analyzer
+    from .api_analysis import APIAnalyzer
+    analyzer = APIAnalyzer()
+    
+    # Process log files with nice progress display
+    console.print("[blue]Starting API endpoint analysis...[/blue]")
+    
+    def analyze_entry(log_entry):
+        """Analyze a single log entry for API patterns."""
+        analyzer.analyze_entry(log_entry)
+    
+    process_hypernode_logs_with_callback(analyze_entry, "API analysis", use_yesterday=yesterday)
+    
+    # Get comprehensive API data
+    api_summary = analyzer.get_api_summary()
+    
+    # Show API summary by default
+    console.print("\n[bold blue]🔌 API ANALYSIS SUMMARY[/bold blue]")
+    console.print(f"  📊 API Overview:")
+    console.print(f"    • Total API Requests: [cyan]{api_summary['total_api_requests']:,}[/cyan]")
+    console.print(f"    • Unique Endpoints: [cyan]{api_summary['total_endpoints']:,}[/cyan]")
+    console.print(f"    • Overall Error Rate: [red]{api_summary['error_rate']:.1f}%[/red]")
+    console.print(f"    • Total API Bandwidth: [yellow]{api_summary['total_bandwidth_mb']:.1f} MB[/yellow]")
+    
+    # Performance statistics
+    if api_summary['performance_stats']:
+        perf = api_summary['performance_stats']
+        console.print(f"\n  ⚡ API Performance:")
+        console.print(f"    • Average Response Time: [cyan]{perf['avg_response_time']:.3f}s[/cyan]")
+        console.print(f"    • 95th Percentile: [yellow]{perf['p95_response_time']:.3f}s[/yellow]")
+        console.print(f"    • Slowest Response: [red]{perf['max_response_time']:.3f}s[/red]")
+    
+    # Top endpoints
+    if api_summary['top_endpoints']['most_popular']:
+        console.print(f"\n  🏆 Most Popular API Endpoints:")
+        for endpoint, requests in list(api_summary['top_endpoints']['most_popular'].items())[:top_endpoints]:
+            endpoint_display = endpoint[:60] + "..." if len(endpoint) > 60 else endpoint
+            console.print(f"    • [green]{endpoint_display}[/green]: {requests:,} requests")
+    
+    # Security issues
+    security = api_summary['security_issues']
+    if any(security.values()):
+        console.print(f"\n  🚨 API Security Issues:")
+        if security['unauthenticated_access'] > 0:
+            console.print(f"    • Unauthenticated Access: [red]{security['unauthenticated_access']}[/red] endpoints")
+        if security['excessive_requests'] > 0:
+            console.print(f"    • Excessive Requests: [orange1]{security['excessive_requests']}[/orange1] IPs")
+        if security['suspicious_queries'] > 0:
+            console.print(f"    • Suspicious Queries: [red]{security['suspicious_queries']}[/red] endpoints")
+        if security['potential_abuse'] > 0:
+            console.print(f"    • Potential Abuse: [red]{security['potential_abuse']}[/red] endpoints")
+    else:
+        console.print(f"\n  ✅ No significant API security issues detected")
+    
+    # Show detailed analysis sections if requested
+    if endpoint_analysis:
+        console.print("\n[bold yellow]📈 ENDPOINT PERFORMANCE ANALYSIS[/bold yellow]")
+        
+        # Slowest endpoints
+        if api_summary['top_endpoints']['slowest']:
+            console.print(f"  🐌 Slowest Endpoints:")
+            for endpoint, count in list(api_summary['top_endpoints']['slowest'].items())[:5]:
+                endpoint_details = analyzer.get_endpoint_details(endpoint)
+                avg_time = endpoint_details['performance_stats'].get('avg_response_time', 0)
+                console.print(f"    • [red]{endpoint}[/red]: {avg_time:.3f}s avg ({count:,} slow requests)")
+        
+        # Highest error rate endpoints
+        if api_summary['top_endpoints']['highest_error_rate']:
+            console.print(f"\n  ❌ Highest Error Rate Endpoints:")
+            for endpoint, error_rate in list(api_summary['top_endpoints']['highest_error_rate'].items())[:5]:
+                console.print(f"    • [red]{endpoint}[/red]: {error_rate:.1f}% error rate")
+    
+    if graphql_analysis:
+        graphql_data = api_summary['graphql_analysis']
+        console.print("\n[bold magenta]🔍 GRAPHQL ANALYSIS[/bold magenta]")
+        
+        if graphql_data['active']:
+            console.print(f"  📊 GraphQL Activity:")
+            console.print(f"    • Total Queries: [cyan]{graphql_data['total_queries']:,}[/cyan]")
+            console.print(f"    • Introspection Queries: [yellow]{graphql_data['introspection_queries']:,}[/yellow]")
+            console.print(f"    • Average Query Complexity: [cyan]{graphql_data['avg_query_complexity']:.1f}[/cyan]")
+            
+            if graphql_data['query_types']:
+                console.print(f"\n  🔍 Query Types:")
+                for query_type, count in graphql_data['query_types'].items():
+                    console.print(f"    • {query_type}: [green]{count:,}[/green] queries")
+        else:
+            console.print("  [yellow]No GraphQL activity detected[/yellow]")
+    
+    if security_analysis:
+        console.print("\n[bold red]🔒 API SECURITY ANALYSIS[/bold red]")
+        
+        # Detailed security breakdown
+        if analyzer.security_issues['unauthenticated_access']:
+            console.print(f"  ⚠️  Unauthenticated Access Attempts:")
+            for endpoint, count in list(analyzer.security_issues['unauthenticated_access'].most_common(5)):
+                console.print(f"    • [red]{endpoint}[/red]: {count:,} attempts")
+        
+        if analyzer.security_issues['suspicious_queries']:
+            console.print(f"\n  🕵️  Suspicious Query Patterns:")
+            for endpoint, count in list(analyzer.security_issues['suspicious_queries'].most_common(5)):
+                console.print(f"    • [red]{endpoint}[/red]: {count:,} suspicious queries")
+    
+    if performance_analysis:
+        console.print("\n[bold green]📊 API PERFORMANCE ANALYSIS[/bold green]")
+        
+        # Bandwidth analysis
+        if api_summary['top_endpoints']['most_bandwidth']:
+            console.print(f"  📈 Most Bandwidth-Intensive Endpoints:")
+            for endpoint, count in list(api_summary['top_endpoints']['most_bandwidth'].items())[:5]:
+                endpoint_details = analyzer.get_endpoint_details(endpoint)
+                bandwidth_mb = endpoint_details['bandwidth_mb']
+                console.print(f"    • [yellow]{endpoint}[/yellow]: {bandwidth_mb:.1f} MB total")
+    
+    # API versioning analysis
+    if api_summary['api_patterns']:
+        console.print(f"\n  🔢 API Versions in Use:")
+        for version, count in list(api_summary['api_patterns'].items())[:5]:
+            console.print(f"    • Version {version}: [cyan]{count:,}[/cyan] requests")
+    
+    # Export API report if requested
+    if output:
+        analyzer.export_api_report(output)
+        console.print(f"[green]API analysis report exported to: {output}[/green]")
+    
+    # Show recommendations
+    recommendations = analyzer.get_api_recommendations()
+    if recommendations:
+        console.print(f"\n[bold green]💡 API RECOMMENDATIONS[/bold green]")
+        for rec in recommendations[:3]:  # Top 3 recommendations
+            priority_color = "red" if rec['priority'] == 'High' else "yellow" if rec['priority'] == 'Medium' else "green"
+            console.print(f"  [{priority_color}]{rec['category']} ({rec['priority']} Priority)[/{priority_color}]")
+            console.print(f"    Issue: {rec['issue']}")
+            console.print(f"    Recommendation: {rec['recommendation']}")
+            console.print()
+
+
+# Content Analysis Commands  
+@cli.command()
+@click.argument('log_files', nargs=-1, type=click.Path(exists=True))
+@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
+@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
+@click.option('--content-type-analysis', is_flag=True, help='Detailed content type analysis')
+@click.option('--file-extension-analysis', is_flag=True, help='File extension analysis')
+@click.option('--optimization-analysis', is_flag=True, help='Optimization opportunities analysis')
+@click.option('--performance-analysis', is_flag=True, help='Content performance analysis')
+@click.option('--seo-analysis', is_flag=True, help='SEO and broken resource analysis')
+@click.option('--top-content', default=10, help='Show top N content types/extensions')
+@click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
+@click.option('--output', '-o', help='Output file for content analysis report')
+def content(log_files, nginx_dir, no_auto_discover, content_type_analysis, file_extension_analysis,
+           optimization_analysis, performance_analysis, seo_analysis, top_content, yesterday, output):
+    """📁 Content type and resource distribution analysis.
+    
+    Analyze content types, file extensions, and resource distribution to understand
+    website structure, identify optimization opportunities, and improve performance.
+    Perfect for web developers and performance optimization teams.
+    
+    \b
+    📊 Content Analysis Features:
+      • Content type distribution and performance metrics
+      • File extension analysis and bandwidth usage
+      • Resource category breakdown (Images, CSS, JS, etc.)
+      • Cache effectiveness analysis by content type
+      • Large file detection and optimization opportunities
+      • Broken resource identification (404s, missing images)
+      • SEO impact analysis of missing resources
+      • Geographic content consumption patterns
+    
+    \b
+    🎯 Analysis Categories:
+      • Images: JPEG, PNG, WebP, SVG analysis and optimization
+      • Stylesheets: CSS performance and size optimization
+      • JavaScript: JS bundle analysis and loading performance
+      • Documents: PDF, HTML, and document delivery metrics
+      • Media: Video and audio content analysis
+      • Fonts: Web font performance and caching
+      • API Content: JSON and API response analysis
+    
+    \b
+    💡 Examples:
+      hlogcli content                                 # Comprehensive content analysis
+      hlogcli content --content-type-analysis         # Content type breakdown
+      hlogcli content --file-extension-analysis       # File extension metrics
+      hlogcli content --optimization-analysis         # Optimization opportunities
+      hlogcli content --seo-analysis                  # SEO and broken resources
+      hlogcli content --top-content 20 -o content-report.json  # Export detailed report
+    """
+    
+    # Initialize content analyzer
+    from .content_analysis import ContentAnalyzer
+    analyzer = ContentAnalyzer()
+    
+    # Process log files with nice progress display
+    console.print("[blue]Starting content type and resource analysis...[/blue]")
+    
+    def analyze_entry(log_entry):
+        """Analyze a single log entry for content patterns."""
+        analyzer.analyze_entry(log_entry)
+    
+    process_hypernode_logs_with_callback(analyze_entry, "content analysis", use_yesterday=yesterday)
+    
+    # Get comprehensive content data
+    content_summary = analyzer.get_content_summary()
+    
+    # Show content summary by default
+    console.print("\n[bold blue]📁 CONTENT ANALYSIS SUMMARY[/bold blue]")
+    console.print(f"  📊 Content Overview:")
+    console.print(f"    • Total Requests: [cyan]{content_summary['total_requests']:,}[/cyan]")
+    console.print(f"    • Total Bandwidth: [yellow]{content_summary['total_bandwidth_mb']:.1f} MB[/yellow]")
+    console.print(f"    • Content Types: [cyan]{len(content_summary['content_distribution'])}[/cyan]")
+    console.print(f"    • File Extensions: [cyan]{len(content_summary['extension_analysis'])}[/cyan]")
+    
+    # Top content types
+    if content_summary['content_distribution']:
+        console.print(f"\n  🏆 Top Content Types:")
+        for content_type, data in list(content_summary['content_distribution'].items())[:top_content]:
+            content_display = content_type[:50] + "..." if len(content_type) > 50 else content_type
+            console.print(f"    • [green]{content_display}[/green]: {data['requests']:,} requests ({data['percentage']:.1f}%)")
+            console.print(f"      └─ {data['bandwidth_mb']:.1f} MB, {data['avg_response_time']:.3f}s avg, {data['error_rate']:.1f}% errors")
+    
+    # Resource categories
+    if content_summary['category_analysis']:
+        console.print(f"\n  📂 Resource Categories:")
+        for category, data in list(content_summary['category_analysis'].items())[:5]:
+            console.print(f"    • [blue]{category}[/blue]: {data['requests']:,} requests, {data['bandwidth_mb']:.1f} MB")
+            console.print(f"      └─ {data['avg_response_time']:.3f}s avg, {data['error_rate']:.1f}% errors")
+    
+    # Optimization opportunities
+    optimization = content_summary['optimization_opportunities']
+    if any(optimization.values()):
+        console.print(f"\n  🔧 Optimization Opportunities:")
+        if optimization['large_images'] > 0:
+            console.print(f"    • Large Images: [red]{optimization['large_images']}[/red] files need optimization")
+        if optimization['unoptimized_resources'] > 0:
+            console.print(f"    • Unoptimized Resources: [orange1]{optimization['unoptimized_resources']}[/orange1] JS/CSS files")
+        if optimization['missing_images'] > 0:
+            console.print(f"    • Missing Images: [red]{optimization['missing_images']}[/red] broken image links")
+        if optimization['broken_links'] > 0:
+            console.print(f"    • Broken Links: [red]{optimization['broken_links']}[/red] 404 errors")
+        if optimization['redirect_chains'] > 0:
+            console.print(f"    • Redirect Chains: [yellow]{optimization['redirect_chains']}[/yellow] redirects")
+    else:
+        console.print(f"\n  ✅ No major optimization issues detected")
+    
+    # Show detailed analysis sections if requested
+    if content_type_analysis:
+        console.print("\n[bold yellow]📄 CONTENT TYPE ANALYSIS[/bold yellow]")
+        
+        for content_type, data in list(content_summary['content_distribution'].items())[:5]:
+            console.print(f"\n  📋 {content_type}:")
+            console.print(f"    • Requests: [cyan]{data['requests']:,}[/cyan] ({data['percentage']:.1f}%)")
+            console.print(f"    • Bandwidth: [yellow]{data['bandwidth_mb']:.1f} MB[/yellow]")
+            console.print(f"    • Avg Response Time: [green]{data['avg_response_time']:.3f}s[/green]")
+            console.print(f"    • Error Rate: [red]{data['error_rate']:.1f}%[/red]")
+            console.print(f"    • Cache Hit Rate: [blue]{data['cache_hit_rate']:.1f}%[/blue]")
+            console.print(f"    • Unique IPs: [cyan]{data['unique_ips']:,}[/cyan]")
+    
+    if file_extension_analysis:
+        console.print("\n[bold green]📎 FILE EXTENSION ANALYSIS[/bold green]")
+        
+        for extension, data in list(content_summary['extension_analysis'].items())[:top_content]:
+            console.print(f"\n  📄 {extension}:")
+            console.print(f"    • Requests: [cyan]{data['requests']:,}[/cyan]")
+            console.print(f"    • Bandwidth: [yellow]{data['bandwidth_mb']:.1f} MB[/yellow]")
+            console.print(f"    • Avg File Size: [blue]{data['avg_file_size_kb']:.1f} KB[/blue]")
+            console.print(f"    • Avg Response Time: [green]{data['avg_response_time']:.3f}s[/green]")
+            if data['error_count'] > 0:
+                console.print(f"    • Errors: [red]{data['error_count']:,}[/red]")
+    
+    if performance_analysis:
+        console.print("\n[bold magenta]⚡ PERFORMANCE ANALYSIS[/bold magenta]")
+        
+        perf_issues = content_summary['performance_issues']
+        
+        if perf_issues['slowest_content_types']:
+            console.print(f"  🐌 Slowest Content Types:")
+            for content_type, count in list(perf_issues['slowest_content_types'].items())[:5]:
+                console.print(f"    • [red]{content_type}[/red]: {count:,} slow responses")
+        
+        if perf_issues['largest_content_types']:
+            console.print(f"\n  📈 Largest Content Types:")
+            for content_type, count in list(perf_issues['largest_content_types'].items())[:5]:
+                console.print(f"    • [yellow]{content_type}[/yellow]: {count:,} large files")
+        
+        if perf_issues['highest_error_rate']:
+            console.print(f"\n  ❌ Highest Error Rates:")
+            for content_type, count in list(perf_issues['highest_error_rate'].items())[:5]:
+                console.print(f"    • [red]{content_type}[/red]: {count:,} errors")
+    
+    if optimization_analysis:
+        console.print("\n[bold cyan]🔧 OPTIMIZATION ANALYSIS[/bold cyan]")
+        
+        if optimization['top_large_images']:
+            console.print(f"  🖼️  Largest Images:")
+            for image, count in list(optimization['top_large_images'].items())[:5]:
+                image_display = image[:60] + "..." if len(image) > 60 else image
+                console.print(f"    • [red]{image_display}[/red]: {count:,} large requests")
+        
+        if optimization['top_unoptimized']:
+            console.print(f"\n  ⚠️  Unoptimized Resources:")
+            for resource, count in list(optimization['top_unoptimized'].items())[:5]:
+                resource_display = resource[:60] + "..." if len(resource) > 60 else resource
+                console.print(f"    • [orange1]{resource_display}[/orange1]: {count:,} large requests")
+    
+    if seo_analysis:
+        console.print("\n[bold red]🔍 SEO & BROKEN RESOURCE ANALYSIS[/bold red]")
+        
+        if optimization['missing_images'] > 0:
+            console.print(f"  🖼️  Missing Images: [red]{optimization['missing_images']}[/red]")
+            if analyzer.seo_analysis['missing_images']:
+                console.print(f"    Top missing images:")
+                for image, count in list(analyzer.seo_analysis['missing_images'].most_common(3)):
+                    image_display = image[:50] + "..." if len(image) > 50 else image
+                    console.print(f"      • [red]{image_display}[/red]: {count:,} 404s")
+        
+        if optimization['broken_links'] > 0:
+            console.print(f"\n  🔗 Broken Links: [red]{optimization['broken_links']}[/red]")
+            if analyzer.seo_analysis['broken_links']:
+                console.print(f"    Top broken links:")
+                for link, count in list(analyzer.seo_analysis['broken_links'].most_common(3)):
+                    link_display = link[:50] + "..." if len(link) > 50 else link
+                    console.print(f"      • [red]{link_display}[/red]: {count:,} 404s")
+        
+        if optimization['redirect_chains'] > 0:
+            console.print(f"\n  🔄 Redirect Chains: [yellow]{optimization['redirect_chains']}[/yellow]")
+            if analyzer.seo_analysis['redirect_chains']:
+                console.print(f"    Top redirecting resources:")
+                for resource, count in list(analyzer.seo_analysis['redirect_chains'].most_common(3)):
+                    resource_display = resource[:50] + "..." if len(resource) > 50 else resource
+                    console.print(f"      • [yellow]{resource_display}[/yellow]: {count:,} redirects")
+    
+    # Export content report if requested
+    if output:
+        analyzer.export_content_report(output)
+        console.print(f"[green]Content analysis report exported to: {output}[/green]")
+    
+    # Show recommendations
+    recommendations = analyzer.get_content_recommendations()
+    if recommendations:
+        console.print(f"\n[bold green]💡 CONTENT OPTIMIZATION RECOMMENDATIONS[/bold green]")
+        for rec in recommendations[:3]:  # Top 3 recommendations
+            priority_color = "red" if rec['priority'] == 'High' else "yellow" if rec['priority'] == 'Medium' else "green"
+            console.print(f"  [{priority_color}]{rec['category']} ({rec['priority']} Priority)[/{priority_color}]")
+            console.print(f"    Issue: {rec['issue']}")
+            console.print(f"    Recommendation: {rec['recommendation']}")
+            console.print(f"    Impact: {rec['impact']}")
+            console.print()
+
+
+# Anomaly Detection Commands
+@cli.command()
+@click.argument('log_files', nargs=-1, type=click.Path(exists=True))
+@click.option('--nginx-dir', default=None, help='Nginx log directory (auto-detected for platform)')
+@click.option('--no-auto-discover', is_flag=True, help='Disable auto-discovery of log files')
+@click.option('--sensitivity', default=2.5, type=float, help='Anomaly detection sensitivity (lower = more sensitive)')
+@click.option('--window-size', default=60, type=int, help='Analysis window size in minutes')
+@click.option('--realtime-alerts', is_flag=True, help='Show real-time critical alerts')
+@click.option('--statistical-analysis', is_flag=True, help='Statistical anomaly detection')
+@click.option('--behavioral-analysis', is_flag=True, help='Behavioral pattern anomaly detection')
+@click.option('--show-timeline', is_flag=True, help='Show anomaly timeline')
+@click.option('--recent-hours', default=1, type=int, help='Show anomalies from last N hours')
+@click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
+@click.option('--output', '-o', help='Output file for anomaly detection report')
+def anomalies(log_files, nginx_dir, no_auto_discover, sensitivity, window_size, realtime_alerts,
+              statistical_analysis, behavioral_analysis, show_timeline, recent_hours, yesterday, output):
+    """🤖 Machine learning-based anomaly detection for unusual traffic patterns.
+    
+    Detect traffic anomalies using statistical analysis and behavioral pattern recognition.
+    Identify DDoS attacks, performance issues, security threats, and unusual user behavior
+    using advanced algorithms and machine learning techniques.
+    
+    \b
+    🎯 Anomaly Detection Features:
+      • Statistical anomaly detection using Z-score analysis
+      • Behavioral pattern recognition and learning
+      • Real-time critical alert detection (DDoS, performance)
+      • Traffic volume and pattern anomalies
+      • Geographic and user agent anomalies
+      • Attack pattern detection in URLs and requests
+      • Response time and error rate spike detection
+      • IP behavior analysis and scanning detection
+    
+    \b
+    🔍 Detection Methods:
+      • Statistical Analysis: Z-score based anomaly detection
+      • Behavioral Learning: Pattern recognition from historical data
+      • Real-time Monitoring: Immediate detection of critical issues
+      • Time Series Analysis: Traffic pattern and trend analysis
+      • Geographic Analysis: Unusual country-based traffic patterns
+      • Security Pattern Detection: Attack signatures and suspicious behavior
+    
+    \b
+    ⚠️ Anomaly Types Detected:
+      • Traffic Spikes/Drops: Unusual request volume changes
+      • DDoS Attacks: High request rates from single IPs
+      • Error Rate Spikes: Sudden increases in error responses
+      • Response Time Anomalies: Performance degradation detection
+      • Geographic Anomalies: Unusual country traffic patterns
+      • User Agent Anomalies: Suspicious or unusual client patterns
+      • Attack Patterns: Security threat detection in requests
+      • Scanning Behavior: Automated scanning and reconnaissance
+    
+    \b
+    💡 Examples:
+      hlogcli anomalies                                # Comprehensive anomaly detection
+      hlogcli anomalies --sensitivity 2.0             # More sensitive detection
+      hlogcli anomalies --realtime-alerts              # Show critical real-time alerts
+      hlogcli anomalies --statistical-analysis         # Statistical anomaly analysis
+      hlogcli anomalies --behavioral-analysis          # Behavioral pattern analysis
+      hlogcli anomalies --show-timeline                # Anomaly timeline view
+      hlogcli anomalies --recent-hours 6 -o anomalies.json  # Export 6-hour report
+    """
+    
+    # Initialize anomaly detector
+    from .anomaly_detection import AnomalyDetector
+    detector = AnomalyDetector(window_size=window_size, sensitivity=sensitivity)
+    
+    # Process log files with nice progress display
+    console.print("[blue]Starting anomaly detection analysis...[/blue]")
+    console.print(f"[dim]Sensitivity: {sensitivity}, Window: {window_size} minutes[/dim]")
+    
+    def analyze_entry(log_entry):
+        """Analyze a single log entry for anomalies."""
+        detector.analyze_entry(log_entry)
+    
+    process_hypernode_logs_with_callback(analyze_entry, "anomaly detection", use_yesterday=yesterday)
+    
+    # Process any remaining minute data
+    if detector.current_minute_data['timestamp'] is not None:
+        detector._process_completed_minute()
+    
+    # Get comprehensive anomaly data
+    anomaly_summary = detector.get_anomaly_summary()
+    recent_anomalies = detector.get_recent_anomalies(hours=recent_hours)
+    
+    # Show anomaly summary by default
+    console.print("\n[bold blue]🤖 ANOMALY DETECTION SUMMARY[/bold blue]")
+    console.print(f"  📊 Detection Overview:")
+    console.print(f"    • Total Anomalies Detected: [cyan]{anomaly_summary['total_anomalies']:,}[/cyan]")
+    console.print(f"    • Recent Anomalies ({recent_hours}h): [yellow]{anomaly_summary['recent_anomalies']:,}[/yellow]")
+    console.print(f"    • Critical Anomalies: [red]{anomaly_summary['critical_anomalies']:,}[/red]")
+    console.print(f"    • High Severity: [orange1]{anomaly_summary['high_severity_anomalies']:,}[/orange1]")
+    console.print(f"    • Medium Severity: [yellow]{anomaly_summary['medium_severity_anomalies']:,}[/yellow]")
+    
+    # Show top anomaly types
+    if anomaly_summary['top_anomaly_types']:
+        console.print(f"\n  🏆 Top Anomaly Types:")
+        for anomaly_type, count in anomaly_summary['top_anomaly_types'].items():
+            type_display = anomaly_type.replace('_', ' ').title()
+            console.print(f"    • [red]{type_display}[/red]: {count:,} detections")
+    
+    # Show baseline metrics if available
+    if anomaly_summary['baseline_metrics']:
+        baseline = anomaly_summary['baseline_metrics']
+        console.print(f"\n  📈 Baseline Metrics:")
+        console.print(f"    • Avg Requests/Min: [cyan]{baseline.get('avg_requests_per_minute', 0):.1f}[/cyan]")
+        console.print(f"    • Avg Unique IPs/Min: [blue]{baseline.get('avg_unique_ips_per_minute', 0):.1f}[/blue]")
+        console.print(f"    • Avg Error Rate: [red]{baseline.get('avg_error_rate_per_minute', 0):.1f}%[/red]")
+        console.print(f"    • Avg Response Time: [green]{baseline.get('avg_response_time_per_minute', 0):.3f}s[/green]")
+    
+    # Show real-time alerts if requested
+    if realtime_alerts and recent_anomalies:
+        console.print("\n[bold red]🚨 REAL-TIME CRITICAL ALERTS[/bold red]")
+        
+        critical_alerts = [a for a in recent_anomalies if a['details'].get('severity') == 'Critical']
+        if critical_alerts:
+            for alert in critical_alerts[-5:]:  # Show last 5 critical alerts
+                alert_time = alert['detected_at']
+                alert_type = alert['type'].replace('_', ' ').title()
+                console.print(f"  🔴 [red]{alert_time}[/red] - {alert_type}")
+                
+                details = alert['details']
+                if alert['type'] == 'ddos_attack':
+                    console.print(f"      └─ IP: {details['ip']}, {details['requests_per_minute']} req/min")
+                elif alert['type'] == 'critical_response_time':
+                    console.print(f"      └─ Path: {details['path']}, {details['response_time']:.2f}s response")
+                else:
+                    console.print(f"      └─ Confidence: {alert['confidence']:.2f}")
+        else:
+            console.print("  [green]✅ No critical alerts in recent period[/green]")
+    
+    # Show statistical analysis if requested
+    if statistical_analysis:
+        console.print("\n[bold yellow]📊 STATISTICAL ANOMALY ANALYSIS[/bold yellow]")
+        
+        statistical_anomalies = [a for a in recent_anomalies 
+                               if a['type'] in ['traffic_spike', 'traffic_drop', 'error_spike', 
+                                              'response_time_spike', 'unusual_ip_activity']]
+        
+        if statistical_anomalies:
+            console.print(f"  📈 Statistical Anomalies Detected: {len(statistical_anomalies)}")
+            
+            for anomaly in statistical_anomalies[-5:]:  # Show last 5
+                details = anomaly['details']
+                anomaly_type = anomaly['type'].replace('_', ' ').title()
+                z_score = details.get('z_score', 0)
+                
+                console.print(f"\n  📊 {anomaly_type}:")
+                console.print(f"    • Time: [cyan]{anomaly['detected_at']}[/cyan]")
+                console.print(f"    • Z-Score: [yellow]{z_score:.2f}[/yellow]")
+                console.print(f"    • Confidence: [blue]{anomaly['confidence']:.2f}[/blue]")
+                
+                if 'actual_requests' in details:
+                    console.print(f"    • Actual: [red]{details['actual_requests']}[/red], Expected: [green]{details['expected_requests']:.1f}[/green]")
+                elif 'actual_error_rate' in details:
+                    console.print(f"    • Error Rate: [red]{details['actual_error_rate']:.1f}%[/red], Expected: [green]{details['expected_error_rate']:.1f}%[/green]")
+        else:
+            console.print("  [green]✅ No statistical anomalies detected[/green]")
+    
+    # Show behavioral analysis if requested
+    if behavioral_analysis:
+        console.print("\n[bold magenta]🧠 BEHAVIORAL ANOMALY ANALYSIS[/bold magenta]")
+        
+        behavioral_anomalies = [a for a in recent_anomalies 
+                              if a['type'] in ['geographic_anomaly', 'user_agent_anomaly', 
+                                             'attack_pattern_anomaly', 'scanning_behavior']]
+        
+        if behavioral_anomalies:
+            console.print(f"  🔍 Behavioral Anomalies Detected: {len(behavioral_anomalies)}")
+            
+            for anomaly in behavioral_anomalies[-5:]:  # Show last 5
+                details = anomaly['details']
+                anomaly_type = anomaly['type'].replace('_', ' ').title()
+                
+                console.print(f"\n  🧠 {anomaly_type}:")
+                console.print(f"    • Time: [cyan]{anomaly['detected_at']}[/cyan]")
+                console.print(f"    • Severity: [red]{details.get('severity', 'Unknown')}[/red]")
+                
+                if 'country' in details:
+                    console.print(f"    • Country: [yellow]{details['country']}[/yellow], Requests: {details['requests']}")
+                elif 'user_agent' in details:
+                    ua_display = details['user_agent'][:50] + "..." if len(details['user_agent']) > 50 else details['user_agent']
+                    console.print(f"    • User Agent: [yellow]{ua_display}[/yellow]")
+                elif 'path' in details:
+                    console.print(f"    • Path: [red]{details['path']}[/red], Requests: {details['requests']}")
+                elif 'ip' in details:
+                    console.print(f"    • IP: [red]{details['ip']}[/red], Requests: {details['requests']}")
+        else:
+            console.print("  [green]✅ No behavioral anomalies detected[/green]")
+    
+    # Show timeline if requested
+    if show_timeline and recent_anomalies:
+        console.print(f"\n[bold cyan]⏰ ANOMALY TIMELINE (Last {recent_hours}h)[/bold cyan]")
+        
+        # Group anomalies by hour
+        hourly_anomalies = defaultdict(list)
+        for anomaly in recent_anomalies:
+            hour = anomaly['detected_at'][:13]  # YYYY-MM-DDTHH
+            hourly_anomalies[hour].append(anomaly)
+        
+        if hourly_anomalies:
+            for hour in sorted(hourly_anomalies.keys(), reverse=True)[:12]:  # Last 12 hours
+                anomalies_in_hour = hourly_anomalies[hour]
+                console.print(f"\n  🕐 {hour}:00")
+                
+                # Count by severity
+                critical = len([a for a in anomalies_in_hour if a['details'].get('severity') == 'Critical'])
+                high = len([a for a in anomalies_in_hour if a['details'].get('severity') == 'High'])
+                medium = len([a for a in anomalies_in_hour if a['details'].get('severity') == 'Medium'])
+                
+                console.print(f"    • Total: [cyan]{len(anomalies_in_hour)}[/cyan] anomalies")
+                if critical > 0:
+                    console.print(f"    • Critical: [red]{critical}[/red]")
+                if high > 0:
+                    console.print(f"    • High: [orange1]{high}[/orange1]")
+                if medium > 0:
+                    console.print(f"    • Medium: [yellow]{medium}[/yellow]")
+        else:
+            console.print("  [green]✅ No anomalies in recent timeline[/green]")
+    
+    # Export anomaly report if requested
+    if output:
+        detector.export_anomaly_report(output)
+        console.print(f"[green]Anomaly detection report exported to: {output}[/green]")
+    
+    # Show recommendations
+    recommendations = detector.get_anomaly_recommendations()
+    if recommendations:
+        console.print(f"\n[bold green]💡 ANOMALY-BASED RECOMMENDATIONS[/bold green]")
+        for rec in recommendations:
+            priority_color = "red" if rec['priority'] == 'Critical' else "orange1" if rec['priority'] == 'High' else "yellow"
+            console.print(f"  [{priority_color}]{rec['category']} ({rec['priority']} Priority)[/{priority_color}]")
+            console.print(f"    Issue: {rec['issue']}")
+            console.print(f"    Recommendation: {rec['recommendation']}")
+            console.print(f"    Details: {rec['details']}")
+            console.print()
+    else:
+        console.print(f"\n[bold green]✅ NO URGENT RECOMMENDATIONS[/bold green]")
+        console.print("  Current traffic patterns appear normal with no critical anomalies requiring immediate action.")
 
 
 # Bot Analysis Commands
