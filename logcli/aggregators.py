@@ -165,7 +165,7 @@ class StatisticsAggregator:
         
         if is_bot:
             # Extract bot type from user agent
-            ua_lower = user_agent.lower()
+            ua_lower = (user_agent or "").lower()
             if 'googlebot' in ua_lower:
                 self.bot_types['Googlebot'] += 1
             elif 'bingbot' in ua_lower:

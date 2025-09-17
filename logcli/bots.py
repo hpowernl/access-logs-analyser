@@ -422,7 +422,7 @@ class BotAnalyzer:
         if not user_agent or user_agent == '-':
             return None
         
-        ua_lower = user_agent.lower()
+        ua_lower = (user_agent or "").lower()
         
         # Check against known bot patterns
         for bot_name, patterns in self.compiled_patterns.items():
@@ -450,7 +450,7 @@ class BotAnalyzer:
         
         # Accessing robot.txt, sitemap, or common bot paths
         bot_paths = ['/robots.txt', '/sitemap.xml', '/wp-admin', '/admin', '/.env', '/config']
-        if any(bot_path in path.lower() for bot_path in bot_paths):
+        if any(bot_path in (path or "").lower() for bot_path in bot_paths):
             bot_indicators += 1
         
         # Suspicious user agent patterns
@@ -458,12 +458,12 @@ class BotAnalyzer:
             r'http', r'scan', r'check', r'test', r'monitor', r'fetch',
             r'download', r'extract', r'parse', r'collect', r'gather'
         ]
-        ua_lower = user_agent.lower()
+        ua_lower = (user_agent or "").lower()
         if any(re.search(pattern, ua_lower) for pattern in suspicious_patterns):
             bot_indicators += 1
         
         # Simple user agents (often scripts)
-        if re.match(r'^[a-z]+/[\d.]+$', user_agent.lower()):
+        if user_agent and re.match(r'^[a-z]+/[\d.]+$', user_agent.lower()):
             bot_indicators += 1
         
         return bot_indicators >= 2
@@ -768,7 +768,7 @@ class BotAnalyzer:
         content_paths = ['/blog', '/article', '/post', '/news', '/content', '/page']
         for bot_type, path_counter in self.bot_paths.items():
             content_requests = sum(count for path, count in path_counter.items() 
-                                 if any(cp in path.lower() for cp in content_paths))
+                                 if any(cp in (path or "").lower() for cp in content_paths))
             total_requests = sum(path_counter.values())
             
             if total_requests > 50 and content_requests / total_requests > 0.7:

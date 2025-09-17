@@ -55,7 +55,7 @@ class LogSearch:
                     return False
             except re.error:
                 # If regex is invalid, do simple string matching
-                if criteria['path'].lower() not in path.lower():
+                if criteria['path'].lower() not in (path or "").lower():
                     return False
         
         # Status code matching
@@ -72,7 +72,7 @@ class LogSearch:
                     return False
             except re.error:
                 # If regex is invalid, do simple string matching
-                if criteria['user_agent'].lower() not in user_agent.lower():
+                if criteria['user_agent'].lower() not in (user_agent or "").lower():
                     return False
         
         # Country matching

@@ -290,8 +290,8 @@ class SecurityAnalyzer:
     
     def _check_attack_patterns(self, ip: str, request: str, user_agent: str):
         """Check request and user agent for attack patterns."""
-        request_lower = request.lower()
-        ua_lower = user_agent.lower()
+        request_lower = (request or "").lower()
+        ua_lower = (user_agent or "").lower()
         
         # Check SQL injection patterns
         for pattern in self.compiled_patterns['sql_injection']:
@@ -367,7 +367,7 @@ class SecurityAnalyzer:
             r'/portal/login'
         ]
         
-        path_lower = path.lower()
+        path_lower = (path or "").lower()
         is_login_attempt = any(re.search(pattern, path_lower) for pattern in login_patterns)
         
         if is_login_attempt and status in [401, 403, 404]:
@@ -390,12 +390,12 @@ class SecurityAnalyzer:
                 break
         
         # Check for very short user agents (often automated tools)
-        if len(user_agent) < 10:
+        if user_agent and len(user_agent) < 10:
             self.suspicious_user_agents[user_agent] += 1
         
         # Check for user agents with suspicious keywords
         suspicious_keywords = ['bot', 'crawler', 'spider', 'scan', 'hack', 'exploit', 'test']
-        ua_lower = user_agent.lower()
+        ua_lower = (user_agent or "").lower()
         if any(keyword in ua_lower for keyword in suspicious_keywords):
             # But exclude legitimate bots
             legitimate_bots = ['googlebot', 'bingbot', 'slurp', 'duckduckbot', 'facebookexternalhit']

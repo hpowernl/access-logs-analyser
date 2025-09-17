@@ -126,9 +126,10 @@ class HypernodeLogCommand:
             for i, field in enumerate(self.fields):
                 value = parts[i].strip()
                 
-                # Convert empty strings to None
-                if not value:
-                    log_entry[field] = None
+                # Convert empty strings or dashes to empty string (not None)
+                # This maintains compatibility with existing analyzers
+                if not value or value == '-':
+                    log_entry[field] = ""
                 else:
                     log_entry[field] = value
             
@@ -187,10 +188,8 @@ class HypernodeLogCommand:
                 # Keep original string if parsing fails
                 pass
         
-        # Normalize empty values
-        for key, value in entry.items():
-            if value == '' or value == '-':
-                entry[key] = None
+        # Keep empty values as empty strings for compatibility
+        # (analyzers expect strings, not None values)
         
         return entry
     
@@ -265,6 +264,7 @@ class MockHypernodeCommand(HypernodeLogCommand):
             "\tMozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36\t2025-09-17T16:13:48+00:00\t352248\t217.21.253.1\t200\t0.013\tn8n.hntestmarvinwp.hypernode.io\tTLSv1.3\tNL\t443\thttps://n8n.hntestmarvinwp.hypernode.io/assets/index-C6LoGNAx.css\tTLS_AES_128_GCM_SHA256\tGET /assets/InterVariable-DiVDrmQJ.woff2 HTTP/2.0\t\tn8n.hntestmarvinwp.hypernode.io",
             "\tMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\t2025-09-17T16:14:02+00:00\t1024\t192.168.1.100\t404\t0.001\ttest.hypernode.io\tTLSv1.3\tUS\t443\t-\tTLS_AES_256_GCM_SHA384\tGET /nonexistent HTTP/2.0\tvarnish\ttest.hypernode.io",
             "\tGooglebot/2.1 (+http://www.google.com/bot.html)\t2025-09-17T16:14:15+00:00\t4567\t66.249.79.123\t200\t0.245\ttest.hypernode.io\tTLSv1.3\tUS\t443\t-\tTLS_AES_128_GCM_SHA256\tGET / HTTP/2.0\tphpfpm\ttest.hypernode.io",
+            "\t\t2025-09-17T16:15:00+00:00\t0\t10.0.0.1\t400\t0.000\ttest.hypernode.io\t\t\t80\t\t\tGET /test HTTP/1.1\t\ttest.hypernode.io",
         ]
         
         for line in mock_lines:
