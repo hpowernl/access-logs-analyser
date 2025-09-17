@@ -55,92 +55,105 @@ class SimpleLogApp(App):
         
         # Don't load data here - wait for on_mount
     
+    def discover_logs_simple(self):
+        """Simple log discovery - copy logcli approach."""
+        print("🔍 Discovering log files...")
+        
+        # Try nginx directories
+        nginx_dirs = ["/var/log/nginx/", "/var/log/", "/data/web/nginx/"]
+        
+        for nginx_dir in nginx_dirs:
+            if os.path.exists(nginx_dir):
+                print(f"📂 Checking {nginx_dir}...")
+                log_files = self.discover_nginx_logs_simple(nginx_dir)
+                if log_files:
+                    print(f"✅ Found {len(log_files)} files in {nginx_dir}")
+                    return log_files
+                else:
+                    print(f"⚠️ No access.log files in {nginx_dir}")
+            else:
+                print(f"⚠️ Directory not found: {nginx_dir}")
+        
+        # Fallback to sample log
+        print("📄 Trying sample log...")
+        sample_log = Path(__file__).parent.parent / "sample_access.log"
+        if sample_log.exists():
+            print(f"✅ Using sample: {sample_log}")
+            return [str(sample_log)]
+        else:
+            print("❌ No sample log found")
+            return []
+    
+    def discover_nginx_logs_simple(self, nginx_dir: str):
+        """Discover access.log files - exact copy of logcli method."""
+        log_dir = Path(nginx_dir)
+        if not log_dir.exists():
+            return []
+        
+        log_files = []
+        
+        # Current access.log
+        current_log = log_dir / "access.log"
+        if current_log.exists():
+            log_files.append(str(current_log))
+        
+        # Rotated logs (access.log.1, access.log.2, etc.)
+        for log_file in log_dir.glob("access.log.*"):
+            if not str(log_file).endswith('.gz'):  # Skip .gz for now
+                log_files.append(str(log_file))
+        
+        # Sort by modification time (newest first)
+        if log_files:
+            log_files.sort(key=lambda x: Path(x).stat().st_mtime, reverse=True)
+        
+        return log_files
+    
     def load_data(self):
-        """Load and process log data."""
+        """Load and process log data - simplified approach."""
         try:
-            print("🚀 Loading real log data...")
+            print("🚀 Loading data...")
             
             # Discover log files
-            # Try common nginx log locations
-            nginx_locations = [
-                "/var/log/nginx/",     # Standard location
-                "/var/log/",           # Alternative location
-                "/data/web/nginx/",    # Custom location
-                "/usr/local/nginx/logs/",  # Another common location
-            ]
-            
-            self.log_files = []
-            for location in nginx_locations:
-                try:
-                    if os.path.exists(location):
-                        # Look for access.log* files
-                        import glob
-                        pattern = os.path.join(location, "access.log*")
-                        found_files = glob.glob(pattern)
-                        
-                        # Filter out .gz files for now (we can add gz support later)
-                        log_files = [f for f in found_files if not f.endswith('.gz')]
-                        
-                        if log_files:
-                            self.log_files.extend(log_files)
-                            print(f"✅ Found {len(log_files)} log files in {location}")
-                            for log_file in log_files[:3]:  # Show first 3
-                                print(f"   📄 {log_file}")
-                            break  # Use first location that has logs
-                        else:
-                            print(f"⚠️ No access.log files found in {location}")
-                    else:
-                        print(f"⚠️ Directory does not exist: {location}")
-                except Exception as e:
-                    print(f"⚠️ Error checking {location}: {e}")
-                    continue
+            self.log_files = self.discover_logs_simple()
             
             if not self.log_files:
-                print("📄 No nginx logs found, using sample data...")
-                sample_log = Path(__file__).parent.parent / "sample_access.log"
-                if sample_log.exists():
-                    self.log_files = [str(sample_log)]
-                    print(f"✅ Using sample log: {sample_log}")
-                else:
-                    print("❌ No sample log found either")
-                    return
-            else:
-                print(f"✅ Found {len(self.log_files)} log files")
+                print("❌ No log files found")
+                return
+            
+            print(f"📄 Processing {len(self.log_files)} files...")
             
             # Process logs
-            self.process_logs()
+            self.process_logs_simple()
             self.last_update = datetime.now()
             
-            print(f"📊 Loaded {self.stats.total_requests:,} requests")
+            print(f"✅ Loaded {self.stats.total_requests:,} requests")
             
         except Exception as e:
             print(f"❌ Error loading data: {e}")
             import traceback
             traceback.print_exc()
     
-    def process_logs(self):
-        """Process log files and update statistics."""
+    def process_logs_simple(self):
+        """Process log files - simplified like logcli."""
+        print("📊 Processing logs...")
+        
         # Reset statistics
         self.stats.reset()
         self.security.reset()
         self.performance.reset()
         
         total_lines = 0
-        parsed_entries = 0
-        max_lines_per_file = 1000  # Keep it small for testing
+        processed_entries = 0
+        max_lines = 500  # Keep small for testing
         
         for log_file in self.log_files:
+            print(f"📄 Reading {Path(log_file).name}...")
+            
             try:
-                print(f"📄 Processing {log_file}...")
-                
-                if not os.path.exists(log_file):
-                    print(f"❌ File not found: {log_file}")
-                    continue
-                
-                with open(log_file, 'r') as f:
+                with open(log_file, 'r', encoding='utf-8') as f:
                     for line_num, line in enumerate(f, 1):
-                        if line_num > max_lines_per_file:
-                            print(f"⚠️  Reached line limit ({max_lines_per_file}) for {log_file}")
+                        if total_lines >= max_lines:
+                            print(f"⚠️ Reached max lines ({max_lines})")
                             break
                         
                         line = line.strip()
@@ -150,32 +163,51 @@ class SimpleLogApp(App):
                         total_lines += 1
                         
                         try:
-                            # Parse log entry
-                            entry = self.parser.parse_line(line)
-                            if not entry:
+                            # Parse log entry - try both methods
+                            log_entry = None
+                            try:
+                                log_entry = self.parser.parse_log_line(line)
+                            except AttributeError:
+                                log_entry = self.parser.parse_line(line)
+                            
+                            if not log_entry:
                                 continue
                             
                             # Apply filters
-                            if not self.filter.should_include(entry):
+                            if not self.filter.should_include(log_entry):
                                 continue
                             
                             # Add to statistics
-                            self.stats.add_entry(entry)
-                            self.security.add_entry(entry)
-                            self.performance.add_entry(entry)
+                            self.stats.add_entry(log_entry)
+                            self.security.add_entry(log_entry)
+                            self.performance.add_entry(log_entry)
                             
-                            parsed_entries += 1
+                            processed_entries += 1
+                            
+                            # Show first few entries
+                            if processed_entries <= 3:
+                                print(f"✅ Entry {processed_entries}: {log_entry.get('request', 'N/A')} -> {log_entry.get('status', 'N/A')}")
                             
                         except Exception as e:
-                            # Skip malformed lines silently
+                            if total_lines <= 3:
+                                print(f"⚠️ Parse error line {line_num}: {e}")
                             continue
                             
             except Exception as e:
-                print(f"⚠️ Error processing {log_file}: {e}")
+                print(f"❌ Error reading {log_file}: {e}")
                 continue
         
-        print(f"📊 Processed {total_lines} lines, parsed {parsed_entries} entries")
-        print(f"📈 Stats total: {self.stats.total_requests}")
+        print(f"📊 Processed {total_lines:,} lines, {processed_entries:,} entries")
+        print(f"📊 Total requests: {self.stats.total_requests:,}")
+        
+        if self.stats.total_requests == 0:
+            print("❌ No data processed - interface will show 'No Data'")
+        else:
+            print("✅ Data processed successfully!")
+    
+    def process_logs(self):
+        """Old method - keeping for compatibility."""
+        self.process_logs_simple()
     
     def compose(self) -> ComposeResult:
         yield Header()
@@ -197,10 +229,23 @@ class SimpleLogApp(App):
     
     def on_mount(self) -> None:
         """Initialize the application after widgets are created."""
-        print("🚀 App mounted, loading data...")
+        print("\n=== 🔍 DEBUG: App Initialization ===")
+        print("🚀 App mounted, starting initialization...")
+        
+        print("\n=== 🔍 DEBUG: Widget Status ===")
+        print(f"📊 Overview widget:    {'✅' if self.overview_widget else '❌'}")
+        print(f"⚡ Performance widget: {'✅' if self.performance_widget else '❌'}")
+        print(f"🔒 Security widget:    {'✅' if self.security_widget else '❌'}")
+        
+        print("\n=== 🔍 DEBUG: Loading Data ===")
         self.load_data()
+        
+        print("\n=== 🔍 DEBUG: Updating Widgets ===")
         self.update_all_widgets()
-        print("✅ Data loaded and widgets updated!")
+        
+        print("\n=== 🔍 DEBUG: Initialization Complete ===")
+        print(f"✅ Data loaded: {self.stats.total_requests:,} requests")
+        print(f"✅ Widgets updated: {datetime.now().strftime('%H:%M:%S')}")
     
     def update_all_widgets(self) -> None:
         """Update all widgets with current data."""
