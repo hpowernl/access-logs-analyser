@@ -164,6 +164,10 @@ class BaselineCalculator:
                     status = int(status)
                 except:
                     status = 200
+            elif status is None:
+                status = 200
+                
+            # Only count actual HTTP errors (400+)
             if status >= 400:
                 errors += 1
             
@@ -177,10 +181,19 @@ class BaselineCalculator:
             if response_time > 0:
                 response_times.append(response_time)
         
+        error_rate = (errors / len(hour_data) * 100) if hour_data else 0
+        
+        # Debug: Log unusual error rates
+        if error_rate > 50:
+            console.print(f"[yellow]Debug: High error rate detected: {error_rate:.1f}% ({errors}/{len(hour_data)} entries)[/yellow]")
+            # Sample some status codes for debugging
+            sample_statuses = [entry.get('status', 'None') for entry in hour_data[:5]]
+            console.print(f"[yellow]Sample status codes: {sample_statuses}[/yellow]")
+        
         return {
             'requests': len(hour_data),
             'unique_ips': len(unique_ips),
-            'error_rate': (errors / len(hour_data) * 100) if hour_data else 0,
+            'error_rate': error_rate,
             'avg_response_time': statistics.mean(response_times) if response_times else 0
         }
     
@@ -367,7 +380,10 @@ class AnomalyDetector:
                 status = int(status)
             except:
                 status = 200
+        elif status is None:
+            status = 200
         
+        # Only count actual HTTP errors (400+), not redirects or other codes
         if status >= 400:
             data['errors'] += 1
         
@@ -440,7 +456,7 @@ class AnomalyDetector:
         ip = log_entry.get('remote_addr', '')
         if ip:
             ip_requests_this_minute = self.current_minute_data['ips'][ip]
-            if ip_requests_this_minute > 100:  # More than 100 requests per minute from single IP
+            if ip_requests_this_minute > 200:  # More than 200 requests per minute from single IP (more conservative)
                 self._record_anomaly('ddos_attack', {
                     'type': 'High Request Rate',
                     'ip': ip,
@@ -683,9 +699,9 @@ class AnomalyDetector:
         requests_mean = hourly_baseline.get('requests_mean', 0)
         requests_stdev = hourly_baseline.get('requests_stdev', 0)
         
-        if requests_mean > 0 and requests_stdev > 0:
+        if requests_mean > 0 and requests_stdev > 0 and requests > 5:  # Only check meaningful request counts
             z_score = (requests - requests_mean) / requests_stdev
-            if abs(z_score) > self.sensitivity:
+            if abs(z_score) > (self.sensitivity + 1.0):  # More conservative threshold
                 self.anomaly_types['hourly_pattern_anomaly'] += 1
                 self._record_anomaly('hourly_pattern_anomaly', {
                     'type': 'Hourly Pattern Anomaly',
@@ -695,7 +711,7 @@ class AnomalyDetector:
                     'actual_value': requests,
                     'historical_mean': requests_mean,
                     'historical_stdev': requests_stdev,
-                    'severity': 'High' if abs(z_score) > 3 else 'Medium',
+                    'severity': 'High' if abs(z_score) > 4 else 'Medium',
                     'timestamp': timestamp
                 })
         
@@ -747,9 +763,9 @@ class AnomalyDetector:
         requests_mean = weekday_baseline.get('requests_mean', 0)
         requests_stdev = weekday_baseline.get('requests_stdev', 0)
         
-        if requests_mean > 0 and requests_stdev > 0:
+        if requests_mean > 0 and requests_stdev > 0 and requests > 10:  # Only check meaningful request counts
             z_score = (requests - requests_mean) / requests_stdev
-            if abs(z_score) > self.sensitivity:
+            if abs(z_score) > (self.sensitivity + 1.5):  # Even more conservative for weekday patterns
                 weekday_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
                 self.anomaly_types['weekday_pattern_anomaly'] += 1
                 self._record_anomaly('weekday_pattern_anomaly', {
@@ -759,7 +775,7 @@ class AnomalyDetector:
                     'z_score': z_score,
                     'actual_requests': requests,
                     'expected_requests': requests_mean,
-                    'severity': 'Medium' if abs(z_score) < 3 else 'High',
+                    'severity': 'Medium' if abs(z_score) < 4 else 'High',
                     'timestamp': timestamp
                 })
     
@@ -767,8 +783,11 @@ class AnomalyDetector:
                                             error_rate: float, response_time: float, timestamp: datetime) -> None:
         """Compare current metrics with same time last week."""
         try:
-            # Get data from exactly 7 days ago
-            last_week_data = self.historical_manager.get_historical_data(7)
+            # Use cached data if available
+            if not hasattr(self, '_last_week_data_cache'):
+                self._last_week_data_cache = self.historical_manager.get_historical_data(7)
+            
+            last_week_data = self._last_week_data_cache
             if not last_week_data:
                 return
                 
@@ -781,11 +800,11 @@ class AnomalyDetector:
                 # Calculate metrics for same hour last week
                 last_week_metrics = self.baseline_calculator._calculate_hour_metrics(same_hour_data)
                 
-                # Compare requests
+                # Compare requests - only flag significant changes
                 last_week_requests = last_week_metrics['requests']
-                if last_week_requests > 0:
+                if last_week_requests > 10:  # Only compare if we have meaningful data
                     requests_ratio = requests / last_week_requests
-                    if requests_ratio > 2.0 or requests_ratio < 0.5:  # 2x increase or 50% decrease
+                    if requests_ratio > 3.0 or requests_ratio < 0.3:  # 3x increase or 30% decrease (more conservative)
                         self.anomaly_types['same_time_last_week_anomaly'] += 1
                         self._record_anomaly('same_time_last_week_anomaly', {
                             'type': 'Same Time Last Week Comparison',
@@ -793,13 +812,13 @@ class AnomalyDetector:
                             'current_value': requests,
                             'last_week_value': last_week_requests,
                             'ratio': requests_ratio,
-                            'severity': 'High' if requests_ratio > 3.0 or requests_ratio < 0.3 else 'Medium',
+                            'severity': 'High' if requests_ratio > 5.0 or requests_ratio < 0.2 else 'Medium',
                             'timestamp': timestamp
                         })
                 
-                # Compare error rates
+                # Compare error rates - only if significant difference
                 last_week_error_rate = last_week_metrics['error_rate']
-                if error_rate > last_week_error_rate + 5.0:  # 5% higher error rate
+                if error_rate > last_week_error_rate + 10.0 and error_rate > 20.0:  # 10% higher and above 20%
                     self.anomaly_types['same_time_last_week_anomaly'] += 1
                     self._record_anomaly('same_time_last_week_anomaly', {
                         'type': 'Same Time Last Week Error Rate Increase',
@@ -817,25 +836,34 @@ class AnomalyDetector:
     def _detect_weekly_trend_anomalies(self, requests: int, unique_ips: int, error_rate: float, timestamp: datetime) -> None:
         """Detect anomalies based on weekly trends."""
         try:
-            # Get data for past 7 days to analyze trends
+            # Use cached week data if available
+            if not hasattr(self, '_week_data_cache'):
+                self._week_data_cache = self.historical_manager.get_week_data()
+            
+            week_data = self._week_data_cache
+            if not week_data or len(week_data) < 3:
+                return
+                
+            # Calculate daily request totals
             weekly_metrics = []
             for days_ago in range(1, 8):
-                daily_data = self.historical_manager.get_historical_data(days_ago)
-                if daily_data:
-                    daily_metrics = self.baseline_calculator._calculate_hour_metrics(daily_data)
-                    weekly_metrics.append(daily_metrics['requests'])
+                if days_ago in week_data:
+                    daily_data = week_data[days_ago]
+                    if daily_data:
+                        daily_metrics = self.baseline_calculator._calculate_hour_metrics(daily_data)
+                        weekly_metrics.append(daily_metrics['requests'])
             
             if len(weekly_metrics) >= 3:  # Need at least 3 days of data
                 # Calculate trend
                 trend = self._calculate_trend(weekly_metrics)
                 
                 # Predict expected value based on trend
-                expected_requests = weekly_metrics[-1] + trend
+                expected_requests = weekly_metrics[-1] + trend if weekly_metrics else 0
                 
-                # Check if current value deviates significantly from trend
-                if expected_requests > 0:
+                # Check if current value deviates significantly from trend (more conservative)
+                if expected_requests > 10 and requests > 10:  # Only check meaningful values
                     deviation = abs(requests - expected_requests) / expected_requests
-                    if deviation > 0.5:  # 50% deviation from trend
+                    if deviation > 1.0:  # 100% deviation from trend (more conservative)
                         self.anomaly_types['weekly_trend_anomaly'] += 1
                         self._record_anomaly('weekly_trend_anomaly', {
                             'type': 'Weekly Trend Deviation',
