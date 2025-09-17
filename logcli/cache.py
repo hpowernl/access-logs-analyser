@@ -3,6 +3,7 @@
 import sqlite3
 import hashlib
 import json
+import gzip
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -147,11 +148,10 @@ class CacheManager:
                 file_mtime REAL NOT NULL,
                 file_hash TEXT NOT NULL,
                 file_signature TEXT,
-                content_signature TEXT,
                 lines_processed INTEGER NOT NULL,
                 last_processed DATETIME DEFAULT CURRENT_TIMESTAMP,
                 processing_time_seconds REAL,
-                UNIQUE(file_inode, file_device)
+                UNIQUE(file_size, file_mtime)
             );
             
             -- Cache configuration and status
@@ -251,22 +251,6 @@ class CacheManager:
         except (IOError, OSError):
             return ""
     
-    def _calculate_content_signature(self, file_path: str) -> str:
-        """Calculate content signature from first 16KB of file.
-        
-        This works for both regular and gzipped files and survives logrotate.
-        """
-        try:
-            if file_path.endswith('.gz'):
-                with gzip.open(file_path, 'rb') as f:
-                    content = f.read(16384)  # Read first 16KB of uncompressed content
-            else:
-                with open(file_path, 'rb') as f:
-                    content = f.read(16384)  # Read first 16KB
-            
-            return hashlib.md5(content).hexdigest()
-        except (IOError, OSError):
-            return ""
     
     def is_file_cached_and_fresh(self, file_path: str) -> Tuple[bool, Dict[str, Any]]:
         """Check if file is cached and up-to-date using inode-based detection.
@@ -286,21 +270,13 @@ class CacheManager:
             current_inode = stat.st_ino
             current_device = stat.st_dev
             
-            # First try to find by inode+device (handles logrotate)
+            # Simple and effective: lookup by size + mtime (survives logrotate!)
             conn = self._get_connection()
             cursor = conn.execute(
-                "SELECT * FROM file_metadata WHERE file_inode = ? AND file_device = ?",
-                (current_inode, current_device)
+                "SELECT * FROM file_metadata WHERE file_size = ? AND file_mtime = ?",
+                (current_size, current_mtime)
             )
             row = cursor.fetchone()
-            
-            # If not found by inode, try by path (fallback for new files)
-            if not row:
-                cursor = conn.execute(
-                    "SELECT * FROM file_metadata WHERE file_path = ?",
-                    (file_path,)
-                )
-                row = cursor.fetchone()
             
             if not row:
                 return False, {}
@@ -343,20 +319,20 @@ class CacheManager:
             return False, {}
     
     def get_cached_entries(self, file_path: str) -> List[Dict[str, Any]]:
-        """Get cached log entries for a file using inode-based lookup."""
+        """Get cached log entries for a file using size+mtime lookup."""
         file_path = str(Path(file_path).resolve())
         
         try:
-            # Get file inode for lookup
+            # Get file stats for lookup
             stat = os.stat(file_path)
-            file_inode = stat.st_ino
-            file_device = stat.st_dev
+            file_size = stat.st_size
+            file_mtime = stat.st_mtime
             
-            # Find the actual stored path for this inode
+            # Find the actual stored path for this file (by size+mtime)
             conn = self._get_connection()
             cursor = conn.execute(
-                "SELECT file_path FROM file_metadata WHERE file_inode = ? AND file_device = ?",
-                (file_inode, file_device)
+                "SELECT file_path FROM file_metadata WHERE file_size = ? AND file_mtime = ?",
+                (file_size, file_mtime)
             )
             row = cursor.fetchone()
             
@@ -427,13 +403,11 @@ class CacheManager:
             file_device = stat.st_dev
             file_hash = self._calculate_file_hash(file_path)
             file_signature = self._calculate_file_signature(file_path)
-            content_signature = self._calculate_content_signature(file_path)
             
-            # Clear existing entries for this content signature
-            # First, find existing entries with same content signature
+            # Clear existing entries for this file (by size+mtime)
             cursor = conn.execute(
-                "SELECT file_path FROM file_metadata WHERE content_signature = ? AND file_size = ?",
-                (content_signature, file_size)
+                "SELECT file_path FROM file_metadata WHERE file_size = ? AND file_mtime = ?",
+                (file_size, file_mtime)
             )
             existing_row = cursor.fetchone()
             if existing_row:
