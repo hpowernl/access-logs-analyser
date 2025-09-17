@@ -124,20 +124,43 @@ class LogAnalyzerTUI(App):
     def update_summary_stats(self) -> None:
         """Update the summary statistics display."""
         summary = self.stats.get_summary_stats()
+        time_stats = summary.get('time_range_stats', {})
         
-        summary_text = f"""
-[bold blue]OVERVIEW[/bold blue]
+        summary_text = f"""[bold blue]📊 ANALYSIS OVERVIEW[/bold blue]
+"""
+        
+        # Time range information
+        if time_stats.get('earliest_timestamp') and time_stats.get('latest_timestamp'):
+            summary_text += f"""
+[bold cyan]⏰ TIME RANGE[/bold cyan]
+From: [green]{time_stats['earliest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}[/green]
+To: [green]{time_stats['latest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}[/green]
+"""
+            if time_stats.get('time_span_hours', 0) > 24:
+                summary_text += f"Duration: [yellow]{time_stats.get('time_span_days', 0):.1f} days[/yellow]\n"
+            else:
+                summary_text += f"Duration: [yellow]{time_stats.get('time_span_hours', 0):.1f} hours[/yellow]\n"
+        
+        summary_text += f"""
+[bold green]📈 TRAFFIC STATISTICS[/bold green]
 Total Requests: [green]{summary.get('total_requests', 0):,}[/green]
 Unique Visitors: [green]{summary.get('unique_visitors', 0):,}[/green]
-Error Rate: [red]{summary.get('error_rate', 0):.2f}%[/red]
+"""
+        
+        if time_stats.get('requests_per_hour', 0) > 0:
+            summary_text += f"""Requests/Hour: [cyan]{time_stats.get('requests_per_hour', 0):.1f}[/cyan]
+Requests/Minute: [cyan]{time_stats.get('requests_per_minute', 0):.1f}[/cyan]
+"""
+        
+        summary_text += f"""Error Rate: [red]{summary.get('error_rate', 0):.2f}%[/red]
 Bot Traffic: [yellow]{summary.get('bot_percentage', 0):.2f}%[/yellow]
-
-[bold blue]RESPONSE TIMES[/bold blue]
 """
         
         rt_stats = summary.get('response_time_stats', {})
         if rt_stats:
-            summary_text += f"""Average: [cyan]{rt_stats.get('avg', 0):.3f}s[/cyan]
+            summary_text += f"""
+[bold purple]⚡ PERFORMANCE[/bold purple]
+Average: [cyan]{rt_stats.get('avg', 0):.3f}s[/cyan]
 Maximum: [red]{rt_stats.get('max', 0):.3f}s[/red]
 95th Percentile: [yellow]{rt_stats.get('p95', 0):.3f}s[/yellow]
 """
@@ -145,7 +168,7 @@ Maximum: [red]{rt_stats.get('max', 0):.3f}s[/red]
         bandwidth = summary.get('bandwidth_stats', {})
         if bandwidth:
             summary_text += f"""
-[bold blue]BANDWIDTH[/bold blue]
+[bold magenta]💾 BANDWIDTH[/bold magenta]
 Total: [green]{bandwidth.get('total_gb', 0):.2f} GB[/green]
 Avg/Request: [cyan]{bandwidth.get('avg_bytes_per_request', 0):,.0f} bytes[/cyan]
 """
@@ -366,9 +389,31 @@ class SimpleConsoleUI:
     def display_summary(self) -> None:
         """Display a summary of statistics."""
         summary = self.stats.get_summary_stats()
+        time_stats = summary.get('time_range_stats', {})
+        
+        # Create time range table first
+        if time_stats.get('earliest_timestamp') and time_stats.get('latest_timestamp'):
+            time_table = Table(title="⏰ Analysis Time Range", show_header=True)
+            time_table.add_column("Metric", style="bold cyan")
+            time_table.add_column("Value", style="green")
+            
+            time_table.add_row("From", time_stats['earliest_timestamp'].strftime('%Y-%m-%d %H:%M:%S'))
+            time_table.add_row("To", time_stats['latest_timestamp'].strftime('%Y-%m-%d %H:%M:%S'))
+            
+            if time_stats.get('time_span_hours', 0) > 24:
+                time_table.add_row("Duration", f"{time_stats.get('time_span_days', 0):.1f} days")
+            else:
+                time_table.add_row("Duration", f"{time_stats.get('time_span_hours', 0):.1f} hours")
+            
+            if time_stats.get('requests_per_hour', 0) > 0:
+                time_table.add_row("Requests/Hour", f"{time_stats.get('requests_per_hour', 0):.1f}")
+                time_table.add_row("Requests/Minute", f"{time_stats.get('requests_per_minute', 0):.1f}")
+            
+            self.console.print(time_table)
+            self.console.print()
         
         # Create summary table
-        summary_table = Table(title="Log Analysis Summary", show_header=True)
+        summary_table = Table(title="📊 Traffic Statistics", show_header=True)
         summary_table.add_column("Metric", style="bold blue")
         summary_table.add_column("Value", style="green")
         
@@ -381,6 +426,12 @@ class SimpleConsoleUI:
         if rt_stats:
             summary_table.add_row("Avg Response Time", f"{rt_stats.get('avg', 0):.3f}s")
             summary_table.add_row("Max Response Time", f"{rt_stats.get('max', 0):.3f}s")
+            summary_table.add_row("95th Percentile", f"{rt_stats.get('p95', 0):.3f}s")
+        
+        bandwidth = summary.get('bandwidth_stats', {})
+        if bandwidth:
+            summary_table.add_row("Total Bandwidth", f"{bandwidth.get('total_gb', 0):.2f} GB")
+            summary_table.add_row("Avg/Request", f"{bandwidth.get('avg_bytes_per_request', 0):,.0f} bytes")
         
         self.console.print(summary_table)
         self.console.print()

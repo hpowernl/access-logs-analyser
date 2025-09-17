@@ -6,7 +6,8 @@ import glob
 import signal
 import asyncio
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from datetime import datetime
 
 import click
 from rich.console import Console
@@ -54,6 +55,62 @@ def complete_report_formats(ctx, param, incomplete):
 
 
 console = Console()
+
+
+def parse_time_filters(from_time: Optional[str], to_time: Optional[str], 
+                      last_hours: Optional[int], last_days: Optional[int]) -> Tuple[Optional[datetime], Optional[datetime]]:
+    """Parse time filtering parameters into datetime objects."""
+    from datetime import datetime, timedelta
+    
+    start_time = None
+    end_time = None
+    
+    # Handle relative time filters first
+    if last_hours:
+        end_time = datetime.now()
+        start_time = end_time - timedelta(hours=last_hours)
+    elif last_days:
+        end_time = datetime.now()
+        start_time = end_time - timedelta(days=last_days)
+    
+    # Handle absolute time filters (override relative if specified)
+    if from_time:
+        start_time = parse_datetime_string(from_time)
+    if to_time:
+        end_time = parse_datetime_string(to_time)
+    
+    return start_time, end_time
+
+
+def parse_datetime_string(date_str: str) -> Optional[datetime]:
+    """Parse a datetime string in various formats."""
+    from datetime import datetime
+    
+    # Common formats to try
+    formats = [
+        '%Y-%m-%d %H:%M:%S',    # 2024-01-01 10:30:00
+        '%Y-%m-%d %H:%M',       # 2024-01-01 10:30
+        '%Y-%m-%d',             # 2024-01-01 (will use 00:00:00)
+        '%Y/%m/%d %H:%M:%S',    # 2024/01/01 10:30:00
+        '%Y/%m/%d %H:%M',       # 2024/01/01 10:30
+        '%Y/%m/%d',             # 2024/01/01
+        '%d-%m-%Y %H:%M:%S',    # 01-01-2024 10:30:00
+        '%d-%m-%Y %H:%M',       # 01-01-2024 10:30
+        '%d-%m-%Y',             # 01-01-2024
+        '%d/%m/%Y %H:%M:%S',    # 01/01/2024 10:30:00
+        '%d/%m/%Y %H:%M',       # 01/01/2024 10:30
+        '%d/%m/%Y',             # 01/01/2024
+    ]
+    
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    
+    console.print(f"[red]Unable to parse datetime: {date_str}[/red]")
+    console.print(f"[yellow]Supported formats: YYYY-MM-DD, YYYY-MM-DD HH:MM:SS, etc.[/yellow]")
+    return None
 
 
 def is_hypernode_platform() -> bool:
@@ -164,6 +221,10 @@ eval "$(_HLOGCLI_COMPLETE={shell}_source hlogcli)"
 @click.option('--countries', help='Filter by countries (comma-separated, e.g., US,GB,DE)')
 @click.option('--status-codes', help='Filter by status codes (comma-separated, e.g., 404,500)')
 @click.option('--exclude-bots', is_flag=True, help='Exclude bot traffic')
+@click.option('--from-time', '--from', help='Start time for filtering (YYYY-MM-DD HH:MM:SS or YYYY-MM-DD)')
+@click.option('--to-time', '--to', help='End time for filtering (YYYY-MM-DD HH:MM:SS or YYYY-MM-DD)')
+@click.option('--last-hours', type=int, help='Show entries from last N hours')
+@click.option('--last-days', type=int, help='Show entries from last N days')
 @click.option('--export-csv', is_flag=True, help='Export results to CSV')
 @click.option('--export-json', is_flag=True, help='Export results to JSON')
 @click.option('--export-charts', is_flag=True, help='Export charts to HTML')
@@ -176,7 +237,7 @@ eval "$(_HLOGCLI_COMPLETE={shell}_source hlogcli)"
 @click.option('--cache-info', is_flag=True, help='Show cache information and statistics')
 @click.option('--aggressive-cache', is_flag=True, help='Trust cache more aggressively (faster but may miss recent changes)')
 def analyze(log_files, follow, interactive, output, filter_preset, countries, status_codes, 
-         exclude_bots, export_csv, export_json, export_charts, summary_only, nginx_dir, no_auto_discover,
+         exclude_bots, from_time, to_time, last_hours, last_days, export_csv, export_json, export_charts, summary_only, nginx_dir, no_auto_discover,
          use_cache, no_cache, force_refresh, cache_info, aggressive_cache):
     """📊 Analyze Nginx JSON access logs with comprehensive statistics and insights.
     
@@ -215,6 +276,12 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
       hlogcli analyze --exclude-bots            # Exclude bot traffic
       hlogcli analyze --export-csv --export-charts  # Export results
       hlogcli analyze /path/to/specific.log     # Analyze specific file
+      
+      # Time filtering:
+      hlogcli analyze --last-hours 24          # Last 24 hours only
+      hlogcli analyze --last-days 7            # Last 7 days only
+      hlogcli analyze --from "2024-01-01" --to "2024-01-02"  # Specific date range
+      hlogcli analyze --from "2024-01-01 10:00:00"           # From specific datetime
       
       # Cache options:
       hlogcli analyze --no-cache                # Disable cache, process fresh
@@ -298,6 +365,18 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
     
     if exclude_bots:
         log_filter.toggle_bot_filter()
+    
+    # Apply time filters
+    if from_time or to_time or last_hours or last_days:
+        start_time, end_time = parse_time_filters(from_time, to_time, last_hours, last_days)
+        if start_time or end_time:
+            log_filter.set_time_range(start_time, end_time)
+            if start_time and end_time:
+                console.print(f"[blue]Time filter: {start_time.strftime('%Y-%m-%d %H:%M:%S')} to {end_time.strftime('%Y-%m-%d %H:%M:%S')}[/blue]")
+            elif start_time:
+                console.print(f"[blue]Time filter: from {start_time.strftime('%Y-%m-%d %H:%M:%S')}[/blue]")
+            elif end_time:
+                console.print(f"[blue]Time filter: until {end_time.strftime('%Y-%m-%d %H:%M:%S')}[/blue]")
     
     # Set up signal handlers for graceful shutdown
     def signal_handler(signum, frame):
@@ -503,17 +582,41 @@ def run_interactive_static(stats: StatisticsAggregator, log_filter: LogFilter):
 def display_summary_only(stats: StatisticsAggregator):
     """Display only summary statistics."""
     summary = stats.get_summary_stats()
+    time_stats = summary.get('time_range_stats', {})
     
-    console.print(f"[bold blue]SUMMARY[/bold blue]")
-    console.print(f"Total Requests: [green]{summary.get('total_requests', 0):,}[/green]")
-    console.print(f"Unique Visitors: [green]{summary.get('unique_visitors', 0):,}[/green]")
-    console.print(f"Error Rate: [red]{summary.get('error_rate', 0):.2f}%[/red]")
-    console.print(f"Bot Traffic: [yellow]{summary.get('bot_percentage', 0):.2f}%[/yellow]")
+    console.print(f"[bold blue]📊 ANALYSIS SUMMARY[/bold blue]")
+    
+    # Time range information
+    if time_stats.get('earliest_timestamp') and time_stats.get('latest_timestamp'):
+        console.print(f"[bold cyan]⏰ TIME RANGE[/bold cyan]")
+        console.print(f"  From: [green]{time_stats['earliest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}[/green]")
+        console.print(f"  To: [green]{time_stats['latest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}[/green]")
+        
+        if time_stats.get('time_span_hours', 0) > 24:
+            console.print(f"  Duration: [yellow]{time_stats.get('time_span_days', 0):.1f} days[/yellow]")
+        else:
+            console.print(f"  Duration: [yellow]{time_stats.get('time_span_hours', 0):.1f} hours[/yellow]")
+        console.print()
+    
+    # Request statistics
+    console.print(f"[bold green]📈 TRAFFIC STATISTICS[/bold green]")
+    console.print(f"  Total Requests: [green]{summary.get('total_requests', 0):,}[/green]")
+    console.print(f"  Unique Visitors: [green]{summary.get('unique_visitors', 0):,}[/green]")
+    
+    if time_stats.get('requests_per_hour', 0) > 0:
+        console.print(f"  Requests/Hour: [cyan]{time_stats.get('requests_per_hour', 0):.1f}[/cyan]")
+        console.print(f"  Requests/Minute: [cyan]{time_stats.get('requests_per_minute', 0):.1f}[/cyan]")
+    
+    console.print(f"  Error Rate: [red]{summary.get('error_rate', 0):.2f}%[/red]")
+    console.print(f"  Bot Traffic: [yellow]{summary.get('bot_percentage', 0):.2f}%[/yellow]")
     
     rt_stats = summary.get('response_time_stats', {})
     if rt_stats:
-        console.print(f"Avg Response Time: [cyan]{rt_stats.get('avg', 0):.3f}s[/cyan]")
-        console.print(f"Max Response Time: [red]{rt_stats.get('max', 0):.3f}s[/red]")
+        console.print()
+        console.print(f"[bold purple]⚡ PERFORMANCE[/bold purple]")
+        console.print(f"  Avg Response Time: [cyan]{rt_stats.get('avg', 0):.3f}s[/cyan]")
+        console.print(f"  Max Response Time: [red]{rt_stats.get('max', 0):.3f}s[/red]")
+        console.print(f"  95th Percentile: [yellow]{rt_stats.get('p95', 0):.3f}s[/yellow]")
 
 
 def handle_exports(stats: StatisticsAggregator, output_dir: Optional[str], 

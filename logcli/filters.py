@@ -73,8 +73,27 @@ class LogFilter:
             timestamp = log_entry.get('timestamp')
             if timestamp:
                 start_time, end_time = time_range
-                if not (start_time <= timestamp <= end_time):
-                    return False
+                
+                # Handle timezone-aware vs naive datetime comparison
+                if timestamp.tzinfo is not None and start_time and start_time.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=None)
+                elif timestamp.tzinfo is None and start_time and start_time.tzinfo is not None:
+                    start_time = start_time.replace(tzinfo=None)
+                if timestamp.tzinfo is not None and end_time and end_time.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=None)
+                elif timestamp.tzinfo is None and end_time and end_time.tzinfo is not None:
+                    end_time = end_time.replace(tzinfo=None)
+                
+                # Apply time range filter
+                if start_time and end_time:
+                    if not (start_time <= timestamp <= end_time):
+                        return False
+                elif start_time:
+                    if timestamp < start_time:
+                        return False
+                elif end_time:
+                    if timestamp > end_time:
+                        return False
         
         # HTTP method filter
         if self.filters.get('methods'):

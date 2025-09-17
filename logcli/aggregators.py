@@ -126,9 +126,21 @@ class StatisticsAggregator:
         # Total request count
         self.total_requests = 0
         
+        # Time range tracking
+        self.earliest_timestamp = None
+        self.latest_timestamp = None
+        
     def add_entry(self, log_entry: Dict[str, Any]) -> None:
         """Add a log entry to all aggregators."""
         self.total_requests += 1
+        
+        # Track time range
+        timestamp = log_entry.get('timestamp')
+        if timestamp:
+            if self.earliest_timestamp is None or timestamp < self.earliest_timestamp:
+                self.earliest_timestamp = timestamp
+            if self.latest_timestamp is None or timestamp > self.latest_timestamp:
+                self.latest_timestamp = timestamp
         
         # Basic aggregations
         self.hits_per_country[log_entry.get('country', 'Unknown')] += 1
@@ -249,6 +261,25 @@ class StatisticsAggregator:
             'total_gb': self.total_bytes / (1024 * 1024 * 1024)
         }
     
+    def get_time_range_stats(self) -> Dict[str, Any]:
+        """Get time range statistics."""
+        if not self.earliest_timestamp or not self.latest_timestamp:
+            return {}
+        
+        time_span = self.latest_timestamp - self.earliest_timestamp
+        time_span_seconds = time_span.total_seconds()
+        
+        return {
+            'earliest_timestamp': self.earliest_timestamp,
+            'latest_timestamp': self.latest_timestamp,
+            'time_span': time_span,
+            'time_span_seconds': time_span_seconds,
+            'time_span_hours': time_span_seconds / 3600,
+            'time_span_days': time_span_seconds / 86400,
+            'requests_per_hour': (self.total_requests / (time_span_seconds / 3600)) if time_span_seconds > 0 else 0,
+            'requests_per_minute': (self.total_requests / (time_span_seconds / 60)) if time_span_seconds > 0 else 0,
+        }
+    
     def get_summary_stats(self) -> Dict[str, Any]:
         """Get summary statistics."""
         return {
@@ -258,7 +289,8 @@ class StatisticsAggregator:
             'bot_percentage': (self.bot_traffic.get('Bot', 0) / max(self.total_requests, 1)) * 100,
             'response_time_stats': self.get_response_time_stats(),
             'bandwidth_stats': self.get_bandwidth_stats(),
-            'slow_requests_count': len(self.slow_requests)
+            'slow_requests_count': len(self.slow_requests),
+            'time_range_stats': self.get_time_range_stats()
         }
     
     def reset(self) -> None:
