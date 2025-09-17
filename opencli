@@ -17,7 +17,7 @@ project_dir = Path(__file__).parent
 sys.path.insert(0, str(project_dir))
 
 try:
-    from opencli_app.app import run_app
+    from opencli_app.simple_app import run_simple_app
     
     if __name__ == "__main__":
         print("🚀 Starting Access Log Analyzer...")
@@ -25,7 +25,7 @@ try:
         print("   Press Ctrl+C to exit\n")
         
         try:
-            run_app()
+            run_simple_app()
         except KeyboardInterrupt:
             print("\n👋 Thanks for using Access Log Analyzer!")
             sys.exit(0)
