@@ -1,0 +1,438 @@
+"""SQLite cache manager for log data."""
+
+import sqlite3
+import hashlib
+import json
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, List, Optional, Any, Tuple
+from contextlib import contextmanager
+
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
+console = Console()
+
+
+class CacheManager:
+    """Manages SQLite cache for parsed log data."""
+    
+    def __init__(self, cache_dir: str = None):
+        """Initialize cache manager.
+        
+        Args:
+            cache_dir: Directory for cache database. Defaults to logcli/data/
+        """
+        if cache_dir is None:
+            # Default to logcli/data/ directory
+            current_dir = Path(__file__).parent
+            cache_dir = current_dir / "data"
+        
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(exist_ok=True)
+        
+        self.db_path = self.cache_dir / "cache.db"
+        self._connection = None
+        
+        # Cache settings
+        self.max_age_days = 2
+        self.freshness_threshold_minutes = 10
+        self.batch_size = 1000
+        
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get database connection (create if needed)."""
+        if self._connection is None:
+            self._connection = sqlite3.connect(
+                str(self.db_path),
+                timeout=30.0,
+                check_same_thread=False
+            )
+            self._connection.row_factory = sqlite3.Row
+            # Enable WAL mode for better concurrent access
+            self._connection.execute("PRAGMA journal_mode=WAL")
+            self._connection.execute("PRAGMA synchronous=NORMAL")
+            self._connection.execute("PRAGMA cache_size=10000")
+            self._connection.execute("PRAGMA temp_store=memory")
+            
+            self._init_database()
+            
+        return self._connection
+    
+    def _init_database(self):
+        """Initialize database schema."""
+        conn = self._connection
+        
+        # Create tables
+        conn.executescript("""
+            -- Main table for log entries
+            CREATE TABLE IF NOT EXISTS log_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT NOT NULL,
+                file_line_number INTEGER NOT NULL,
+                file_hash TEXT NOT NULL,
+                timestamp DATETIME NOT NULL,
+                ip TEXT,
+                user_agent TEXT,
+                method TEXT,
+                path TEXT,
+                status INTEGER,
+                response_time REAL,
+                bytes_sent INTEGER,
+                country TEXT,
+                host TEXT,
+                server_name TEXT,
+                handler TEXT,
+                port TEXT,
+                is_bot BOOLEAN,
+                parsed_ua_browser TEXT,
+                parsed_ua_os TEXT,
+                parsed_ua_device TEXT,
+                referer TEXT,
+                ssl_protocol TEXT,
+                ssl_cipher TEXT,
+                remote_user TEXT,
+                raw_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(file_path, file_line_number, file_hash)
+            );
+            
+            -- Metadata for processed files
+            CREATE TABLE IF NOT EXISTS file_metadata (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT UNIQUE NOT NULL,
+                file_size INTEGER NOT NULL,
+                file_mtime REAL NOT NULL,
+                file_hash TEXT NOT NULL,
+                lines_processed INTEGER NOT NULL,
+                last_processed DATETIME DEFAULT CURRENT_TIMESTAMP,
+                processing_time_seconds REAL
+            );
+            
+            -- Cache configuration and status
+            CREATE TABLE IF NOT EXISTS cache_status (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Create indexes for performance
+        conn.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_log_entries_timestamp ON log_entries(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_log_entries_ip ON log_entries(ip);
+            CREATE INDEX IF NOT EXISTS idx_log_entries_status ON log_entries(status);
+            CREATE INDEX IF NOT EXISTS idx_log_entries_path ON log_entries(path);
+            CREATE INDEX IF NOT EXISTS idx_log_entries_file_path ON log_entries(file_path);
+            CREATE INDEX IF NOT EXISTS idx_log_entries_created_at ON log_entries(created_at);
+            CREATE INDEX IF NOT EXISTS idx_file_metadata_path ON file_metadata(file_path);
+            CREATE INDEX IF NOT EXISTS idx_file_metadata_mtime ON file_metadata(file_mtime);
+            CREATE INDEX IF NOT EXISTS idx_file_metadata_last_processed ON file_metadata(last_processed);
+        """)
+        
+        conn.commit()
+        
+        # Set initial cache status
+        self._set_cache_status("schema_version", "1.0")
+        self._set_cache_status("created_at", datetime.now().isoformat())
+    
+    def _set_cache_status(self, key: str, value: str):
+        """Set cache status value."""
+        conn = self._get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO cache_status (key, value, updated_at) VALUES (?, ?, ?)",
+            (key, value, datetime.now())
+        )
+        conn.commit()
+    
+    def _get_cache_status(self, key: str) -> Optional[str]:
+        """Get cache status value."""
+        conn = self._get_connection()
+        cursor = conn.execute("SELECT value FROM cache_status WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return row['value'] if row else None
+    
+    def _calculate_file_hash(self, file_path: str) -> str:
+        """Calculate MD5 hash of file for change detection."""
+        hash_md5 = hashlib.md5()
+        try:
+            with open(file_path, "rb") as f:
+                # Read in chunks to handle large files
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hash_md5.update(chunk)
+            return hash_md5.hexdigest()
+        except (IOError, OSError):
+            return ""
+    
+    def is_file_cached_and_fresh(self, file_path: str) -> Tuple[bool, Dict[str, Any]]:
+        """Check if file is cached and up-to-date.
+        
+        Returns:
+            Tuple of (is_fresh, metadata_dict)
+        """
+        file_path = str(Path(file_path).resolve())
+        
+        try:
+            # Get current file stats
+            stat = os.stat(file_path)
+            current_size = stat.st_size
+            current_mtime = stat.st_mtime
+            
+            # Check if we have metadata for this file
+            conn = self._get_connection()
+            cursor = conn.execute(
+                "SELECT * FROM file_metadata WHERE file_path = ?",
+                (file_path,)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return False, {}
+            
+            metadata = dict(row)
+            
+            # Check if file has changed
+            if (metadata['file_size'] != current_size or 
+                metadata['file_mtime'] != current_mtime):
+                return False, metadata
+            
+            # Check if cache is too old (freshness check)
+            last_processed = datetime.fromisoformat(metadata['last_processed'])
+            age_minutes = (datetime.now() - last_processed).total_seconds() / 60
+            
+            if age_minutes > self.freshness_threshold_minutes:
+                # Check if file is still being actively written to
+                current_hash = self._calculate_file_hash(file_path)
+                if current_hash != metadata['file_hash']:
+                    return False, metadata
+            
+            return True, metadata
+            
+        except (OSError, sqlite3.Error):
+            return False, {}
+    
+    def get_cached_entries(self, file_path: str) -> List[Dict[str, Any]]:
+        """Get cached log entries for a file."""
+        file_path = str(Path(file_path).resolve())
+        
+        conn = self._get_connection()
+        cursor = conn.execute(
+            """SELECT * FROM log_entries 
+               WHERE file_path = ? 
+               ORDER BY file_line_number""",
+            (file_path,)
+        )
+        
+        entries = []
+        for row in cursor:
+            entry = dict(row)
+            
+            # Convert stored data back to proper types
+            if entry['timestamp']:
+                entry['timestamp'] = datetime.fromisoformat(entry['timestamp'])
+            
+            if entry['raw_json']:
+                try:
+                    entry['raw'] = json.loads(entry['raw_json'])
+                except json.JSONDecodeError:
+                    entry['raw'] = {}
+            
+            # Reconstruct parsed_ua dict
+            entry['parsed_ua'] = {
+                'browser': entry['parsed_ua_browser'] or 'Unknown',
+                'os': entry['parsed_ua_os'] or 'Unknown',
+                'device': entry['parsed_ua_device'] or 'Unknown'
+            }
+            
+            entries.append(entry)
+        
+        return entries
+    
+    def cache_log_entries(self, file_path: str, entries: List[Dict[str, Any]], 
+                         processing_time: float = 0.0):
+        """Cache parsed log entries for a file."""
+        file_path = str(Path(file_path).resolve())
+        
+        if not entries:
+            return
+        
+        conn = self._get_connection()
+        
+        try:
+            # Get current file stats
+            stat = os.stat(file_path)
+            file_size = stat.st_size
+            file_mtime = stat.st_mtime
+            file_hash = self._calculate_file_hash(file_path)
+            
+            # Clear existing entries for this file
+            conn.execute("DELETE FROM log_entries WHERE file_path = ?", (file_path,))
+            
+            # Prepare batch insert
+            insert_sql = """
+                INSERT INTO log_entries (
+                    file_path, file_line_number, file_hash, timestamp, ip, user_agent,
+                    method, path, status, response_time, bytes_sent, country, host,
+                    server_name, handler, port, is_bot, parsed_ua_browser, parsed_ua_os,
+                    parsed_ua_device, referer, ssl_protocol, ssl_cipher, remote_user, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            
+            # Process entries in batches
+            for i in range(0, len(entries), self.batch_size):
+                batch = entries[i:i + self.batch_size]
+                batch_data = []
+                
+                for line_num, entry in enumerate(batch, start=i):
+                    # Extract parsed_ua components
+                    parsed_ua = entry.get('parsed_ua', {})
+                    
+                    batch_data.append((
+                        file_path,
+                        line_num,
+                        file_hash,
+                        entry.get('timestamp').isoformat() if entry.get('timestamp') else None,
+                        str(entry.get('ip', '')) if entry.get('ip') else None,
+                        entry.get('user_agent', ''),
+                        entry.get('method', ''),
+                        entry.get('path', ''),
+                        entry.get('status', 0),
+                        entry.get('response_time', 0.0),
+                        entry.get('bytes_sent', 0),
+                        entry.get('country', ''),
+                        entry.get('host', ''),
+                        entry.get('server_name', ''),
+                        entry.get('handler', ''),
+                        entry.get('port', ''),
+                        bool(entry.get('is_bot', False)),
+                        parsed_ua.get('browser', ''),
+                        parsed_ua.get('os', ''),
+                        parsed_ua.get('device', ''),
+                        entry.get('referer', ''),
+                        entry.get('ssl_protocol', ''),
+                        entry.get('ssl_cipher', ''),
+                        entry.get('remote_user', ''),
+                        json.dumps(entry.get('raw', {})) if entry.get('raw') else None
+                    ))
+                
+                conn.executemany(insert_sql, batch_data)
+            
+            # Update file metadata
+            conn.execute("""
+                INSERT OR REPLACE INTO file_metadata 
+                (file_path, file_size, file_mtime, file_hash, lines_processed, 
+                 last_processed, processing_time_seconds)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                file_path, file_size, file_mtime, file_hash, len(entries),
+                datetime.now(), processing_time
+            ))
+            
+            conn.commit()
+            
+        except Exception as e:
+            conn.rollback()
+            console.print(f"[red]Error caching entries for {file_path}: {e}[/red]")
+            raise
+    
+    def cleanup_old_data(self, max_age_days: int = None) -> int:
+        """Remove cached data older than max_age_days.
+        
+        Returns:
+            Number of entries removed
+        """
+        if max_age_days is None:
+            max_age_days = self.max_age_days
+        
+        cutoff = datetime.now() - timedelta(days=max_age_days)
+        
+        conn = self._get_connection()
+        
+        # Count entries to be removed
+        cursor = conn.execute(
+            "SELECT COUNT(*) as count FROM log_entries WHERE timestamp < ?",
+            (cutoff,)
+        )
+        count = cursor.fetchone()['count']
+        
+        if count > 0:
+            # Remove old log entries
+            conn.execute("DELETE FROM log_entries WHERE timestamp < ?", (cutoff,))
+            
+            # Remove metadata for files that no longer have entries
+            conn.execute("""
+                DELETE FROM file_metadata 
+                WHERE file_path NOT IN (
+                    SELECT DISTINCT file_path FROM log_entries
+                )
+            """)
+            
+            conn.commit()
+            console.print(f"[yellow]Cleaned up {count:,} old cache entries (older than {max_age_days} days)[/yellow]")
+        
+        return count
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics."""
+        conn = self._get_connection()
+        
+        # Get entry counts
+        cursor = conn.execute("SELECT COUNT(*) as count FROM log_entries")
+        total_entries = cursor.fetchone()['count']
+        
+        cursor = conn.execute("SELECT COUNT(*) as count FROM file_metadata")
+        total_files = cursor.fetchone()['count']
+        
+        # Get oldest and newest entries
+        cursor = conn.execute(
+            "SELECT MIN(timestamp) as oldest, MAX(timestamp) as newest FROM log_entries"
+        )
+        row = cursor.fetchone()
+        oldest = row['oldest']
+        newest = row['newest']
+        
+        # Get database size
+        db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
+        
+        return {
+            'total_entries': total_entries,
+            'total_files': total_files,
+            'oldest_entry': oldest,
+            'newest_entry': newest,
+            'database_size_mb': db_size / (1024 * 1024),
+            'database_path': str(self.db_path)
+        }
+    
+    def clear_cache(self):
+        """Clear all cached data."""
+        conn = self._get_connection()
+        conn.execute("DELETE FROM log_entries")
+        conn.execute("DELETE FROM file_metadata")
+        conn.commit()
+        console.print("[yellow]Cache cleared[/yellow]")
+    
+    def close(self):
+        """Close database connection."""
+        if self._connection:
+            self._connection.close()
+            self._connection = None
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+
+@contextmanager
+def get_cache_manager(cache_dir: str = None, enabled: bool = True):
+    """Context manager for cache operations."""
+    if not enabled:
+        yield None
+        return
+    
+    manager = CacheManager(cache_dir)
+    try:
+        yield manager
+    finally:
+        manager.close()

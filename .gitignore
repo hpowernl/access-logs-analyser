@@ -272,6 +272,10 @@ error.log.*
 *.sqlite
 *.sqlite3
 
+# Cache data directory
+logcli/data/
+!logcli/data/.gitkeep
+
 # Backup files
 *.bak
 *.backup
