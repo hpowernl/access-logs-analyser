@@ -122,7 +122,7 @@ class CacheAwareProcessor:
         processing_stats['total_time'] = time.time() - start_time
         
         # Display summary
-        self._display_processing_summary(processing_stats)
+        # self._display_processing_summary(processing_stats)
         
         return processing_stats
     
