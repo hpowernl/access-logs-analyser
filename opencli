@@ -17,17 +17,17 @@ project_dir = Path(__file__).parent
 sys.path.insert(0, str(project_dir))
 
 try:
-    from logcli.interactive import run_interactive
+    from opencli_app.app import run_app
     
     if __name__ == "__main__":
-        print("🚀 Starting  Access Log Analyzer...")
-        print("   Interactive TUI Mode")
+        print("🚀 Starting Access Log Analyzer...")
+        print("   Clean & Simple TUI Mode")
         print("   Press Ctrl+C to exit\n")
         
         try:
-            run_interactive()
+            run_app()
         except KeyboardInterrupt:
-            print("\n👋 Thanks for using  Access Log Analyzer!")
+            print("\n👋 Thanks for using Access Log Analyzer!")
             sys.exit(0)
         except Exception as e:
             print(f"❌ Error: {e}")
