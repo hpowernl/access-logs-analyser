@@ -147,6 +147,7 @@ class CacheManager:
                 file_mtime REAL NOT NULL,
                 file_hash TEXT NOT NULL,
                 file_signature TEXT,
+                content_signature TEXT,
                 lines_processed INTEGER NOT NULL,
                 last_processed DATETIME DEFAULT CURRENT_TIMESTAMP,
                 processing_time_seconds REAL,
@@ -247,6 +248,23 @@ class CacheManager:
             
             return hash_md5.hexdigest()
             
+        except (IOError, OSError):
+            return ""
+    
+    def _calculate_content_signature(self, file_path: str) -> str:
+        """Calculate content signature from first 16KB of file.
+        
+        This works for both regular and gzipped files and survives logrotate.
+        """
+        try:
+            if file_path.endswith('.gz'):
+                with gzip.open(file_path, 'rb') as f:
+                    content = f.read(16384)  # Read first 16KB of uncompressed content
+            else:
+                with open(file_path, 'rb') as f:
+                    content = f.read(16384)  # Read first 16KB
+            
+            return hashlib.md5(content).hexdigest()
         except (IOError, OSError):
             return ""
     
@@ -409,8 +427,20 @@ class CacheManager:
             file_device = stat.st_dev
             file_hash = self._calculate_file_hash(file_path)
             file_signature = self._calculate_file_signature(file_path)
+            content_signature = self._calculate_content_signature(file_path)
             
-            # Clear existing entries for this file
+            # Clear existing entries for this content signature
+            # First, find existing entries with same content signature
+            cursor = conn.execute(
+                "SELECT file_path FROM file_metadata WHERE content_signature = ? AND file_size = ?",
+                (content_signature, file_size)
+            )
+            existing_row = cursor.fetchone()
+            if existing_row:
+                old_path = existing_row['file_path']
+                conn.execute("DELETE FROM log_entries WHERE file_path = ?", (old_path,))
+            
+            # Also clear entries for current path
             conn.execute("DELETE FROM log_entries WHERE file_path = ?", (file_path,))
             
             # Prepare batch insert

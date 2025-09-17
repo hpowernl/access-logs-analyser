@@ -790,8 +790,9 @@ def security(log_files, nginx_dir, no_auto_discover, scan_attacks, brute_force_d
 @click.option('--use-cache', is_flag=True, default=True, help='Use SQLite cache for faster processing')
 @click.option('--no-cache', is_flag=True, help='Disable cache and process files fresh')
 @click.option('--force-refresh', is_flag=True, help='Force refresh cache even if data is fresh')
+@click.option('--debug-cache', is_flag=True, help='Enable debug output for cache operations')
 def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest, 
-         percentiles, bandwidth_analysis, cache_analysis, handler, output, use_cache, no_cache, force_refresh):
+         percentiles, bandwidth_analysis, cache_analysis, handler, output, use_cache, no_cache, force_refresh, debug_cache):
     """⚡ Performance analysis and optimization insights.
     
     Analyze response times, bandwidth usage, and identify performance bottlenecks.
@@ -838,6 +839,11 @@ def perf(log_files, nginx_dir, no_auto_discover, response_time_analysis, slowest
     # Handle cache options
     cache_enabled = use_cache and not no_cache
     processor = CacheAwareProcessor(cache_enabled=cache_enabled)
+    
+    # Enable debug mode if requested
+    if debug_cache:
+        os.environ['HLOGCLI_DEBUG'] = '1'
+        console.print("[yellow]Debug mode enabled for cache operations[/yellow]")
     
     # Process log files with nice progress display
     console.print("[blue]Starting performance analysis...[/blue]")
