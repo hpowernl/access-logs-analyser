@@ -171,26 +171,37 @@ class HypernodeLogCommand:
         if entry.get('body_bytes_sent'):
             try:
                 entry['body_bytes_sent'] = int(entry['body_bytes_sent'])
-            except ValueError:
-                pass
+            except (ValueError, TypeError):
+                # Set to 0 if not coercible
+                entry['body_bytes_sent'] = 0
         
         if entry.get('status'):
             try:
                 entry['status'] = int(entry['status'])
-            except ValueError:
-                pass
+            except (ValueError, TypeError):
+                # Try to recover: search for a 3-digit HTTP status token nearby in request
+                status_fallback = None
+                request_text = entry.get('request') or ""
+                import re
+                match = re.search(r"\b(1\d\d|2\d\d|3\d\d|4\d\d|5\d\d)\b", request_text)
+                if match:
+                    try:
+                        status_fallback = int(match.group(1))
+                    except Exception:
+                        status_fallback = None
+                entry['status'] = status_fallback if status_fallback is not None else 0
         
         if entry.get('request_time'):
             try:
                 entry['request_time'] = float(entry['request_time'])
-            except ValueError:
-                pass
+            except (ValueError, TypeError):
+                entry['request_time'] = 0.0
         
         if entry.get('port'):
             try:
                 entry['port'] = int(entry['port'])
-            except ValueError:
-                pass
+            except (ValueError, TypeError):
+                entry['port'] = 0
         
         # Parse timestamp (ISO format)
         if entry.get('time'):
