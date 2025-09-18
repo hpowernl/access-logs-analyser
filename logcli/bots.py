@@ -79,7 +79,19 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'Yandex search crawler'
             },
-            
+            'amazonbot': {
+                'patterns': [r'\bamazonbot\b', r'\bamazon\-bot\b'],
+                'type': 'search_engine',
+                'legitimate': True,
+                'description': 'Amazon crawler (product/indexing)'
+            },
+            'google_other': {
+                'patterns': [r'\bgoogleother\b', r'\bgoogle-other\b'],
+                'type': 'search_engine',
+                'legitimate': True,
+                'description': 'GoogleOther (experimental/research crawler)'
+            },
+
             # Social Media Bots (Legitimate)
             'facebookexternalhit': {
                 'patterns': [r'facebookexternalhit'],
@@ -111,7 +123,7 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'Telegram link preview'
             },
-            
+
             # Monitoring Bots (Legitimate)
             'pingdom': {
                 'patterns': [r'pingdom'],
@@ -137,7 +149,13 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'Datadog monitoring'
             },
-            
+            'rumvision': {
+                'patterns': [r'\brumvision\b', r'\brumvision\-agent\b'],
+                'type': 'monitoring',
+                'legitimate': True,
+                'description': 'Rumvision RUM/monitoring agent (real-user monitoring)'
+            },
+
             # SEO Tools (Semi-legitimate)
             'ahrefsbot': {
                 'patterns': [r'ahrefsbot'],
@@ -163,7 +181,19 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'Moz crawler'
             },
-            
+            'awariobot': {
+                'patterns': [r'\bawariobot\b', r'\bawario\b'],
+                'type': 'seo_tool',
+                'legitimate': True,
+                'description': 'Awario / monitoring crawler'
+            },
+            'awario': {
+                'patterns': [r'\bawario\b'],
+                'type': 'seo_tool',
+                'legitimate': True,
+                'description': 'Awario crawler'
+            },
+
             # Generic/Suspicious Bots
             'generic_bot': {
                 'patterns': [r'\bbot\b', r'\bcrawler\b', r'\bspider\b'],
@@ -172,10 +202,10 @@ class BotAnalyzer:
                 'description': 'Generic bot or crawler'
             },
             'python_requests': {
-                'patterns': [r'python-requests', r'python-urllib'],
+                'patterns': [r'\bpython-requests\b', r'\bpython/urllib\b', r'\bpython-urllib\b', r'\burllib\b'],
                 'type': 'script',
                 'legitimate': False,
-                'description': 'Python HTTP library'
+                'description': 'Python Requests/urllib clients'
             },
             'curl': {
                 'patterns': [r'^curl/'],
@@ -183,11 +213,23 @@ class BotAnalyzer:
                 'legitimate': False,
                 'description': 'cURL command line tool'
             },
+            'curl_generic': {
+                'patterns': [r'\bcurl\b'],
+                'type': 'script',
+                'legitimate': False,
+                'description': 'cURL command-line client (generic)'
+            },
             'wget': {
                 'patterns': [r'^wget/'],
                 'type': 'script',
                 'legitimate': False,
                 'description': 'Wget command line tool'
+            },
+            'wget_generic': {
+                'patterns': [r'\bwget\b'],
+                'type': 'script',
+                'legitimate': False,
+                'description': 'Wget command-line client (generic)'
             },
             'guzzlehttp': {
                 'patterns': [r'guzzlehttp'],
@@ -195,7 +237,25 @@ class BotAnalyzer:
                 'legitimate': False,
                 'description': 'PHP HTTP client library'
             },
-            
+            'http_client_generic': {
+                'patterns': [r'\bhttpie\b', r'\binsomnia\b', r'\bhttpclient\b'],
+                'type': 'api_client',
+                'legitimate': False,
+                'description': 'Generic HTTP clients (httpie, insomnia, etc.)'
+            },
+            'postman': {
+                'patterns': [r'\bpostmanruntime\b', r'\bpostman\-request\b', r'\bpostman\b'],
+                'type': 'api_client',
+                'legitimate': True,
+                'description': 'Postman API client'
+            },
+            'zapier': {
+                'patterns': [r'\bzapier\b'],
+                'type': 'integration',
+                'legitimate': True,
+                'description': 'Zapier integration / automation'
+            },
+
             # Security Scanners (Malicious)
             'security_scanner': {
                 'patterns': [r'sqlmap', r'nikto', r'nmap', r'masscan', r'dirb', r'gobuster', r'wpscan'],
@@ -203,14 +263,68 @@ class BotAnalyzer:
                 'legitimate': False,
                 'description': 'Security scanning tool'
             },
+            'sqlmap': {
+                'patterns': [r'\bsqlmap\b'],
+                'type': 'security_scanner',
+                'legitimate': False,
+                'description': 'sqlmap scanner'
+            },
+            'nikto': {
+                'patterns': [r'\bnikto\b'],
+                'type': 'security_scanner',
+                'legitimate': False,
+                'description': 'Nikto web scanner'
+            },
+            'nmap': {
+                'patterns': [r'\bnmap\b'],
+                'type': 'security_scanner',
+                'legitimate': False,
+                'description': 'Nmap scanner'
+            },
+            'masscan': {
+                'patterns': [r'\bmasscan\b'],
+                'type': 'security_scanner',
+                'legitimate': False,
+                'description': 'Masscan scanner'
+            },
+            'wpscan': {
+                'patterns': [r'\bwpscan\b'],
+                'type': 'security_scanner',
+                'legitimate': False,
+                'description': 'WPSCAN WordPress vulnerability scanner'
+            },
             'vulnerability_scanner': {
                 'patterns': [r'acunetix', r'nessus', r'openvas', r'burp', r'w3af'],
                 'type': 'vulnerability_scanner',
                 'legitimate': False,
                 'description': 'Vulnerability scanner'
             },
-            
+            'acunetix': {
+                'patterns': [r'\bacunetix\b'],
+                'type': 'vulnerability_scanner',
+                'legitimate': False,
+                'description': 'Acunetix vulnerability scanner'
+            },
+            'nessus': {
+                'patterns': [r'\bnessus\b'],
+                'type': 'vulnerability_scanner',
+                'legitimate': False,
+                'description': 'Nessus vulnerability scanner'
+            },
+            'openvas': {
+                'patterns': [r'\bopenvas\b'],
+                'type': 'vulnerability_scanner',
+                'legitimate': False,
+                'description': 'OpenVAS vulnerability scanner'
+            },
+
             # AI Bots and LLM Crawlers (New Category)
+            'gptbot': {
+                'patterns': [r'\bgptbot\b', r'\bchatgpt\b', r'gpt-bot'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'OpenAI GPTBot / ChatGPT crawler'
+            },
             'chatgpt_bot': {
                 'patterns': [r'chatgpt', r'gpt-bot', r'openai', r'gpt-4', r'gpt-3\.5'],
                 'type': 'ai_llm',
@@ -241,13 +355,55 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'Perplexity AI bot'
             },
-            
+            'bytespider': {
+                'patterns': [r'\bbytespider\b'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'ByteDance Bytespider (TikTok/AI crawler)'
+            },
+            'xai_bot': {
+                'patterns': [r'\bxai\-bot\b', r'\bxai\b'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'xAI / related research crawler'
+            },
+            'pangu_bot': {
+                'patterns': [r'\bpangubot\b', r'\bpangu\-bot\b', r'\bpangu\b'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'Pangu / Chinese AI crawler'
+            },
+            'together_bot': {
+                'patterns': [r'\btogether\-bot\b', r'\btogetherbot\b'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'Together.AI crawler'
+            },
+
             # AI Training Data Crawlers
+            'google_extended': {
+                'patterns': [r'\bgoogle-extended\b', r'googleextended'],
+                'type': 'ai_training',
+                'legitimate': True,
+                'description': 'Google Extended (AI training / research crawler)'
+            },
+            'applebot_extended': {
+                'patterns': [r'\bapplebot-extended\b', r'applebotextended'],
+                'type': 'ai_training',
+                'legitimate': True,
+                'description': 'Applebot Extended (AI training / research crawler)'
+            },
             'common_crawl': {
                 'patterns': [r'ccbot', r'common-crawl', r'commoncrawl'],
                 'type': 'ai_training',
                 'legitimate': True,
                 'description': 'Common Crawl data collection bot'
+            },
+            'ccbot': {
+                'patterns': [r'\bccbot\b', r'\bcommoncrawl\b', r'\bcommon-crawl\b'],
+                'type': 'ai_training',
+                'legitimate': True,
+                'description': 'Common Crawl (CCBot)'
             },
             'ai2_bot': {
                 'patterns': [r'ai2bot', r'allen-institute'],
@@ -261,7 +417,7 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'Anthropic data crawler'
             },
-            
+
             # AI Research and Academic Bots
             'academic_ai_bot': {
                 'patterns': [r'research-bot', r'academic-crawler', r'university-bot'],
@@ -269,13 +425,19 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'Academic AI research bot'
             },
+            'researchbot': {
+                'patterns': [r'\bresearch\-bot\b', r'\bresearchbot\b', r'\bacademic\-crawler\b'],
+                'type': 'ai_research',
+                'legitimate': True,
+                'description': 'Academic / research crawler'
+            },
             'huggingface_bot': {
                 'patterns': [r'huggingface', r'hf-bot'],
                 'type': 'ai_research',
                 'legitimate': True,
                 'description': 'Hugging Face model bot'
             },
-            
+
             # AI Content Generation Bots
             'ai_content_bot': {
                 'patterns': [r'jasper', r'copy\.ai', r'writesonic', r'contentbot'],
@@ -289,7 +451,7 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'AI image generation bot'
             },
-            
+
             # AI SEO and Marketing Bots
             'ai_seo_bot': {
                 'patterns': [r'ai-seo', r'rank-math-ai', r'yoast-ai', r'surfer-ai'],
@@ -303,7 +465,7 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'AI marketing automation bot'
             },
-            
+
             # Conversational AI and Chatbots
             'chatbot': {
                 'patterns': [r'chatbot', r'virtual-assistant', r'dialogflow', r'rasa'],
@@ -317,7 +479,7 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'Voice assistant bot'
             },
-            
+
             # AI API and Service Bots
             'ai_api_bot': {
                 'patterns': [r'ai-api', r'ml-service', r'neural-bot', r'tensorflow-bot'],
@@ -330,7 +492,67 @@ class BotAnalyzer:
                 'type': 'ai_service',
                 'legitimate': False,  # Could be aggressive
                 'description': 'Automated AI service bot'
-            }
+            },
+            'replicate_bot': {
+                'patterns': [r'\breplicate\b', r'\breplicate\-bot\b'],
+                'type': 'ai_service',
+                'legitimate': True,
+                'description': 'Replicate model/serving crawler'
+            },
+            'runpod_bot': {
+                'patterns': [r'\brunpod\b', r'\brunpod\-bot\b'],
+                'type': 'ai_service',
+                'legitimate': True,
+                'description': 'RunPod worker / API bot'
+            },
+
+            # AI Search Bots
+            'youbot': {
+                'patterns': [r'\byoubot\b', r'\byou\.com\b'],
+                'type': 'ai_search',
+                'legitimate': True,
+                'description': 'You.com / YouBot AI search crawler'
+            },
+            'youcombot': {
+                'patterns': [r'\byoucombot\b'],
+                'type': 'ai_search',
+                'legitimate': True,
+                'description': 'You.com bot variant'
+            },
+
+            # AI LLM/Assistant Bots
+            'duckassistbot': {
+                'patterns': [r'\bduckassistbot\b', r'\bduckassist\b'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'DuckDuckGo / DuckAssist assistant crawler'
+            },
+            'duckassist': {
+                'patterns': [r'duckassistbot'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'DuckDuckGo DuckAssist crawler'
+            },
+            'meta_ai_crawler': {
+                'patterns': [r'meta-crawler', r'facebookbot'],
+                'type': 'ai_llm',
+                'legitimate': True,
+                'description': 'Meta / Facebook AI crawler'
+            },
+
+            # Suspicious/Imitator Bots
+            'arka_bot': {
+                'patterns': [r'\bakira(bot)?\b', r'\bakirabot\b'],
+                'type': 'suspicious',
+                'legitimate': False,
+                'description': 'Akira-like bot (observed imitating legit UA strings)'
+            },
+            'aragog': {
+                'patterns': [r'\baragog\b'],
+                'type': 'suspicious',
+                'legitimate': False,
+                'description': 'Aragog crawler (seen in bot lists)'
+            },
         }
         
         # Compile patterns for better performance
