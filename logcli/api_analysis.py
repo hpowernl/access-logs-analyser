@@ -60,6 +60,32 @@ class APIAnalyzer:
             'potential_abuse': Counter()
         }
         
+        # Platform detections and metrics
+        self.platforms = {
+            'wordpress': {
+                'detected': False,
+                'signals': Counter(),
+                'endpoints': Counter(),
+                'plugins': Counter(),
+                'woocommerce': {'detected': False, 'signals': Counter(), 'endpoints': Counter()}
+            },
+            'magento2': {
+                'detected': False,
+                'signals': Counter(),
+                'endpoints': Counter()
+            },
+            'prestashop': {
+                'detected': False,
+                'signals': Counter(),
+                'endpoints': Counter()
+            },
+            'shopware': {
+                'detected': False,
+                'signals': Counter(),
+                'endpoints': Counter()
+            }
+        }
+
         # GraphQL specific analysis
         self.graphql_analysis = {
             'query_types': Counter(),
@@ -91,6 +117,32 @@ class APIAnalyzer:
             ],
             'admin_api': [
                 r'/admin/api', r'/management/', r'/control/'
+            ]
+        }
+
+        # Platform-specific patterns
+        self.platform_detection_patterns = {
+            'wordpress': [
+                r'/wp-json/', r'/wp-admin/', r'/wp-content/', r'/wp-includes/',
+                r'wp-.*\.php', r'/xmlrpc\.php', r'/wp-login\.php',
+                r'/\?rest_route=', r'X-WP-Total', r'X-WP-Nonce'
+            ],
+            'woocommerce': [
+                r'/wp-json/wc/\w+', r'/\?wc-ajax=', r'woocommerce_session_',
+                r'woocommerce_.*', r'wc-api='
+            ],
+            'magento2': [
+                r'/rest/(V\d+/)?', r'/graphql', r'/static/(version\d+/)?',
+                r'/index\.php', r'/customer/section/load', r'X-Magento-Cache',
+                r'/V1/'
+            ],
+            'prestashop': [
+                r'/api/\w+\?ws_key=', r'/modules/', r'PrestaShop-[\d\.]+',
+                r'/index\.php\?controller=', r'ps-.*'
+            ],
+            'shopware': [
+                r'/api', r'/store-api', r'/sales-channel-api', r'shopware-[\d\.]+',
+                r'/admin/api'
             ]
         }
         
@@ -190,6 +242,106 @@ class APIAnalyzer:
         
         # Security analysis
         self._analyze_api_security(path, method, log_entry, api_endpoint, ip)
+
+        # Platform detection and analysis
+        self._detect_and_analyze_platforms(log_entry, api_endpoint)
+
+    def _detect_and_analyze_platforms(self, log_entry: Dict[str, Any], api_endpoint: str) -> None:
+        """Detect platform signals and track platform-specific metrics."""
+        path = log_entry.get('path', '') or ''
+        request_line = log_entry.get('request', '') or ''
+        user_agent = (log_entry.get('user_agent') or '').lower()
+        referer = (log_entry.get('referer') or '').lower()
+        cookies = (log_entry.get('http_cookie') or log_entry.get('cookie') or '')
+        headers = log_entry.get('headers') or {}
+
+        text_blob = ' '.join([
+            path.lower(), request_line.lower(), user_agent, referer,
+            cookies.lower(), ' '.join(f"{k}:{v}" for k, v in headers.items()).lower()
+        ])
+
+        def match_any(patterns: list) -> list:
+            matches = []
+            for patt in patterns:
+                try:
+                    if re.search(patt, text_blob):
+                        matches.append(patt)
+                except Exception:
+                    continue
+            return matches
+
+        # WordPress
+        wp_matches = match_any(self.platform_detection_patterns['wordpress'])
+        if wp_matches:
+            wp = self.platforms['wordpress']
+            wp['detected'] = True
+            for m in wp_matches:
+                wp['signals'][m] += 1
+            wp['endpoints'][api_endpoint] += 1
+
+            # Detect plugins from paths like /wp-content/plugins/<plugin>/
+            try:
+                plugin_match = re.findall(r'/wp-content/plugins/([\w\-]+)/', path, flags=re.IGNORECASE)
+                for plugin in plugin_match:
+                    wp['plugins'][plugin.lower()] += 1
+            except Exception:
+                pass
+
+            # WooCommerce (as WordPress plugin)
+            wc_matches = match_any(self.platform_detection_patterns['woocommerce'])
+            if wc_matches:
+                wc = wp['woocommerce']
+                wc['detected'] = True
+                for m in wc_matches:
+                    wc['signals'][m] += 1
+                wc['endpoints'][api_endpoint] += 1
+
+            # Platform-specific security heuristics
+            if '/xmlrpc.php' in path.lower():
+                self.security_issues['potential_abuse'][f'wordpress:xmlrpc'] += 1
+            if '/wp-admin' in path.lower() and 'authorization' not in ' '.join(headers.keys()).lower():
+                self.security_issues['unauthenticated_access'][f'wordpress:wp-admin'] += 1
+
+        # Magento 2
+        m2_matches = match_any(self.platform_detection_patterns['magento2'])
+        if m2_matches:
+            m2 = self.platforms['magento2']
+            m2['detected'] = True
+            for m in m2_matches:
+                m2['signals'][m] += 1
+            m2['endpoints'][api_endpoint] += 1
+
+            # Security heuristics
+            if '/customer/section/load' in path.lower() and ('*/*' in (headers.get('Accept', '') or '')):
+                self.security_issues['potential_abuse'][f'magento2:section-load'] += 1
+            if 'x-magento-cache' in text_blob:
+                self.security_issues['potential_abuse'][f'magento2:cache-exposed'] += 1
+
+        # PrestaShop
+        ps_matches = match_any(self.platform_detection_patterns['prestashop'])
+        if ps_matches:
+            ps = self.platforms['prestashop']
+            ps['detected'] = True
+            for m in ps_matches:
+                ps['signals'][m] += 1
+            ps['endpoints'][api_endpoint] += 1
+
+            # Security heuristics
+            if 'ws_key=' in request_line.lower():
+                self.security_issues['potential_abuse'][f'prestashop:ws-key-exposed'] += 1
+
+        # Shopware
+        sw_matches = match_any(self.platform_detection_patterns['shopware'])
+        if sw_matches:
+            sw = self.platforms['shopware']
+            sw['detected'] = True
+            for m in sw_matches:
+                sw['signals'][m] += 1
+            sw['endpoints'][api_endpoint] += 1
+
+            # Security heuristics
+            if '/store-api' in path.lower() and log_entry.get('status') == 401:
+                self.security_issues['unauthenticated_access'][f'shopware:store-api'] += 1
     
     def _is_api_request(self, path: str) -> bool:
         """Determine if a request is an API call."""
@@ -391,8 +543,30 @@ class APIAnalyzer:
                 'suspicious_queries': len(self.security_issues['suspicious_queries']),
                 'potential_abuse': len(self.security_issues['potential_abuse'])
             },
-            'graphql_analysis': self._get_graphql_summary()
+            'graphql_analysis': self._get_graphql_summary(),
+            'platforms': self._get_platform_summary()
         }
+
+    def _get_platform_summary(self) -> Dict[str, Any]:
+        """Summarize detected platforms and key signals."""
+        summary = {}
+        for name, data in self.platforms.items():
+            if not data['detected'] and sum(data['signals'].values()) == 0:
+                continue
+            entry = {
+                'detected': data['detected'],
+                'top_endpoints': dict(data['endpoints'].most_common(5)),
+                'top_signals': dict(data['signals'].most_common(5))
+            }
+            if name == 'wordpress':
+                entry['top_plugins'] = dict(data['plugins'].most_common(5))
+                entry['woocommerce'] = {
+                    'detected': data['woocommerce']['detected'],
+                    'top_endpoints': dict(data['woocommerce']['endpoints'].most_common(5)),
+                    'top_signals': dict(data['woocommerce']['signals'].most_common(5))
+                }
+            summary[name] = entry
+        return summary
     
     def _get_highest_error_rate_endpoints(self) -> Dict[str, float]:
         """Get endpoints with highest error rates."""
@@ -520,6 +694,7 @@ class APIAnalyzer:
                 endpoint: self.get_endpoint_details(endpoint)
                 for endpoint in list(self.api_endpoints.keys())[:50]  # Limit to top 50
             },
+            'platforms': self._get_platform_summary(),
             'security_analysis': {
                 'unauthenticated_access': dict(self.security_issues['unauthenticated_access']),
                 'excessive_requests': dict(self.security_issues['excessive_requests']),
