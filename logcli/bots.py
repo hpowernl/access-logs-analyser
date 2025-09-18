@@ -586,8 +586,19 @@ class BotAnalyzer:
         ip = str(log_entry.get('ip', 'unknown'))
         path = log_entry.get('path', '/')
         timestamp = log_entry.get('timestamp', datetime.now())
-        response_time = log_entry.get('response_time', 0)
-        bytes_sent = log_entry.get('bytes_sent', 0)
+        # Support both parser-based and hypernode-command-based keys
+        # parser.py normalizes to 'response_time' and 'bytes_sent'
+        # hypernode_command.py provides 'request_time' and 'body_bytes_sent'
+        response_time = (
+            log_entry.get('response_time')
+            if log_entry.get('response_time') is not None
+            else log_entry.get('request_time', 0)
+        )
+        bytes_sent = (
+            log_entry.get('bytes_sent')
+            if log_entry.get('bytes_sent') is not None
+            else log_entry.get('body_bytes_sent', 0)
+        )
         status = log_entry.get('status', 200)
         referer = log_entry.get('referer', '')
         
