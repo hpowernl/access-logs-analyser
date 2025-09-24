@@ -11,6 +11,24 @@ from rich.console import Console
 console = Console()
 
 
+def _ensure_datetime(value):
+    """Return a datetime for value which may be datetime or ISO string."""
+    if value is None:
+        return None
+    if hasattr(value, 'isoformat') and hasattr(value, 'hour'):
+        return value
+    if isinstance(value, str):
+        try:
+            # Accept both plain ISO and ISO with Z
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except Exception:
+            return None
+    return None
+
+def _iso_or_none(dt):
+    d = _ensure_datetime(dt)
+    return d.isoformat() if d else None
+
 class HistoricalDataManager:
     """Manages historical data collection using hypernode-parse-nginx-log."""
     
@@ -996,7 +1014,7 @@ class AnomalyDetector:
         """Get comprehensive anomaly detection summary."""
         total_anomalies = len(self.detected_anomalies)
         recent_anomalies = [a for a in self.detected_anomalies 
-                          if (datetime.now() - a['detected_at']).total_seconds() < 3600]  # Last hour
+                          if (datetime.now() - _ensure_datetime(a['detected_at'])).total_seconds() < 3600]  # Last hour
         
         # Categorize anomalies by severity
         critical_anomalies = [a for a in recent_anomalies if a['details'].get('severity') == 'Critical']
@@ -1054,10 +1072,10 @@ class AnomalyDetector:
         return [
             {
                 **anomaly,
-                'detected_at': anomaly['detected_at'].isoformat()
+                'detected_at': _iso_or_none(anomaly['detected_at'])
             }
             for anomaly in self.detected_anomalies
-            if anomaly['detected_at'] >= cutoff_time
+            if (_ensure_datetime(anomaly['detected_at']) or datetime.min) >= cutoff_time
         ]
     
     def get_anomaly_recommendations(self) -> List[Dict[str, Any]]:
@@ -1094,12 +1112,13 @@ class AnomalyDetector:
         weekly_comparison_anomalies = [a for a in recent_anomalies if a['type'] == 'same_time_last_week_anomaly']
         if len(weekly_comparison_anomalies) > 2:
             traffic_changes = []
-            for anomaly in weekly_comparison_anomalies[:3]:
+        for anomaly in weekly_comparison_anomalies[:3]:
                 details = anomaly['details']
                 if 'ratio' in details:
                     change_type = "increased" if details['ratio'] > 1 else "decreased"
                     percentage = abs(details['ratio'] - 1) * 100
-                    hour = anomaly['detected_at'].strftime('%H:%M')
+                dt = _ensure_datetime(anomaly['detected_at'])
+                hour = dt.strftime('%H:%M') if dt else 'unknown'
                     traffic_changes.append(f'{hour}: {change_type} by {percentage:.0f}%')
             
             recommendations.append({
@@ -1285,7 +1304,10 @@ class AnomalyDetector:
         if not anomalies:
             return "No specific time"
         
-        times = [a['detected_at'] for a in anomalies]
+        times = [_ensure_datetime(a['detected_at']) for a in anomalies]
+        times = [t for t in times if t]
+        if not times:
+            return "No specific time"
         if len(times) == 1:
             return times[0].strftime('%H:%M')
         else:
@@ -1319,7 +1341,8 @@ class AnomalyDetector:
         recent_anomalies = self.get_recent_anomalies(hours=24)
         
         for anomaly in recent_anomalies:
-            hour = anomaly['detected_at'][:13]  # Group by hour
+            # detected_at is ISO string here
+            hour = anomaly['detected_at'][:13]
             timeline[hour].append({
                 'type': anomaly['type'],
                 'severity': anomaly['details'].get('severity', 'Unknown'),
@@ -1428,8 +1451,8 @@ class AnomalyDetector:
                 'severity_distribution': Counter(a['details'].get('severity', 'Unknown') for a in anomalies),
                 'examples': [],
                 'time_range': {
-                    'first_occurrence': min(a['detected_at'] for a in anomalies).isoformat(),
-                    'last_occurrence': max(a['detected_at'] for a in anomalies).isoformat(),
+                    'first_occurrence': _iso_or_none(min((_ensure_datetime(a['detected_at']) for a in anomalies if _ensure_datetime(a['detected_at'])), default=None)),
+                    'last_occurrence': _iso_or_none(max((_ensure_datetime(a['detected_at']) for a in anomalies if _ensure_datetime(a['detected_at'])), default=None)),
                 },
                 'impact_summary': self._get_impact_summary_for_type(anomaly_type, anomalies)
             }
@@ -1437,7 +1460,7 @@ class AnomalyDetector:
             # Add up to 3 specific examples
             for anomaly in anomalies[:3]:
                 example = {
-                    'timestamp': anomaly['detected_at'].isoformat(),
+                    'timestamp': _iso_or_none(anomaly['detected_at']) or str(anomaly['detected_at']),
                     'severity': anomaly['details'].get('severity', 'Unknown'),
                     'confidence': anomaly['confidence'],
                     'description': self._format_anomaly_description(anomaly),
@@ -1459,7 +1482,10 @@ class AnomalyDetector:
         hourly_severity = defaultdict(list)
         
         for anomaly in recent_anomalies:
-            hour = anomaly['detected_at'].hour
+            dt = _ensure_datetime(anomaly['detected_at'])
+            if not dt:
+                continue
+            hour = dt.hour
             hourly_counts[hour] += 1
             hourly_severity[hour].append(anomaly['details'].get('severity', 'Unknown'))
         
