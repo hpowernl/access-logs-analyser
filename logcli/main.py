@@ -716,6 +716,38 @@ def security(log_files, scan_attacks, brute_force_detection,
         console.print(f"    • Command Injection: [red]{summary['command_injection_ips']}[/red] IPs")
         console.print(f"    • Suspicious User Agents: [yellow]{summary['suspicious_user_agents']}[/yellow]")
         
+        # Show compact e-commerce platform metrics if present
+        platform = summary.get('platform', {})
+        if platform:
+            wp = platform.get('wordpress', {})
+            wc = platform.get('woocommerce', {})
+            sw = platform.get('shopware', {})
+            mg = platform.get('magento', {})
+            has_any = any([
+                wp.get('bruteforce_ips') or wp.get('xmlrpc_abuse_ips') or wp.get('api_enum_ips') or wp.get('sensitive_ips'),
+                wc.get('api_enum_ips') or wc.get('checkout_fail_ips'),
+                sw.get('admin_probe_ips') or sw.get('api_enum_ips') or sw.get('recovery_probe_ips'),
+                mg.get('bruteforce_ips') or mg.get('api_enum_ips') or mg.get('setup_probe_ips') or mg.get('sensitive_ips'),
+            ])
+            if has_any:
+                console.print("\n  🛒 E-commerce Signals:")
+                if any(wp.values()):
+                    console.print(
+                        f"    • WordPress: bruteforce={wp.get('bruteforce_ips', 0)}, xmlrpc={wp.get('xmlrpc_abuse_ips', 0)}, rest-enum={wp.get('api_enum_ips', 0)}, sensitive={wp.get('sensitive_ips', 0)}"
+                    )
+                if any(wc.values()):
+                    console.print(
+                        f"    • WooCommerce: api-enum={wc.get('api_enum_ips', 0)}, checkout-fails={wc.get('checkout_fail_ips', 0)}"
+                    )
+                if any(sw.values()):
+                    console.print(
+                        f"    • Shopware: admin-probes={sw.get('admin_probe_ips', 0)}, api-enum={sw.get('api_enum_ips', 0)}, recovery-probes={sw.get('recovery_probe_ips', 0)}"
+                    )
+                if any(mg.values()):
+                    console.print(
+                        f"    • Magento: bruteforce={mg.get('bruteforce_ips', 0)}, api-enum={mg.get('api_enum_ips', 0)}, setup-probes={mg.get('setup_probe_ips', 0)}, sensitive={mg.get('sensitive_ips', 0)}"
+                    )
+        
         if summary['top_attack_types']:
             console.print("\n  🏆 Top Attack Types:")
             for attack_type, count in summary['top_attack_types'].items():
@@ -774,6 +806,32 @@ def security(log_files, scan_attacks, brute_force_detection,
                     console.print(f"  • [yellow]{ua_display}[/yellow]: {count:,} requests")
             else:
                 console.print("  [green]✅ No suspicious user agents detected[/green]")
+        
+        # Detailed e-commerce platform IPs (top offenders by event)
+        from collections import defaultdict
+        platform_events = getattr(analyzer, 'platform_events', {})
+        if platform_events and (detailed or True):
+            # Always show if there is data and detailed mode is on
+            # Build a compact list of top IPs per event type
+            lines_printed = 0
+            max_lines = 12
+            header_printed = False
+            for platform_name, event_types in platform_events.items():
+                for event_type, ip_counts in event_types.items():
+                    if not ip_counts:
+                        continue
+                    if not header_printed:
+                        console.print("\n[bold magenta]🛒 E-COMMERCE PLATFORM EVENTS[/bold magenta]")
+                        header_printed = True
+                    top_ips = sorted(ip_counts.items(), key=lambda kv: kv[1], reverse=True)[:3]
+                    # e.g., Magento.setup_probe: 1.1.1.1(5), 2.2.2.2(3)
+                    joined = ", ".join([f"{ip}({cnt})" for ip, cnt in top_ips])
+                    console.print(f"  • {platform_name.title()}.{event_type}: {joined}")
+                    lines_printed += 1
+                    if lines_printed >= max_lines:
+                        break
+                if lines_printed >= max_lines:
+                    break
     
     # Show geographic distribution if requested
     if show_geographic and not quiet:
