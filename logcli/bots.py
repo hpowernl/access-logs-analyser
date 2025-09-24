@@ -131,6 +131,12 @@ class BotAnalyzer:
                 'legitimate': True,
                 'description': 'Pingdom uptime monitoring'
             },
+            'ohdear': {
+                'patterns': [r'ohdear\.app', r'\bohdear\b'],
+                'type': 'monitoring',
+                'legitimate': True,
+                'description': 'OhDear uptime check'
+            },
             'uptimerobot': {
                 'patterns': [r'uptimerobot'],
                 'type': 'monitoring',
@@ -195,17 +201,29 @@ class BotAnalyzer:
             },
 
             # Generic/Suspicious Bots
-            'generic_bot': {
-                'patterns': [r'\bbot\b', r'\bcrawler\b', r'\bspider\b'],
-                'type': 'generic',
-                'legitimate': False,
-                'description': 'Generic bot or crawler'
-            },
             'python_requests': {
                 'patterns': [r'\bpython-requests\b', r'\bpython/urllib\b', r'\bpython-urllib\b', r'\burllib\b'],
                 'type': 'script',
                 'legitimate': False,
                 'description': 'Python Requests/urllib clients'
+            },
+            'libwww_perl': {
+                'patterns': [r'libwww-perl'],
+                'type': 'script',
+                'legitimate': False,
+                'description': 'Perl libwww HTTP client'
+            },
+            'java_http': {
+                'patterns': [r'^java/\d', r'\bjava\b'],
+                'type': 'script',
+                'legitimate': False,
+                'description': 'Generic Java HTTP client'
+            },
+            'go_http_client': {
+                'patterns': [r'\bgo-http-client\b'],
+                'type': 'script',
+                'legitimate': False,
+                'description': 'Go HTTP client'
             },
             'curl': {
                 'patterns': [r'^curl/'],
@@ -237,11 +255,71 @@ class BotAnalyzer:
                 'legitimate': False,
                 'description': 'PHP HTTP client library'
             },
+            'okhttp': {
+                'patterns': [r'\bokhttp\b'],
+                'type': 'api_client',
+                'legitimate': False,
+                'description': 'OkHttp (Java/Kotlin HTTP client)'
+            },
             'http_client_generic': {
                 'patterns': [r'\bhttpie\b', r'\binsomnia\b', r'\bhttpclient\b'],
                 'type': 'api_client',
                 'legitimate': False,
                 'description': 'Generic HTTP clients (httpie, insomnia, etc.)'
+            },
+            'axios': {
+                'patterns': [r'\baxios\b'],
+                'type': 'api_client',
+                'legitimate': False,
+                'description': 'Axios (Node.js HTTP client)'
+            },
+            'node_fetch': {
+                'patterns': [r'node-fetch'],
+                'type': 'api_client',
+                'legitimate': False,
+                'description': 'node-fetch (Node.js HTTP client)'
+            },
+            'headless_chrome': {
+                'patterns': [r'HeadlessChrome', r'Puppeteer'],
+                'type': 'headless',
+                'legitimate': False,
+                'description': 'Headless Chrome / Puppeteer'
+            },
+            'phantomjs': {
+                'patterns': [r'PhantomJS'],
+                'type': 'headless',
+                'legitimate': False,
+                'description': 'PhantomJS headless browser'
+            },
+            'scrapy': {
+                'patterns': [r'\bscrapy\b'],
+                'type': 'scraper',
+                'legitimate': False,
+                'description': 'Scrapy-based scraper'
+            },
+            'screaming_frog': {
+                'patterns': [r'screaming\s*frog'],
+                'type': 'seo_tool',
+                'legitimate': True,
+                'description': 'Screaming Frog SEO Spider'
+            },
+            'sitebulb': {
+                'patterns': [r'\bsitebulb\b'],
+                'type': 'seo_tool',
+                'legitimate': True,
+                'description': 'Sitebulb SEO auditor'
+            },
+            'gtmetrix': {
+                'patterns': [r'gtmetrix'],
+                'type': 'performance',
+                'legitimate': True,
+                'description': 'GTmetrix performance tester'
+            },
+            'generic_bot': {
+                'patterns': [r'\bbot\b', r'\bcrawler\b', r'\bspider\b'],
+                'type': 'generic',
+                'legitimate': False,
+                'description': 'Generic bot or crawler'
             },
             'postman': {
                 'patterns': [r'\bpostmanruntime\b', r'\bpostman\-request\b', r'\bpostman\b'],
@@ -657,11 +735,17 @@ class BotAnalyzer:
         
         ua_lower = (user_agent or "").lower()
         
-        # Check against known bot patterns
+        # Check against known bot patterns, preferring specific signatures over the generic catch-all
         for bot_name, patterns in self.compiled_patterns.items():
+            if bot_name == 'generic_bot':
+                continue
             for pattern in patterns:
                 if pattern.search(ua_lower):
                     return bot_name
+        # Finally, fall back to generic bot
+        for pattern in self.compiled_patterns.get('generic_bot', []):
+            if pattern.search(ua_lower):
+                return 'generic_bot'
         
         return None
     

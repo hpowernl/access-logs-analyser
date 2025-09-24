@@ -79,11 +79,10 @@ class ContentAnalyzer:
     
     def _init_content_mappings(self):
         """Initialize content type and extension mappings."""
-        # File extension to content type mapping
         self.extension_to_content_type = {
             # Images
             '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg', 
+            '.jpeg': 'image/jpeg',
             '.png': 'image/png',
             '.gif': 'image/gif',
             '.webp': 'image/webp',
@@ -91,80 +90,250 @@ class ContentAnalyzer:
             '.ico': 'image/x-icon',
             '.bmp': 'image/bmp',
             '.tiff': 'image/tiff',
-            
+            '.tif': 'image/tiff',
+            '.apng': 'image/apng',
+            '.jfif': 'image/jpeg',
+            '.pjpeg': 'image/pjpeg',
+            '.pjp': 'image/jpeg',
+            '.avif': 'image/avif',
+
             # Stylesheets
             '.css': 'text/css',
-            '.scss': 'text/scss',
-            '.sass': 'text/sass',
-            '.less': 'text/less',
-            
-            # JavaScript
+            '.scss': 'text/x-scss',
+            '.sass': 'text/x-sass',
+            '.less': 'text/x-less',
+            '.styl': 'text/x-stylus',
+
+            # JavaScript & JSON
             '.js': 'application/javascript',
-            '.jsx': 'application/javascript',
+            '.mjs': 'application/javascript',
+            '.cjs': 'application/javascript',
+            '.jsx': 'text/jsx',
             '.ts': 'application/typescript',
-            '.tsx': 'application/typescript',
+            '.tsx': 'text/tsx',
             '.json': 'application/json',
-            
+            '.map': 'application/json',
+
             # Documents
             '.html': 'text/html',
             '.htm': 'text/html',
+            '.xhtml': 'application/xhtml+xml',
             '.xml': 'application/xml',
             '.pdf': 'application/pdf',
             '.doc': 'application/msword',
             '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.xls': 'application/vnd.ms-excel',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.ppt': 'application/vnd.ms-powerpoint',
+            '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            '.odt': 'application/vnd.oasis.opendocument.text',
+            '.ods': 'application/vnd.oasis.opendocument.spreadsheet',
+            '.odp': 'application/vnd.oasis.opendocument.presentation',
+            '.rtf': 'application/rtf',
             '.txt': 'text/plain',
-            
-            # Media
+            '.csv': 'text/csv',
+            '.md': 'text/markdown',
+            '.log': 'text/plain',
+            '.yaml': 'text/yaml',
+            '.yml': 'text/yaml',
+
+            # Media (video/audio)
             '.mp4': 'video/mp4',
-            '.avi': 'video/avi',
+            '.m4v': 'video/x-m4v',
+            '.mkv': 'video/x-matroska',
+            '.webm': 'video/webm',
+            '.avi': 'video/x-msvideo',
             '.mov': 'video/quicktime',
             '.wmv': 'video/x-ms-wmv',
+            '.flv': 'video/x-flv',
+            '.3gp': 'video/3gpp',
+            '.3g2': 'video/3gpp2',
+            '.mpg': 'video/mpeg',
+            '.mpeg': 'video/mpeg',
+            '.ogv': 'video/ogg',
             '.mp3': 'audio/mpeg',
             '.wav': 'audio/wav',
             '.ogg': 'audio/ogg',
-            
-            # Archives
+            '.oga': 'audio/ogg',
+            '.m4a': 'audio/mp4',
+            '.aac': 'audio/aac',
+            '.flac': 'audio/flac',
+            '.opus': 'audio/opus',
+            '.amr': 'audio/amr',
+            '.mid': 'audio/midi',
+            '.midi': 'audio/midi',
+
+            # Archives & compressed
             '.zip': 'application/zip',
-            '.rar': 'application/rar',
-            '.tar': 'application/tar',
+            '.rar': 'application/vnd.rar',
+            '.tar': 'application/x-tar',
             '.gz': 'application/gzip',
+            '.tgz': 'application/gzip',
+            '.bz2': 'application/x-bzip2',
+            '.tbz2': 'application/x-bzip2',
+            '.xz': 'application/x-xz',
             '.7z': 'application/x-7z-compressed',
-            
+            '.lz': 'application/x-lzip',
+            '.lzma': 'application/x-lzma',
+            '.z': 'application/x-compress',
+
             # Fonts
             '.woff': 'font/woff',
             '.woff2': 'font/woff2',
             '.ttf': 'font/ttf',
             '.eot': 'application/vnd.ms-fontobject',
-            '.otf': 'font/otf'
+            '.otf': 'font/otf',
+            '.sfnt': 'font/sfnt',
+
+            # Icons & manifest
+            '.webmanifest': 'application/manifest+json',
+            '.manifest': 'text/cache-manifest',
+
+            # Misc
+            '.swf': 'application/x-shockwave-flash',
+            '.exe': 'application/vnd.microsoft.portable-executable',
+            '.bin': 'application/octet-stream',
+            '.dll': 'application/octet-stream',
+            '.ps': 'application/postscript',
+            '.eps': 'application/postscript',
+            '.crx': 'application/x-chrome-extension',
+            '.deb': 'application/vnd.debian.binary-package',
+            '.rpm': 'application/x-rpm',
+            '.apk': 'application/vnd.android.package-archive',
+            '.dmg': 'application/x-apple-diskimage',
+            '.iso': 'application/x-iso9660-image',
+            '.msi': 'application/x-msi',
+            '.sh': 'application/x-sh',
+            '.bat': 'application/x-msdos-program',
+            '.php': 'application/x-httpd-php',
+            '.asp': 'text/asp',
+            '.aspx': 'text/asp',
+            '.jsp': 'text/x-java-source',
+            '.cgi': 'application/x-httpd-cgi',
         }
-        
-        # Content type to resource category mapping
+
+        # Content type to resource category mapping (uitgebreider)
         self.content_to_category = {
+            # Web
             'text/html': 'HTML Pages',
+            'application/xhtml+xml': 'HTML Pages',
             'text/css': 'Stylesheets',
+            'text/x-scss': 'Stylesheets',
+            'text/x-sass': 'Stylesheets',
+            'text/x-less': 'Stylesheets',
+            'text/x-stylus': 'Stylesheets',
             'application/javascript': 'JavaScript',
+            'text/javascript': 'JavaScript',
+            'text/jsx': 'JavaScript',
+            'application/typescript': 'JavaScript',
+            'text/tsx': 'JavaScript',
             'application/json': 'API/JSON',
+            'application/manifest+json': 'API/JSON',
+            'text/csv': 'Documents',
+            'text/markdown': 'Documents',
+            'text/plain': 'Documents',
+            'application/xml': 'Documents',
+            'text/xml': 'Documents',
+            'application/pdf': 'Documents',
+            'application/rtf': 'Documents',
+            'application/msword': 'Documents',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Documents',
+            'application/vnd.ms-excel': 'Documents',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Documents',
+            'application/vnd.ms-powerpoint': 'Documents',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'Documents',
+            'application/vnd.oasis.opendocument.text': 'Documents',
+            'application/vnd.oasis.opendocument.spreadsheet': 'Documents',
+            'application/vnd.oasis.opendocument.presentation': 'Documents',
+
+            # Images
             'image/jpeg': 'Images',
             'image/png': 'Images',
             'image/gif': 'Images',
             'image/webp': 'Images',
             'image/svg+xml': 'Images',
+            'image/x-icon': 'Images',
+            'image/bmp': 'Images',
+            'image/tiff': 'Images',
+            'image/apng': 'Images',
+            'image/avif': 'Images',
+            'image/pjpeg': 'Images',
+
+            # Video
             'video/mp4': 'Videos',
+            'video/x-m4v': 'Videos',
+            'video/x-matroska': 'Videos',
+            'video/webm': 'Videos',
+            'video/x-msvideo': 'Videos',
+            'video/quicktime': 'Videos',
+            'video/x-ms-wmv': 'Videos',
+            'video/x-flv': 'Videos',
+            'video/3gpp': 'Videos',
+            'video/3gpp2': 'Videos',
+            'video/mpeg': 'Videos',
+            'video/ogg': 'Videos',
+
+            # Audio
             'audio/mpeg': 'Audio',
-            'application/pdf': 'Documents',
+            'audio/wav': 'Audio',
+            'audio/ogg': 'Audio',
+            'audio/mp4': 'Audio',
+            'audio/aac': 'Audio',
+            'audio/flac': 'Audio',
+            'audio/opus': 'Audio',
+            'audio/amr': 'Audio',
+            'audio/midi': 'Audio',
+            'audio/x-midi': 'Audio',
+
+            # Archives
+            'application/zip': 'Archives',
+            'application/x-7z-compressed': 'Archives',
+            'application/x-bzip2': 'Archives',
+            'application/x-xz': 'Archives',
+            'application/x-tar': 'Archives',
+            'application/gzip': 'Archives',
+            'application/x-rar-compressed': 'Archives',
+            'application/vnd.rar': 'Archives',
+            'application/x-lzip': 'Archives',
+            'application/x-lzma': 'Archives',
+            'application/x-compress': 'Archives',
+
+            # Fonts
             'font/woff': 'Fonts',
             'font/woff2': 'Fonts',
-            'application/zip': 'Archives'
+            'font/ttf': 'Fonts',
+            'font/otf': 'Fonts',
+            'application/vnd.ms-fontobject': 'Fonts',
+            'font/sfnt': 'Fonts',
+
+            # Executables & binaries
+            'application/octet-stream': 'Binaries',
+            'application/vnd.microsoft.portable-executable': 'Binaries',
+            'application/x-msdos-program': 'Binaries',
+            'application/x-msi': 'Binaries',
+            'application/x-sh': 'Binaries',
+            'application/x-httpd-php': 'Binaries',
+            'application/x-httpd-cgi': 'Binaries',
+
+            # Misc
+            'application/x-shockwave-flash': 'Other',
+            'application/postscript': 'Other',
+            'application/x-chrome-extension': 'Other',
+            'application/x-apple-diskimage': 'Other',
+            'application/x-iso9660-image': 'Other',
+            'application/x-rpm': 'Other',
+            'application/vnd.debian.binary-package': 'Other',
+            'application/x-bat': 'Other',
+            'text/cache-manifest': 'Other',
         }
-        
+
         # Resource optimization thresholds
         self.optimization_thresholds = {
             'large_image_size': 1024 * 1024,  # 1MB
             'large_js_size': 512 * 1024,      # 512KB
             'large_css_size': 256 * 1024,     # 256KB
-            'slow_response_time': 3.0          # 3 seconds
+            'slow_response_time': 1.0         # 3 seconds
         }
-    
     def analyze_entry(self, log_entry: Dict[str, Any]) -> None:
         """Analyze a single log entry for content patterns."""
         path = log_entry.get('path', '')

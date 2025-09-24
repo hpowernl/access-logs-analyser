@@ -260,49 +260,239 @@ class HypernodeLogCommand:
             return {'browser': 'Unknown', 'os': 'Unknown', 'device': 'Unknown'}
         
         ua_lower = user_agent.lower()
-        
-        # Browser detection
+
+        # --- Browser detection ---
         browser = 'Unknown'
-        if 'chrome' in ua_lower and 'edg' not in ua_lower:
+        if any(bot in ua_lower for bot in ['bot', 'crawler', 'spider', 'slurp', 'duckduckbot', 'googlebot', 'bingbot']):
+            browser = 'Bot'
+        elif 'edg' in ua_lower or 'edge' in ua_lower:
+            browser = 'Edge'
+        elif 'opr/' in ua_lower or 'opera' in ua_lower:
+            browser = 'Opera'
+        elif 'vivaldi' in ua_lower:
+            browser = 'Vivaldi'
+        elif 'brave' in ua_lower:
+            browser = 'Brave'
+        elif 'chrome' in ua_lower and 'chromium' not in ua_lower and 'edg' not in ua_lower and 'opr/' not in ua_lower:
             browser = 'Chrome'
+        elif 'chromium' in ua_lower:
+            browser = 'Chromium'
         elif 'firefox' in ua_lower:
             browser = 'Firefox'
-        elif 'safari' in ua_lower and 'chrome' not in ua_lower:
+        elif 'safari' in ua_lower and 'chrome' not in ua_lower and 'chromium' not in ua_lower:
             browser = 'Safari'
-        elif 'edg' in ua_lower:
-            browser = 'Edge'
-        elif 'opera' in ua_lower or 'opr' in ua_lower:
-            browser = 'Opera'
-        elif 'bot' in ua_lower or 'crawler' in ua_lower or 'spider' in ua_lower:
-            browser = 'Bot'
-        elif any(bot in ua_lower for bot in ['googlebot', 'bingbot', 'slurp', 'duckduckbot']):
-            browser = 'Bot'
-        
-        # OS detection
+        elif 'msie' in ua_lower or 'trident' in ua_lower:
+            browser = 'Internet Explorer'
+        elif 'ucbrowser' in ua_lower:
+            browser = 'UC Browser'
+        elif 'samsungbrowser' in ua_lower:
+            browser = 'Samsung Internet'
+        elif 'yabrowser' in ua_lower:
+            browser = 'Yandex Browser'
+        elif 'maxthon' in ua_lower:
+            browser = 'Maxthon'
+        elif 'puffin' in ua_lower:
+            browser = 'Puffin'
+        elif 'seamonkey' in ua_lower:
+            browser = 'SeaMonkey'
+        elif 'konqueror' in ua_lower:
+            browser = 'Konqueror'
+        elif 'palemoon' in ua_lower:
+            browser = 'Pale Moon'
+        elif 'midori' in ua_lower:
+            browser = 'Midori'
+        elif 'epiphany' in ua_lower:
+            browser = 'Epiphany'
+        elif 'otter' in ua_lower:
+            browser = 'Otter'
+        elif 'qupzilla' in ua_lower:
+            browser = 'QupZilla'
+        elif 'lunascape' in ua_lower:
+            browser = 'Lunascape'
+        elif 'avant browser' in ua_lower:
+            browser = 'Avant Browser'
+        elif 'sleipnir' in ua_lower:
+            browser = 'Sleipnir'
+        elif 'coc_coc_browser' in ua_lower:
+            browser = 'Coc Coc'
+        elif 'iceweasel' in ua_lower:
+            browser = 'Iceweasel'
+        elif 'waterfox' in ua_lower:
+            browser = 'Waterfox'
+        elif 'k-meleon' in ua_lower:
+            browser = 'K-Meleon'
+        elif 'netscape' in ua_lower:
+            browser = 'Netscape'
+        elif 'phantomjs' in ua_lower:
+            browser = 'PhantomJS'
+        elif 'curl' in ua_lower:
+            browser = 'curl'
+        elif 'wget' in ua_lower:
+            browser = 'wget'
+        elif 'python-requests' in ua_lower:
+            browser = 'python-requests'
+        elif 'okhttp' in ua_lower:
+            browser = 'okhttp'
+        elif 'java' in ua_lower:
+            browser = 'Java'
+        elif 'go-http-client' in ua_lower:
+            browser = 'Go-http-client'
+        elif 'libwww-perl' in ua_lower:
+            browser = 'libwww-perl'
+        elif 'httpclient' in ua_lower:
+            browser = 'HttpClient'
+        elif 'axios' in ua_lower:
+            browser = 'Axios'
+        elif 'postman' in ua_lower:
+            browser = 'Postman'
+        elif 'insomnia' in ua_lower:
+            browser = 'Insomnia'
+        elif 'restsharp' in ua_lower:
+            browser = 'RestSharp'
+        elif 'dart' in ua_lower:
+            browser = 'Dart'
+        elif 'electron' in ua_lower:
+            browser = 'Electron'
+        elif 'outlook' in ua_lower:
+            browser = 'Outlook'
+        elif 'thunderbird' in ua_lower:
+            browser = 'Thunderbird'
+        elif 'mail' in ua_lower and 'mozilla' in ua_lower:
+            browser = 'Mozilla Mail'
+        # Add more as needed
+
+        # --- OS detection ---
         os = 'Unknown'
-        if 'windows nt 10' in ua_lower:
+        if 'windows nt 10.0' in ua_lower or 'windows 10' in ua_lower:
             os = 'Windows 10'
-        elif 'windows nt 6.3' in ua_lower:
+        elif 'windows nt 6.3' in ua_lower or 'windows 8.1' in ua_lower:
             os = 'Windows 8.1'
-        elif 'windows nt 6.1' in ua_lower:
+        elif 'windows nt 6.2' in ua_lower or 'windows 8' in ua_lower:
+            os = 'Windows 8'
+        elif 'windows nt 6.1' in ua_lower or 'windows 7' in ua_lower:
             os = 'Windows 7'
+        elif 'windows nt 6.0' in ua_lower or 'windows vista' in ua_lower:
+            os = 'Windows Vista'
+        elif 'windows nt 5.1' in ua_lower or 'windows xp' in ua_lower:
+            os = 'Windows XP'
+        elif 'windows nt 5.0' in ua_lower or 'windows 2000' in ua_lower:
+            os = 'Windows 2000'
+        elif 'windows phone' in ua_lower:
+            os = 'Windows Phone'
         elif 'windows' in ua_lower:
             os = 'Windows'
+        elif 'mac os x 10_15' in ua_lower or 'macos 10_15' in ua_lower:
+            os = 'macOS Catalina'
+        elif 'mac os x 10_14' in ua_lower or 'macos 10_14' in ua_lower:
+            os = 'macOS Mojave'
+        elif 'mac os x 10_13' in ua_lower or 'macos 10_13' in ua_lower:
+            os = 'macOS High Sierra'
+        elif 'mac os x 10_12' in ua_lower or 'macos 10_12' in ua_lower:
+            os = 'macOS Sierra'
+        elif 'mac os x 10_11' in ua_lower or 'macos 10_11' in ua_lower:
+            os = 'OS X El Capitan'
+        elif 'mac os x 10_10' in ua_lower or 'macos 10_10' in ua_lower:
+            os = 'OS X Yosemite'
+        elif 'mac os x 10_9' in ua_lower or 'macos 10_9' in ua_lower:
+            os = 'OS X Mavericks'
+        elif 'mac os x 10_8' in ua_lower or 'macos 10_8' in ua_lower:
+            os = 'OS X Mountain Lion'
+        elif 'mac os x 10_7' in ua_lower or 'macos 10_7' in ua_lower:
+            os = 'OS X Lion'
+        elif 'mac os x 10_6' in ua_lower or 'macos 10_6' in ua_lower:
+            os = 'OS X Snow Leopard'
         elif 'mac os x' in ua_lower or 'macos' in ua_lower:
             os = 'macOS'
-        elif 'linux' in ua_lower:
-            os = 'Linux'
+        elif 'android 13' in ua_lower:
+            os = 'Android 13'
+        elif 'android 12' in ua_lower:
+            os = 'Android 12'
+        elif 'android 11' in ua_lower:
+            os = 'Android 11'
+        elif 'android 10' in ua_lower:
+            os = 'Android 10'
+        elif 'android 9' in ua_lower:
+            os = 'Android 9'
+        elif 'android 8' in ua_lower:
+            os = 'Android 8'
+        elif 'android 7' in ua_lower:
+            os = 'Android 7'
+        elif 'android 6' in ua_lower:
+            os = 'Android 6'
+        elif 'android 5' in ua_lower:
+            os = 'Android 5'
         elif 'android' in ua_lower:
             os = 'Android'
-        elif 'iphone' in ua_lower or 'ios' in ua_lower:
+        elif 'iphone os 16' in ua_lower or 'ios 16' in ua_lower:
+            os = 'iOS 16'
+        elif 'iphone os 15' in ua_lower or 'ios 15' in ua_lower:
+            os = 'iOS 15'
+        elif 'iphone os 14' in ua_lower or 'ios 14' in ua_lower:
+            os = 'iOS 14'
+        elif 'iphone os 13' in ua_lower or 'ios 13' in ua_lower:
+            os = 'iOS 13'
+        elif 'iphone os 12' in ua_lower or 'ios 12' in ua_lower:
+            os = 'iOS 12'
+        elif 'iphone os 11' in ua_lower or 'ios 11' in ua_lower:
+            os = 'iOS 11'
+        elif 'iphone os 10' in ua_lower or 'ios 10' in ua_lower:
+            os = 'iOS 10'
+        elif 'iphone' in ua_lower or 'ipad' in ua_lower or 'ipod' in ua_lower or 'ios' in ua_lower:
             os = 'iOS'
-        
-        # Device detection
+        elif 'linux; arm' in ua_lower or 'linux arm' in ua_lower:
+            os = 'Linux ARM'
+        elif 'linux x86_64' in ua_lower or 'linux amd64' in ua_lower:
+            os = 'Linux x86_64'
+        elif 'linux' in ua_lower:
+            os = 'Linux'
+        elif 'cros' in ua_lower or 'chrome os' in ua_lower:
+            os = 'Chrome OS'
+        elif 'ubuntu' in ua_lower:
+            os = 'Ubuntu'
+        elif 'debian' in ua_lower:
+            os = 'Debian'
+        elif 'fedora' in ua_lower:
+            os = 'Fedora'
+        elif 'centos' in ua_lower:
+            os = 'CentOS'
+        elif 'red hat' in ua_lower or 'redhat' in ua_lower:
+            os = 'Red Hat'
+        elif 'freebsd' in ua_lower:
+            os = 'FreeBSD'
+        elif 'openbsd' in ua_lower:
+            os = 'OpenBSD'
+        elif 'netbsd' in ua_lower:
+            os = 'NetBSD'
+        elif 'sunos' in ua_lower or 'solaris' in ua_lower:
+            os = 'Solaris'
+        elif 'blackberry' in ua_lower:
+            os = 'BlackBerry'
+        elif 'symbian' in ua_lower:
+            os = 'Symbian'
+        elif 'tizen' in ua_lower:
+            os = 'Tizen'
+        elif 'kaios' in ua_lower:
+            os = 'KaiOS'
+        elif 'playstation' in ua_lower:
+            os = 'PlayStation'
+        elif 'nintendo' in ua_lower:
+            os = 'Nintendo'
+        elif 'xbox' in ua_lower:
+            os = 'Xbox'
+        # Add more as needed
+
+        # --- Device detection ---
         device = 'Unknown'
-        if 'mobile' in ua_lower or 'iphone' in ua_lower or 'android' in ua_lower:
+        if any(mob in ua_lower for mob in ['mobile', 'iphone', 'android', 'blackberry', 'windows phone', 'opera mini', 'opera mobi', 'iemobile', 'fennec', 'symbian', 'nokia', 'palm']):
             device = 'Mobile'
-        elif 'tablet' in ua_lower or 'ipad' in ua_lower:
+        elif any(tab in ua_lower for tab in ['tablet', 'ipad', 'nexus 7', 'nexus 9', 'kindle', 'silk', 'playbook', 'touchpad', 'sm-t', 'gt-p', 'tab']):
             device = 'Tablet'
+        elif any(tv in ua_lower for tv in ['smart-tv', 'smarttv', 'hbbtv', 'appletv', 'googletv', 'netcast', 'viera', 'aquos', 'dtv', 'roku', 'firetv', 'apple tv', 'android tv']):
+            device = 'TV'
+        elif any(console in ua_lower for console in ['playstation', 'xbox', 'nintendo']):
+            device = 'Console'
+        elif any(bot in ua_lower for bot in ['bot', 'crawler', 'spider', 'slurp', 'duckduckbot', 'googlebot', 'bingbot']):
+            device = 'Bot'
         else:
             device = 'Desktop'
         
@@ -327,15 +517,21 @@ class HypernodeLogCommand:
         
         ua_lower = user_agent.lower()
         
-        # Common bot indicators
+        # Common bot indicators (easily expandable)
         bot_keywords = [
             'bot', 'crawler', 'spider', 'scraper', 'crawl',
             'slurp', 'wget', 'curl', 'python-requests', 'http',
             'monitor', 'check', 'test', 'scan', 'fetch',
-            'archive', 'index', 'search'
+            'archive', 'index', 'search', 'probe', 'validator',
+            'analyzer', 'harvest', 'extractor', 'collect', 'auto',
+            'dataminr', 'linkchecker', 'preview', 'pingdom', 'uptime',
+            'statuscake', 'siteimprove', 'lighthouse', 'headless',
+            'phantomjs', 'selenium', 'node-superagent', 'go-http-client',
+            'java/', 'libwww', 'feed', 'rss', 'atom', 'reader',
+            'downloader', 'checker', 'verifier', 'insights', 'api-client'
         ]
         
-        # Known bot user agents (more comprehensive list based on real data)
+        # Known bot user agents (expandable, based on real-world data)
         known_bots = [
             'googlebot', 'bingbot', 'slurp', 'duckduckbot',
             'facebookexternalhit', 'twitterbot', 'linkedinbot',
@@ -344,7 +540,19 @@ class HypernodeLogCommand:
             'yandexbot', 'baiduspider', 'sogou', 'exabot',
             'pinterestbot', 'facebot', 'ia_archiver',
             'censysinspect', 'genomecrawler', 'gptbot',
-            'googlebot-image', 'googlebot-news', 'googlebot-video'
+            'googlebot-image', 'googlebot-news', 'googlebot-video',
+            'petalbot', 'seznambot', 'applebot', 'qwantify',
+            'screaming frog', 'uptimerobot', 'zoominfobot',
+            'serpstatbot', 'netcraftsurveyagent', 'magpie-crawler',
+            'dotmetricsbot', 'screenerbot', 'adsbot-google',
+            'baiduspider-image', 'baiduspider-video', 'baiduspider-news',
+            'baiduspider-favo', 'baiduspider-cpro', 'baiduspider-ads',
+            'yeti', 'naverbot', 'daum', 'gigabot', 'ia_archiver',
+            'archive.org_bot', 'heritrix', 'commoncrawl', 'linkdexbot',
+            'rogerbot', 'seokicks-robot', 'sistrix crawler', 'barkrowler',
+            'dotbot', 'surdotlybot', 'trendictionbot', 'wotbox',
+            'exabot', 'scrapy', 'python-urllib', 'python-httplib2',
+            'python-requests', 'okhttp', 'axios', 'aiohttp', 'restsharp'
         ]
         
         # Check for bot keywords
