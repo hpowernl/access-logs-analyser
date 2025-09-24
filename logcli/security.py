@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .parser import LogParser
 from .log_reader import LogTailer
+from .config import PLATFORM_SECURITY
 
 
 class SecurityAnalyzer:
@@ -48,6 +49,30 @@ class SecurityAnalyzer:
         
         # Define attack patterns
         self._init_attack_patterns()
+
+        # E-commerce platform detection (compact structures)
+        # platform_events[platform][event_type][ip] -> count
+        def _event_bucket():
+            return defaultdict(int)
+        def _event_types():
+            return defaultdict(_event_bucket)
+        self.platform_events = defaultdict(_event_types)
+        # simple platform weights to impact threat score
+        self.platform_weights = {
+            'wordpress': {
+                'bruteforce': 8, 'xmlrpc_abuse': 6, 'admin_probe': 4,
+                'api_enum': 3, 'sensitive_access': 10, 'backup_probe': 5
+            },
+            'woocommerce': {
+                'checkout_fail': 5, 'api_enum': 4, 'webhook_probe': 3
+            },
+            'shopware': {
+                'admin_probe': 6, 'api_enum': 4, 'recovery_probe': 7, 'sensitive_access': 8
+            },
+            'magento': {
+                'bruteforce': 8, 'api_enum': 4, 'setup_probe': 9, 'sensitive_access': 10
+            }
+        }
         
     def _init_attack_patterns(self):
         """Initialize regex patterns for various attacks."""
@@ -210,6 +235,55 @@ class SecurityAnalyzer:
         self.compiled_ua_patterns = [
             re.compile(pattern, re.IGNORECASE) for pattern in self.suspicious_ua_patterns
         ]
+
+        # Compact platform-specific patterns
+        def _rc(pats):
+            return [re.compile(p, re.IGNORECASE) for p in pats]
+        self.compiled_platform_patterns = {
+            'wordpress': {
+                'login': _rc([r'/wp-login\.php', r'/wp-admin/?']),
+                'xmlrpc': _rc([r'/xmlrpc\.php$']),
+                'api_enum': _rc([r'/wp-json/', r'[?&]author=\d+', r'/wp-json/wp/v2/users']),
+                'sensitive': _rc([r'/wp-config\.php', r'/readme\.html', r'/license\.txt']),
+                'backup': _rc([r'/wp-.*\.(zip|tar\.gz|sql|sql\.gz)(?:$|\?)'])
+            },
+            'woocommerce': {
+                'api_enum': _rc([r'/wp-json/wc/(v\d+)/', r'/wp-json/wc/.*?/products']),
+                'checkout_fail': _rc([r'/checkout', r'/wc-ajax/']),
+                'webhook_probe': _rc([r'/wc-api/'])
+            },
+            'shopware': {
+                # SW5 and SW6 common surfaces
+                'admin': _rc([r'^/backend/', r'^/admin/']),
+                'api_enum': _rc([r'^/api/', r'^/store-api/']),
+                'recovery': _rc([r'/recovery/(install|update)/']),
+                'sensitive': _rc([r'^/engine/', r'^/var/log/'])
+            },
+            'magento': {
+                'login': _rc([r'^/(index\.php/)?admin/?', r'^/admin/?']),
+                'api_enum': _rc([r'^/rest/V1/', r'^/oauth/']),
+                'setup': _rc([r'^/setup/?']),
+                'sensitive': _rc([r'/app/etc/(env\.php|local\.xml)$', r'^/var/log/'])
+            }
+        }
+
+        # Incorporate custom Magento admin path if configured
+        try:
+            custom_admin = (PLATFORM_SECURITY.get('magento_admin_path', '') or '').strip()
+        except Exception:
+            custom_admin = ''
+        if custom_admin:
+            # Normalize to '/path/' without leading index.php
+            if not custom_admin.startswith('/'):
+                custom_admin = '/' + custom_admin
+            # Allow given value with or without trailing slash
+            custom_clean = custom_admin.strip('/')
+            # Build regexes for both direct and index.php prefixed forms
+            admin_regexes = [
+                rf'^/{re.escape(custom_clean)}/?',
+                rf'^/(index\.php/){re.escape(custom_clean)}/?'
+            ]
+            self.compiled_platform_patterns['magento']['login'].extend(_rc(admin_regexes))
         
     def analyze_file(self, file_path: str):
         """Analyze a single log file for security threats."""
@@ -284,6 +358,9 @@ class SecurityAnalyzer:
         # Check for brute force attempts
         self._check_brute_force(ip, path, status, timestamp)
         
+        # Platform-specific compact checks
+        self._check_platforms(ip, path, method, status, timestamp, user_agent)
+
         # Analyze user agent
         self._check_suspicious_user_agent(ip, user_agent)
         
@@ -355,6 +432,63 @@ class SecurityAnalyzer:
             if pattern.search(request_lower):
                 self.attack_patterns['Web Shell'] += 1
                 break
+
+    def _record_platform_event(self, platform: str, event_type: str, ip: str, weight_hint: int = 0):
+        self.platform_events[platform][event_type][ip] += 1
+        # mark IP suspicious for impactful events
+        if weight_hint >= 6:
+            self.suspicious_ips.add(ip)
+
+    def _check_platforms(self, ip: str, path: str, method: str, status: int, timestamp: datetime, user_agent: str):
+        p = (path or '').lower()
+        # WordPress
+        if PLATFORM_SECURITY.get('enable_wordpress', True):
+            wp = self.compiled_platform_patterns['wordpress']
+            if any(r.search(p) for r in wp['login']):
+                if status in [401, 403, 404]:
+                    self._record_platform_event('wordpress', 'bruteforce', ip, self.platform_weights['wordpress']['bruteforce'])
+            if any(r.search(p) for r in wp['xmlrpc']) and method.upper() == 'POST':
+                self._record_platform_event('wordpress', 'xmlrpc_abuse', ip, self.platform_weights['wordpress']['xmlrpc_abuse'])
+            if any(r.search(p) for r in wp['api_enum']):
+                self._record_platform_event('wordpress', 'api_enum', ip, self.platform_weights['wordpress']['api_enum'])
+            if any(r.search(p) for r in wp['sensitive']):
+                self._record_platform_event('wordpress', 'sensitive_access', ip, self.platform_weights['wordpress']['sensitive_access'])
+            if any(r.search(p) for r in wp['backup']):
+                self._record_platform_event('wordpress', 'backup_probe', ip, self.platform_weights['wordpress']['backup_probe'])
+
+        # WooCommerce
+        if PLATFORM_SECURITY.get('enable_woocommerce', True):
+            wc = self.compiled_platform_patterns['woocommerce']
+            if any(r.search(p) for r in wc['api_enum']):
+                self._record_platform_event('woocommerce', 'api_enum', ip, self.platform_weights['woocommerce']['api_enum'])
+            if any(r.search(p) for r in wc['checkout_fail']) and method.upper() == 'POST' and status in [400, 401, 402, 403]:
+                self._record_platform_event('woocommerce', 'checkout_fail', ip, self.platform_weights['woocommerce']['checkout_fail'])
+            if any(r.search(p) for r in wc['webhook_probe']):
+                self._record_platform_event('woocommerce', 'webhook_probe', ip, self.platform_weights['woocommerce']['webhook_probe'])
+
+        # Shopware 5/6
+        if PLATFORM_SECURITY.get('enable_shopware', True):
+            sw = self.compiled_platform_patterns['shopware']
+            if any(r.search(p) for r in sw['admin']) and status in [401, 403, 404]:
+                self._record_platform_event('shopware', 'admin_probe', ip, self.platform_weights['shopware']['admin_probe'])
+            if any(r.search(p) for r in sw['api_enum']):
+                self._record_platform_event('shopware', 'api_enum', ip, self.platform_weights['shopware']['api_enum'])
+            if any(r.search(p) for r in sw['recovery']):
+                self._record_platform_event('shopware', 'recovery_probe', ip, self.platform_weights['shopware']['recovery_probe'])
+            if any(r.search(p) for r in sw['sensitive']):
+                self._record_platform_event('shopware', 'sensitive_access', ip, self.platform_weights['shopware']['sensitive_access'])
+
+        # Magento 1/2
+        if PLATFORM_SECURITY.get('enable_magento', True):
+            mg = self.compiled_platform_patterns['magento']
+            if any(r.search(p) for r in mg['login']) and status in [401, 403, 404]:
+                self._record_platform_event('magento', 'bruteforce', ip, self.platform_weights['magento']['bruteforce'])
+            if any(r.search(p) for r in mg['api_enum']):
+                self._record_platform_event('magento', 'api_enum', ip, self.platform_weights['magento']['api_enum'])
+            if any(r.search(p) for r in mg['setup']):
+                self._record_platform_event('magento', 'setup_probe', ip, self.platform_weights['magento']['setup_probe'])
+            if any(r.search(p) for r in mg['sensitive']):
+                self._record_platform_event('magento', 'sensitive_access', ip, self.platform_weights['magento']['sensitive_access'])
     
     def _check_brute_force(self, ip: str, path: str, status: int, timestamp: datetime):
         """Check for brute force login attempts."""
@@ -465,10 +599,17 @@ class SecurityAnalyzer:
         
         # Sort by threat score (combination of error rate and attack attempts)
         for item in suspicious:
+            # platform contribution
+            platform_score = 0
+            for platform, weights in self.platform_weights.items():
+                for event_type, weight in weights.items():
+                    count = self.platform_events[platform][event_type].get(item['ip'], 0)
+                    platform_score += count * weight
             threat_score = (
                 item['error_rate'] * 0.3 +
                 sum(item['attack_attempts'].values()) * 10 +
-                item['failed_logins'] * 2
+                item['failed_logins'] * 2 +
+                platform_score
             )
             item['threat_score'] = threat_score
         
@@ -504,7 +645,30 @@ class SecurityAnalyzer:
             'xss_attempt_ips': len(self.xss_attempts),
             'directory_traversal_ips': len(self.directory_traversal),
             'command_injection_ips': len(self.command_injection),
-            'suspicious_user_agents': len(self.suspicious_user_agents)
+            'suspicious_user_agents': len(self.suspicious_user_agents),
+            'platform': {
+                'wordpress': {
+                    'bruteforce_ips': len(self.platform_events['wordpress']['bruteforce']),
+                    'xmlrpc_abuse_ips': len(self.platform_events['wordpress']['xmlrpc_abuse']),
+                    'api_enum_ips': len(self.platform_events['wordpress']['api_enum']),
+                    'sensitive_ips': len(self.platform_events['wordpress']['sensitive_access'])
+                },
+                'woocommerce': {
+                    'api_enum_ips': len(self.platform_events['woocommerce']['api_enum']),
+                    'checkout_fail_ips': len(self.platform_events['woocommerce']['checkout_fail'])
+                },
+                'shopware': {
+                    'admin_probe_ips': len(self.platform_events['shopware']['admin_probe']),
+                    'api_enum_ips': len(self.platform_events['shopware']['api_enum']),
+                    'recovery_probe_ips': len(self.platform_events['shopware']['recovery_probe'])
+                },
+                'magento': {
+                    'bruteforce_ips': len(self.platform_events['magento']['bruteforce']),
+                    'api_enum_ips': len(self.platform_events['magento']['api_enum']),
+                    'setup_probe_ips': len(self.platform_events['magento']['setup_probe']),
+                    'sensitive_ips': len(self.platform_events['magento']['sensitive_access'])
+                }
+            }
         }
     
     def export_security_report(self, output_file: str):
@@ -514,6 +678,13 @@ class SecurityAnalyzer:
             'summary': self.get_security_summary(),
             'attack_patterns': dict(self.attack_patterns),
             'suspicious_ips': self.get_suspicious_ips(),
+            'platform_events': {
+                platform: {
+                    event_type: dict(sorted(events.items(), key=lambda kv: kv[1], reverse=True))
+                    for event_type, events in event_types.items()
+                }
+                for platform, event_types in self.platform_events.items()
+            },
             'brute_force_attempts': {
                 ip: {
                     'failed_logins': count,

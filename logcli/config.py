@@ -74,3 +74,14 @@ HYPERNODE_SETTINGS = {
     ],
     'auto_discover_enabled': True,
 }
+
+# Platform security toggles and options
+PLATFORM_SECURITY = {
+    'enable_wordpress': True,
+    'enable_woocommerce': True,
+    'enable_shopware': True,
+    'enable_magento': True,
+    # Optional custom admin base path for Magento (e.g., '/admin_xyz/')
+    # If empty, defaults to common '/admin' and 'index.php/admin'
+    'magento_admin_path': '',
+}
