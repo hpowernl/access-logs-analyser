@@ -626,11 +626,14 @@ def handle_exports(stats: StatisticsAggregator, output_dir: Optional[str],
 @click.option('--quiet', is_flag=True, help='Only show summary, suppress detailed output')
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--export-blacklist', help='Export recommended IP blacklist to file')
+@click.option('--ignore-blocked/--no-ignore-blocked', default=True, help='Ignore blocked requests (e.g., 403/444/495-499) during analysis')
+@click.option('--blocked-status-codes', default='403,444,495-499', help='Comma-separated status codes/ranges to treat as blocked')
+@click.option('--show-blocked', is_flag=True, help='Show blocked traffic summary')
 @click.option('--output', '-o', help='Output file for security report')
 def security(log_files, scan_attacks, brute_force_detection, 
             sql_injection_patterns, suspicious_user_agents, show_summary, show_top_threats,
             show_geographic, show_timeline, threshold, min_threat_score, detailed, quiet,
-            yesterday, export_blacklist, output):
+            yesterday, export_blacklist, ignore_blocked, blocked_status_codes, show_blocked, output):
     """🔒 Advanced security analysis and threat detection.
     
     Analyze your access logs for security threats, attack patterns, and suspicious activity.
@@ -678,13 +681,44 @@ def security(log_files, scan_attacks, brute_force_detection,
     
     # Initialize security analyzer
     from .security import SecurityAnalyzer
+    from .filters import LogFilter
     analyzer = SecurityAnalyzer()
+    log_filter = LogFilter()
     
     # Process log files with nice progress display
     console.print("[blue]Starting security analysis...[/blue]")
     
+    def _parse_code_list(spec: str):
+        result = []
+        for token in (spec or '').split(','):
+            token = token.strip()
+            if not token:
+                continue
+            if '-' in token:
+                try:
+                    start, end = token.split('-', 1)
+                    start_i = int(start)
+                    end_i = int(end)
+                    if start_i <= end_i:
+                        result.extend(list(range(start_i, end_i + 1)))
+                except Exception:
+                    continue
+            else:
+                try:
+                    result.append(int(token))
+                except Exception:
+                    continue
+        return result
+
+    log_filter.set_ignore_blocked(ignore_blocked)
+    log_filter.set_blocked_status_codes(_parse_code_list(blocked_status_codes))
+
     def analyze_entry(log_entry):
-        """Analyze a single log entry for security."""
+        """Analyze a single log entry for security with blocked pre-filtering."""
+        if log_filter.is_blocked(log_entry):
+            analyzer.record_blocked(log_entry)
+            if log_filter.ignore_blocked:
+                return
         analyzer._analyze_entry(log_entry)
     
     process_hypernode_logs_with_callback(analyze_entry, "security analysis", use_yesterday=yesterday)
@@ -692,6 +726,17 @@ def security(log_files, scan_attacks, brute_force_detection,
     # Get comprehensive security data
     summary = analyzer.get_security_summary()
     suspicious_ips = analyzer.get_suspicious_ips()
+
+    if show_blocked:
+        blocked = analyzer.get_blocked_summary()
+        console.print("\n[bold yellow]🚫 BLOCKED TRAFFIC[/bold yellow]")
+        console.print(f"  Total blocked: {blocked['total']:,}")
+        if blocked['top_status_codes']:
+            console.print(f"  Top status: {blocked['top_status_codes']}")
+        if blocked['top_countries']:
+            console.print(f"  Top countries: {list(blocked['top_countries'].items())[:5]}")
+        if blocked['top_paths']:
+            console.print(f"  Top paths: {list(blocked['top_paths'].items())[:5]}")
     
     # Show security summary by default (unless quiet mode)
     if show_summary and not quiet:
@@ -733,19 +778,32 @@ def security(log_files, scan_attacks, brute_force_detection,
                 console.print("\n  🛒 E-commerce Signals:")
                 if any(wp.values()):
                     console.print(
-                        f"    • WordPress: bruteforce={wp.get('bruteforce_ips', 0)}, xmlrpc={wp.get('xmlrpc_abuse_ips', 0)}, rest-enum={wp.get('api_enum_ips', 0)}, sensitive={wp.get('sensitive_ips', 0)}"
+                        "    • WordPress: "
+                        f"Brute Force [orange1]{wp.get('bruteforce_ips', 0)}[/orange1] IPs, "
+                        f"XML-RPC [yellow]{wp.get('xmlrpc_abuse_ips', 0)}[/yellow] IPs, "
+                        f"REST Enum [yellow]{wp.get('api_enum_ips', 0)}[/yellow] IPs, "
+                        f"Sensitive [red]{wp.get('sensitive_ips', 0)}[/red] IPs"
                     )
                 if any(wc.values()):
                     console.print(
-                        f"    • WooCommerce: api-enum={wc.get('api_enum_ips', 0)}, checkout-fails={wc.get('checkout_fail_ips', 0)}"
+                        "    • WooCommerce: "
+                        f"API Enum [yellow]{wc.get('api_enum_ips', 0)}[/yellow] IPs, "
+                        f"Checkout Fails [orange1]{wc.get('checkout_fail_ips', 0)}[/orange1] IPs"
                     )
                 if any(sw.values()):
                     console.print(
-                        f"    • Shopware: admin-probes={sw.get('admin_probe_ips', 0)}, api-enum={sw.get('api_enum_ips', 0)}, recovery-probes={sw.get('recovery_probe_ips', 0)}"
+                        "    • Shopware: "
+                        f"Admin Probes [orange1]{sw.get('admin_probe_ips', 0)}[/orange1] IPs, "
+                        f"API Enum [yellow]{sw.get('api_enum_ips', 0)}[/yellow] IPs, "
+                        f"Recovery Probes [yellow]{sw.get('recovery_probe_ips', 0)}[/yellow] IPs"
                     )
                 if any(mg.values()):
                     console.print(
-                        f"    • Magento: bruteforce={mg.get('bruteforce_ips', 0)}, api-enum={mg.get('api_enum_ips', 0)}, setup-probes={mg.get('setup_probe_ips', 0)}, sensitive={mg.get('sensitive_ips', 0)}"
+                        "    • Magento: "
+                        f"Brute Force [orange1]{mg.get('bruteforce_ips', 0)}[/orange1] IPs, "
+                        f"API Enum [yellow]{mg.get('api_enum_ips', 0)}[/yellow] IPs, "
+                        f"Setup Probes [yellow]{mg.get('setup_probe_ips', 0)}[/yellow] IPs, "
+                        f"Sensitive [red]{mg.get('sensitive_ips', 0)}[/red] IPs"
                     )
         
         if summary['top_attack_types']:
@@ -808,25 +866,34 @@ def security(log_files, scan_attacks, brute_force_detection,
                 console.print("  [green]✅ No suspicious user agents detected[/green]")
         
         # Detailed e-commerce platform IPs (top offenders by event)
-        from collections import defaultdict
         platform_events = getattr(analyzer, 'platform_events', {})
-        if platform_events and (detailed or True):
-            # Always show if there is data and detailed mode is on
-            # Build a compact list of top IPs per event type
+        if platform_events and detailed:
+            # Build a compact, styled list of top IPs per event type
             lines_printed = 0
             max_lines = 12
             header_printed = False
+            def pretty_event(name: str) -> str:
+                mapping = {
+                    'bruteforce': 'Brute Force',
+                    'xmlrpc_abuse': 'XML-RPC',
+                    'api_enum': 'API Enum',
+                    'sensitive_access': 'Sensitive',
+                    'backup_probe': 'Backup Probe',
+                    'admin_probe': 'Admin Probe',
+                    'recovery_probe': 'Recovery Probe',
+                    'setup_probe': 'Setup Probe',
+                }
+                return mapping.get(name, name.replace('_', ' ').title())
             for platform_name, event_types in platform_events.items():
                 for event_type, ip_counts in event_types.items():
                     if not ip_counts:
                         continue
                     if not header_printed:
-                        console.print("\n[bold magenta]🛒 E-COMMERCE PLATFORM EVENTS[/bold magenta]")
+                        console.print("\n[bold magenta]🛒 E-commerce Platform Events[/bold magenta]")
                         header_printed = True
                     top_ips = sorted(ip_counts.items(), key=lambda kv: kv[1], reverse=True)[:3]
-                    # e.g., Magento.setup_probe: 1.1.1.1(5), 2.2.2.2(3)
-                    joined = ", ".join([f"{ip}({cnt})" for ip, cnt in top_ips])
-                    console.print(f"  • {platform_name.title()}.{event_type}: {joined}")
+                    joined = ", ".join([f"[red]{ip}[/red]([yellow]{cnt}[/yellow])" for ip, cnt in top_ips])
+                    console.print(f"  • {platform_name.title()} – {pretty_event(event_type)}: {joined}")
                     lines_printed += 1
                     if lines_printed >= max_lines:
                         break
@@ -1056,10 +1123,13 @@ def perf(log_files, response_time_analysis, slowest,
 @click.option('--performance-analysis', is_flag=True, help='API performance analysis')
 @click.option('--top-endpoints', default=10, help='Show top N endpoints')
 @click.option('--min-requests', default=10, help='Minimum requests for endpoint analysis')
+@click.option('--ignore-blocked/--no-ignore-blocked', default=True, help='Ignore blocked requests (e.g., 403/444/495-499) during analysis')
+@click.option('--blocked-status-codes', default='403,444,495-499', help='Comma-separated status codes/ranges to treat as blocked')
+@click.option('--show-blocked', is_flag=True, help='Show blocked traffic summary')
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--output', '-o', help='Output file for API analysis report')
 def api(log_files, endpoint_analysis, graphql_analysis,
-        security_analysis, performance_analysis, top_endpoints, min_requests, yesterday, output):
+        security_analysis, performance_analysis, top_endpoints, min_requests, ignore_blocked, blocked_status_codes, show_blocked, yesterday, output):
     """🔌 Advanced API endpoint analysis and performance insights.
     
     Analyze REST APIs, GraphQL endpoints, and API usage patterns to understand
@@ -1099,13 +1169,44 @@ def api(log_files, endpoint_analysis, graphql_analysis,
     
     # Initialize API analyzer
     from .api_analysis import APIAnalyzer
+    from .filters import LogFilter
     analyzer = APIAnalyzer()
+    log_filter = LogFilter()
     
     # Process log files with nice progress display
     console.print("[blue]Starting API endpoint analysis...[/blue]")
     
+    def _parse_code_list(spec: str):
+        result = []
+        for token in (spec or '').split(','):
+            token = token.strip()
+            if not token:
+                continue
+            if '-' in token:
+                try:
+                    start, end = token.split('-', 1)
+                    start_i = int(start)
+                    end_i = int(end)
+                    if start_i <= end_i:
+                        result.extend(list(range(start_i, end_i + 1)))
+                except Exception:
+                    continue
+            else:
+                try:
+                    result.append(int(token))
+                except Exception:
+                    continue
+        return result
+
+    log_filter.set_ignore_blocked(ignore_blocked)
+    log_filter.set_blocked_status_codes(_parse_code_list(blocked_status_codes))
+
     def analyze_entry(log_entry):
-        """Analyze a single log entry for API patterns."""
+        """Analyze a single log entry for API patterns with blocked pre-filtering."""
+        if log_filter.is_blocked(log_entry):
+            analyzer.record_blocked(log_entry)
+            if log_filter.ignore_blocked:
+                return
         analyzer.analyze_entry(log_entry)
     
     process_hypernode_logs_with_callback(analyze_entry, "API analysis", use_yesterday=yesterday)
@@ -1115,6 +1216,16 @@ def api(log_files, endpoint_analysis, graphql_analysis,
     
     # Show API summary by default
     console.print("\n[bold blue]🔌 API ANALYSIS SUMMARY[/bold blue]")
+    if show_blocked:
+        blocked = analyzer.get_blocked_summary()
+        console.print("\n[bold yellow]🚫 BLOCKED TRAFFIC[/bold yellow]")
+        console.print(f"  Total blocked: {blocked['total']:,}")
+        if blocked['top_status_codes']:
+            console.print(f"  Top status: {blocked['top_status_codes']}")
+        if blocked['top_endpoints']:
+            console.print(f"  Top endpoints: {list(blocked['top_endpoints'].items())[:5]}")
+        if blocked['top_countries']:
+            console.print(f"  Top countries: {list(blocked['top_countries'].items())[:5]}")
     console.print(f"  📊 API Overview:")
     console.print(f"    • Total API Requests: [cyan]{api_summary['total_api_requests']:,}[/cyan]")
     console.print(f"    • Unique Endpoints: [cyan]{api_summary['total_endpoints']:,}[/cyan]")
@@ -1823,9 +1934,12 @@ def anomalies(log_files, sensitivity, window_size, realtime_alerts,
 @click.option('--ai-impact-analysis', is_flag=True, help='AI bot resource impact analysis')
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--output', '-o', help='Output file for bot analysis report')
+@click.option('--ignore-blocked/--no-ignore-blocked', default=True, help='Ignore blocked requests (e.g., 403/444/495-499) during analysis')
+@click.option('--blocked-status-codes', default='403,444,495-499', help='Comma-separated status codes/ranges to treat as blocked')
+@click.option('--show-blocked', is_flag=True, help='Show blocked traffic summary')
 def bots(log_files, classify_types, behavior_analysis,
          legitimate_vs_malicious, impact_analysis, unknown_only, ai_bots_only, 
-         ai_training_detection, llm_bot_analysis, ai_impact_analysis, yesterday, output):
+         ai_training_detection, llm_bot_analysis, ai_impact_analysis, yesterday, ignore_blocked, blocked_status_codes, show_blocked, output):
     """🤖 Advanced bot and crawler analysis and classification.
     
     Identify, classify, and analyze bot traffic to understand automated visitors
@@ -1880,13 +1994,44 @@ def bots(log_files, classify_types, behavior_analysis,
     
     # Initialize bot analyzer
     from .bots import BotAnalyzer
+    from .filters import LogFilter
     analyzer = BotAnalyzer()
+    log_filter = LogFilter()
     
     # Process log files with nice progress display
     console.print("[blue]Starting bot analysis...[/blue]")
     
+    def _parse_code_list(spec: str):
+        result = []
+        for token in (spec or '').split(','):
+            token = token.strip()
+            if not token:
+                continue
+            if '-' in token:
+                try:
+                    start, end = token.split('-', 1)
+                    start_i = int(start)
+                    end_i = int(end)
+                    if start_i <= end_i:
+                        result.extend(list(range(start_i, end_i + 1)))
+                except Exception:
+                    continue
+            else:
+                try:
+                    result.append(int(token))
+                except Exception:
+                    continue
+        return result
+
+    log_filter.set_ignore_blocked(ignore_blocked)
+    log_filter.set_blocked_status_codes(_parse_code_list(blocked_status_codes))
+
     def analyze_entry(log_entry):
-        """Analyze a single log entry for bots."""
+        """Analyze a single log entry for bots with blocked pre-filtering."""
+        if log_filter.is_blocked(log_entry):
+            analyzer.record_blocked(log_entry)
+            if log_filter.ignore_blocked:
+                return
         analyzer._analyze_entry(log_entry)
     
     process_hypernode_logs_with_callback(analyze_entry, "bot analysis", use_yesterday=yesterday)
@@ -1928,6 +2073,16 @@ def bots(log_files, classify_types, behavior_analysis,
             
             # Top individual bots with more details
             individual_bots = []
+    if show_blocked:
+        blocked = analyzer.get_blocked_summary()
+        console.print("\n[bold yellow]🚫 BLOCKED TRAFFIC[/bold yellow]")
+        console.print(f"  Total blocked: {blocked['total']:,}")
+        if blocked['top_status_codes']:
+            console.print(f"  Top status: {blocked['top_status_codes']}")
+        if blocked['top_countries']:
+            console.print(f"  Top countries: {list(blocked['top_countries'].items())[:5]}")
+        if blocked['top_paths']:
+            console.print(f"  Top paths: {list(blocked['top_paths'].items())[:5]}")
             for bot_type, requests in analyzer.bot_requests.items():
                 if bot_type in analyzer.bot_signatures:
                     description = analyzer.bot_signatures[bot_type].get('description', bot_type)
@@ -2256,11 +2411,6 @@ def search(log_files, ip, path, status, user_agent,
     if output:
         searcher.export_results(results, output)
         console.print(f"[green]Search results exported to: {output}[/green]")
-
-
-
-
-
 
 # Make the main command backward compatible
 @cli.command(name='main', hidden=True)

@@ -98,6 +98,18 @@ class APIAnalyzer:
         
         # Initialize API detection patterns
         self._init_api_patterns()
+
+        # Blocked traffic statistics (API context)
+        self.blocked = {
+            'total': 0,
+            'endpoints': Counter(),
+            'methods': Counter(),
+            'countries': Counter(),
+            'user_agents': Counter(),
+            'ips': Counter(),
+            'hours': Counter(),
+            'status_codes': Counter()
+        }
     
     def _init_api_patterns(self):
         """Initialize API detection patterns."""
@@ -455,6 +467,49 @@ class APIAnalyzer:
             # Simple complexity estimation based on response size
             complexity = min(bytes_sent / 1000, 100)  # Cap at 100
             self.graphql_analysis['query_complexity'].append(complexity)
+
+    def record_blocked(self, log_entry: Dict[str, Any]) -> None:
+        """Record a blocked API request for reporting (by normalized endpoint)."""
+        path = log_entry.get('path', '') or ''
+        endpoint = self._normalize_api_endpoint(path) if path else ''
+        method = (log_entry.get('method') or 'GET').upper()
+        try:
+            status = int(log_entry.get('status', 0))
+        except (ValueError, TypeError):
+            status = 0
+        ip = str(log_entry.get('ip') or log_entry.get('remote_addr') or '')
+        user_agent = log_entry.get('user_agent') or ''
+        country = (log_entry.get('country') or 'Unknown') or 'Unknown'
+        ts = log_entry.get('timestamp')
+        hour = ts.hour if ts else None
+
+        self.blocked['total'] += 1
+        if endpoint:
+            self.blocked['endpoints'][endpoint] += 1
+        if method:
+            self.blocked['methods'][method] += 1
+        self.blocked['status_codes'][status] += 1
+        if ip:
+            self.blocked['ips'][ip] += 1
+        if user_agent:
+            self.blocked['user_agents'][user_agent] += 1
+        if country and country != '-':
+            self.blocked['countries'][country] += 1
+        if hour is not None:
+            self.blocked['hours'][hour] += 1
+
+    def get_blocked_summary(self) -> Dict[str, Any]:
+        """Get compact blocked-traffic summary for APIs."""
+        return {
+            'total': self.blocked['total'],
+            'top_status_codes': dict(self.blocked['status_codes'].most_common(10)),
+            'top_endpoints': dict(self.blocked['endpoints'].most_common(10)),
+            'top_methods': dict(self.blocked['methods'].most_common(10)),
+            'top_countries': dict(self.blocked['countries'].most_common(10)),
+            'top_user_agents': dict(self.blocked['user_agents'].most_common(10)),
+            'top_ips': dict(self.blocked['ips'].most_common(10)),
+            'hourly_distribution': dict(self.blocked['hours'])
+        }
     
     def _analyze_api_security(self, path: str, method: str, log_entry: Dict[str, Any], api_endpoint: str, ip: str) -> None:
         """Analyze API security patterns."""

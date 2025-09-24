@@ -14,12 +14,38 @@ class LogFilter:
         self.filters = DEFAULT_FILTERS.copy()
         self._compiled_path_patterns = []
         self._ip_networks = []
+        # Blocked traffic controls (defaults): ignore blocked traffic, and treat 403,444,495-499 as blocked
+        # These keys may not exist in DEFAULT_FILTERS yet; keep them locally to avoid breaking existing config
+        self.ignore_blocked: bool = True
+        # Default blocked statuses: 403 (forbidden), 444 (nginx), 495-499 (nginx SSL/client cert related)
+        self.blocked_status_codes: Set[int] = set([403, 444] + list(range(495, 500)))
         self._update_compiled_patterns()
     
     def update_filters(self, **kwargs) -> None:
         """Update filter settings."""
         self.filters.update(kwargs)
         self._update_compiled_patterns()
+
+    def set_ignore_blocked(self, ignore: bool) -> None:
+        """Enable/disable ignoring blocked requests during analysis (pre-filter stage)."""
+        self.ignore_blocked = bool(ignore)
+
+    def set_blocked_status_codes(self, codes: List[int]) -> None:
+        """Configure which status codes are considered 'blocked'."""
+        try:
+            self.blocked_status_codes = set(int(c) for c in codes)
+        except Exception:
+            # Fallback to defaults if parsing fails
+            self.blocked_status_codes = set([403, 444] + list(range(495, 500)))
+
+    def is_blocked(self, log_entry: Dict[str, Any]) -> bool:
+        """Return True if the entry should be considered 'blocked' based on status code."""
+        status = log_entry.get('status')
+        try:
+            status_int = int(status) if status is not None else 0
+        except (ValueError, TypeError):
+            status_int = 0
+        return status_int in self.blocked_status_codes
     
     def _update_compiled_patterns(self) -> None:
         """Compile regex patterns and IP networks for performance."""

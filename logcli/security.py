@@ -74,6 +74,17 @@ class SecurityAnalyzer:
             }
         }
         
+        # Blocked traffic statistics
+        self.blocked = {
+            'total': 0,
+            'countries': Counter(),
+            'paths': Counter(),
+            'user_agents': Counter(),
+            'ips': Counter(),
+            'hours': Counter(),
+            'status_codes': Counter()
+        }
+        
     def _init_attack_patterns(self):
         """Initialize regex patterns for various attacks."""
         self.patterns = {
@@ -284,6 +295,44 @@ class SecurityAnalyzer:
                 rf'^/(index\.php/){re.escape(custom_clean)}/?'
             ]
             self.compiled_platform_patterns['magento']['login'].extend(_rc(admin_regexes))
+
+    def record_blocked(self, log_entry: Dict[str, Any]) -> None:
+        """Record a blocked request (e.g., 403/444/495-499) for reporting purposes."""
+        try:
+            status = int(log_entry.get('status', 0))
+        except (ValueError, TypeError):
+            status = 0
+        ip = str(log_entry.get('ip') or log_entry.get('remote_addr') or '')
+        path = log_entry.get('path') or ''
+        user_agent = log_entry.get('user_agent') or ''
+        country = (log_entry.get('country') or 'Unknown') or 'Unknown'
+        ts = log_entry.get('timestamp')
+        hour = ts.hour if ts else None
+
+        self.blocked['total'] += 1
+        self.blocked['status_codes'][status] += 1
+        if ip:
+            self.blocked['ips'][ip] += 1
+        if path:
+            self.blocked['paths'][path] += 1
+        if user_agent:
+            self.blocked['user_agents'][user_agent] += 1
+        if country and country != '-':
+            self.blocked['countries'][country] += 1
+        if hour is not None:
+            self.blocked['hours'][hour] += 1
+
+    def get_blocked_summary(self) -> Dict[str, Any]:
+        """Get a compact summary of blocked traffic."""
+        return {
+            'total': self.blocked['total'],
+            'top_status_codes': dict(self.blocked['status_codes'].most_common(10)),
+            'top_countries': dict(self.blocked['countries'].most_common(10)),
+            'top_paths': dict(self.blocked['paths'].most_common(10)),
+            'top_user_agents': dict(self.blocked['user_agents'].most_common(10)),
+            'top_ips': dict(self.blocked['ips'].most_common(10)),
+            'hourly_distribution': dict(self.blocked['hours'])
+        }
         
     def analyze_file(self, file_path: str):
         """Analyze a single log file for security threats."""
