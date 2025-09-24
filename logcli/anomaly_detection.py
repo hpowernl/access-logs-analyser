@@ -1112,13 +1112,13 @@ class AnomalyDetector:
         weekly_comparison_anomalies = [a for a in recent_anomalies if a['type'] == 'same_time_last_week_anomaly']
         if len(weekly_comparison_anomalies) > 2:
             traffic_changes = []
-        for anomaly in weekly_comparison_anomalies[:3]:
+            for anomaly in weekly_comparison_anomalies[:3]:
                 details = anomaly['details']
                 if 'ratio' in details:
                     change_type = "increased" if details['ratio'] > 1 else "decreased"
                     percentage = abs(details['ratio'] - 1) * 100
-                dt = _ensure_datetime(anomaly['detected_at'])
-                hour = dt.strftime('%H:%M') if dt else 'unknown'
+                    dt = _ensure_datetime(anomaly['detected_at'])
+                    hour = dt.strftime('%H:%M') if dt else 'unknown'
                     traffic_changes.append(f'{hour}: {change_type} by {percentage:.0f}%')
             
             recommendations.append({
@@ -1446,6 +1446,93 @@ class AnomalyDetector:
             anomalies_by_type[anomaly['type']].append(anomaly)
         
         for anomaly_type, anomalies in anomalies_by_type.items():
+            # Build driver aggregations and distributions
+            ip_counter = Counter()
+            path_counter = Counter()
+            country_counter = Counter()
+            ua_counter = Counter()
+            hourly_counts = defaultdict(int)
+            z_scores = []
+            actual_expected_pairs = []
+
+            for a in anomalies:
+                details = a.get('details', {})
+                ip = details.get('ip')
+                if ip:
+                    ip_counter[ip] += 1
+                path = details.get('path')
+                if path:
+                    path_counter[path] += 1
+                country = details.get('country')
+                if country:
+                    country_counter[country] += 1
+                ua = details.get('user_agent')
+                if ua:
+                    ua_counter[ua] += 1
+
+                # Hourly distribution
+                dt = _ensure_datetime(a.get('detected_at'))
+                if dt:
+                    hourly_counts[dt.hour] += 1
+
+                # Metrics summary
+                if isinstance(details.get('z_score'), (int, float)):
+                    z_scores.append(details['z_score'])
+                actual = None
+                expected = None
+                if 'actual_value' in details and ('historical_mean' in details or 'expected_value' in details):
+                    actual = details.get('actual_value')
+                    expected = details.get('expected_value', details.get('historical_mean'))
+                elif 'actual_requests' in details and 'expected_requests' in details:
+                    actual = details.get('actual_requests')
+                    expected = details.get('expected_requests')
+                elif 'actual_unique_ips' in details and 'expected_unique_ips' in details:
+                    actual = details.get('actual_unique_ips')
+                    expected = details.get('expected_unique_ips')
+                elif 'actual_error_rate' in details and 'expected_error_rate' in details:
+                    actual = details.get('actual_error_rate')
+                    expected = details.get('expected_error_rate')
+                if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
+                    actual_expected_pairs.append((actual, expected))
+
+            total_count = len(anomalies) or 1
+            top_ips = ip_counter.most_common(5)
+            top_paths = path_counter.most_common(5)
+            top_countries = country_counter.most_common(5)
+            top_uas = ua_counter.most_common(3)
+
+            # Percentages for drivers
+            def with_pct(items):
+                return [
+                    {'value': k, 'count': v, 'percent': round((v / total_count) * 100, 1)}
+                    for k, v in items
+                ]
+
+            # Metrics summary calculations
+            metrics_summary = {}
+            if z_scores:
+                metrics_summary['z_score'] = {
+                    'min': round(min(z_scores), 2),
+                    'avg': round(sum(z_scores) / len(z_scores), 2),
+                    'max': round(max(z_scores), 2)
+                }
+            if actual_expected_pairs:
+                diffs = [a - e for a, e in actual_expected_pairs]
+                rel = [(a - e) / e if e else None for a, e in actual_expected_pairs]
+                rel = [r for r in rel if r is not None]
+                metrics_summary['actual_vs_expected'] = {
+                    'avg_actual': round(sum(a for a, _ in actual_expected_pairs) / len(actual_expected_pairs), 2),
+                    'avg_expected': round(sum(e for _, e in actual_expected_pairs) / len(actual_expected_pairs), 2),
+                    'avg_delta': round(sum(diffs) / len(diffs), 2),
+                    'avg_delta_percent': round((sum(rel) / len(rel)) * 100, 1) if rel else None
+                }
+
+            # Peak details
+            peak_hour = None
+            peak_count = 0
+            if hourly_counts:
+                peak_hour, peak_count = max(hourly_counts.items(), key=lambda kv: kv[1])
+
             type_breakdown = {
                 'count': len(anomalies),
                 'severity_distribution': Counter(a['details'].get('severity', 'Unknown') for a in anomalies),
@@ -1454,7 +1541,19 @@ class AnomalyDetector:
                     'first_occurrence': _iso_or_none(min((_ensure_datetime(a['detected_at']) for a in anomalies if _ensure_datetime(a['detected_at'])), default=None)),
                     'last_occurrence': _iso_or_none(max((_ensure_datetime(a['detected_at']) for a in anomalies if _ensure_datetime(a['detected_at'])), default=None)),
                 },
-                'impact_summary': self._get_impact_summary_for_type(anomaly_type, anomalies)
+                'impact_summary': self._get_impact_summary_for_type(anomaly_type, anomalies),
+                'drivers': {
+                    'top_ips': with_pct(top_ips),
+                    'top_paths': with_pct(top_paths),
+                    'top_countries': with_pct(top_countries),
+                    'top_user_agents': with_pct(top_uas),
+                },
+                'hourly_distribution': dict(sorted(hourly_counts.items())),
+                'peak': {
+                    'hour': peak_hour,
+                    'count': peak_count,
+                },
+                'metrics_summary': metrics_summary
             }
             
             # Add up to 3 specific examples
