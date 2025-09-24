@@ -1081,7 +1081,12 @@ class AnomalyDetector:
     def get_anomaly_recommendations(self) -> List[Dict[str, Any]]:
         """Generate detailed, actionable recommendations based on detected anomalies."""
         recommendations = []
-        recent_anomalies = self.get_recent_anomalies(hours=24)
+        # Use internal anomalies with datetime to avoid string timestamp issues
+        cutoff_time = datetime.now() - timedelta(hours=24)
+        recent_anomalies = [
+            a for a in self.detected_anomalies
+            if (_ensure_datetime(a.get('detected_at')) or datetime.min) >= cutoff_time
+        ]
         
         # Get detailed breakdown for context
         breakdown = self._get_detailed_anomaly_breakdown(recent_anomalies)
@@ -1679,9 +1684,17 @@ class AnomalyDetector:
         
         # Calculate duration
         if len(anomalies) > 1:
-            first_time = min(a['detected_at'] for a in anomalies)
-            last_time = max(a['detected_at'] for a in anomalies)
-            duration_minutes = (last_time - first_time).total_seconds() / 60
+            times = [
+                _ensure_datetime(a.get('detected_at'))
+                for a in anomalies
+                if _ensure_datetime(a.get('detected_at')) is not None
+            ]
+            if len(times) >= 2:
+                first_time = min(times)
+                last_time = max(times)
+                duration_minutes = (last_time - first_time).total_seconds() / 60
+            else:
+                duration_minutes = 1
         else:
             duration_minutes = 1
         
