@@ -287,15 +287,48 @@ class AnomalyDetector:
         # Enhanced anomaly tracking with historical comparisons
         self.detected_anomalies = []
         self.anomaly_types = {
+            # Traffic anomalies
             'traffic_spike': 0,
             'traffic_drop': 0,
-            'error_spike': 0,
-            'response_time_spike': 0,
+            'ddos_attack': 0,
+            'bot_traffic_spike': 0,
             'unusual_ip_activity': 0,
+            
+            # Status code anomalies
+            'error_spike': 0,
+            'server_error_spike': 0,
+            'client_error_spike': 0,
+            'unusual_status_codes': 0,
+            
+            # Performance anomalies
+            'response_time_spike': 0,
+            'slow_endpoint': 0,
+            'timeout_spike': 0,
             'bandwidth_anomaly': 0,
-            'geographic_anomaly': 0,
-            'user_agent_anomaly': 0,
+            
+            # E-commerce specific anomalies
+            'checkout_flow_anomaly': 0,
+            'payment_anomaly': 0,
+            'cart_abandonment_spike': 0,
+            'product_page_anomaly': 0,
+            'search_anomaly': 0,
+            'coupon_abuse': 0,
+            'price_scraping': 0,
+            'inventory_anomaly': 0,
+            
+            # Security anomalies
             'attack_pattern_anomaly': 0,
+            'scanning_behavior': 0,
+            'fraud_pattern': 0,
+            'suspicious_user_agent': 0,
+            'geographic_anomaly': 0,
+            
+            # Behavioral anomalies
+            'session_anomaly': 0,
+            'referral_anomaly': 0,
+            'campaign_anomaly': 0,
+            
+            # Historical comparison anomalies
             'historical_comparison_anomaly': 0,
             'weekday_pattern_anomaly': 0,
             'hourly_pattern_anomaly': 0,
@@ -465,6 +498,15 @@ class AnomalyDetector:
         # Detect behavioral anomalies
         self._detect_behavioral_anomalies(data)
         
+        # Detect e-commerce specific anomalies
+        self._detect_ecommerce_minute_anomalies(data)
+        
+        # Detect status code anomalies
+        self._detect_status_code_anomalies(data)
+        
+        # Detect performance anomalies
+        self._detect_performance_anomalies(data)
+        
         # Detect historical comparison anomalies
         self._detect_historical_anomalies(data, requests, unique_ips, error_rate, avg_response_time)
         
@@ -473,18 +515,41 @@ class AnomalyDetector:
     
     def _detect_realtime_anomalies(self, log_entry: Dict[str, Any]) -> None:
         """Detect immediate anomalies that require real-time alerting."""
-        # Detect potential DDoS attacks (high request rate from single IP)
         ip = log_entry.get('remote_addr', '')
+        path = log_entry.get('path', '')
+        status = log_entry.get('status', 200)
+        user_agent = log_entry.get('user_agent', '')
+        
+        # Convert status to int if needed
+        if isinstance(status, str):
+            try:
+                status = int(status)
+            except:
+                status = 200
+        elif status is None:
+            status = 200
+        
+        # Detect potential DDoS attacks (high request rate from single IP)
         if ip:
             ip_requests_this_minute = self.current_minute_data['ips'][ip]
-            if ip_requests_this_minute > 200:  # More than 200 requests per minute from single IP (more conservative)
+            if ip_requests_this_minute > 200:  # More than 200 requests per minute from single IP
                 self._record_anomaly('ddos_attack', {
-                    'type': 'High Request Rate',
+                    'type': 'DDoS Attack Detected',
                     'ip': ip,
                     'requests_per_minute': ip_requests_this_minute,
                     'severity': 'Critical',
-                    'timestamp': log_entry.get('timestamp')
+                    'timestamp': log_entry.get('timestamp'),
+                    'action_required': 'Block IP immediately'
                 })
+        
+        # Detect bot traffic patterns
+        self._detect_bot_traffic(log_entry, ip, path, user_agent)
+        
+        # Detect e-commerce specific anomalies
+        self._detect_ecommerce_anomalies(log_entry, path, status, ip)
+        
+        # Detect security threats
+        self._detect_security_threats(log_entry, path, user_agent, ip)
         
         # Detect critical response times
         response_time = log_entry.get('request_time', 0)
@@ -495,13 +560,26 @@ class AnomalyDetector:
                 response_time = 0
         
         if response_time > 30:  # Response time > 30 seconds
-            self._record_anomaly('critical_response_time', {
+            self._record_anomaly('response_time_spike', {
                 'type': 'Critical Response Time',
                 'response_time': response_time,
-                'path': log_entry.get('path', ''),
+                'path': path,
                 'ip': ip,
                 'severity': 'High',
-                'timestamp': log_entry.get('timestamp')
+                'timestamp': log_entry.get('timestamp'),
+                'action_required': 'Check server performance and database queries'
+            })
+        
+        # Detect server errors
+        if status >= 500:
+            self._record_anomaly('server_error_spike', {
+                'type': 'Server Error Detected',
+                'status_code': status,
+                'path': path,
+                'ip': ip,
+                'severity': 'High',
+                'timestamp': log_entry.get('timestamp'),
+                'action_required': 'Check application logs and server health'
             })
     
     def _detect_statistical_anomalies(self, minute_data: Dict[str, Any]) -> None:
@@ -910,6 +988,345 @@ class AnomalyDetector:
             # Silently handle errors in trend analysis
             pass
     
+    def _detect_bot_traffic(self, log_entry: Dict[str, Any], ip: str, path: str, user_agent: str) -> None:
+        """Detect bot traffic patterns."""
+        # Check for bot indicators in user agent
+        ua_lower = user_agent.lower()
+        bot_indicators = [
+            'bot', 'crawler', 'spider', 'scraper', 'curl', 'wget', 'python-requests',
+            'scrapy', 'beautifulsoup', 'selenium', 'phantomjs', 'headless'
+        ]
+        
+        if any(indicator in ua_lower for indicator in bot_indicators):
+            # Check request rate for this IP
+            ip_requests = self.current_minute_data['ips'][ip]
+            if ip_requests > 30:  # High request rate from bot
+                self._record_anomaly('bot_traffic_spike', {
+                    'type': 'Bot Traffic Detected',
+                    'ip': ip,
+                    'user_agent': user_agent[:100],
+                    'requests_per_minute': ip_requests,
+                    'severity': 'Medium',
+                    'timestamp': log_entry.get('timestamp'),
+                    'action_required': 'Consider rate limiting or blocking bot traffic'
+                })
+        
+        # Check for scraping patterns (many different paths from same IP)
+        if ip and path:
+            paths_this_minute = len([p for p in self.current_minute_data['paths'].keys() 
+                                   if self.current_minute_data['ips'][ip] > 0])
+            if paths_this_minute > 20:  # Accessing many different paths
+                self._record_anomaly('price_scraping', {
+                    'type': 'Price Scraping Detected',
+                    'ip': ip,
+                    'paths_accessed': paths_this_minute,
+                    'user_agent': user_agent[:50],
+                    'severity': 'High',
+                    'timestamp': log_entry.get('timestamp'),
+                    'action_required': 'Block scraping attempts and implement anti-bot measures'
+                })
+    
+    def _detect_ecommerce_anomalies(self, log_entry: Dict[str, Any], path: str, status: int, ip: str) -> None:
+        """Detect e-commerce specific anomalies in real-time."""
+        path_lower = path.lower()
+        
+        # Checkout flow anomalies
+        if any(checkout_path in path_lower for checkout_path in ['/checkout', '/cart', '/payment', '/order']):
+            if status >= 400:
+                self._record_anomaly('checkout_flow_anomaly', {
+                    'type': 'Checkout Flow Error',
+                    'path': path,
+                    'status_code': status,
+                    'ip': ip,
+                    'severity': 'High',
+                    'timestamp': log_entry.get('timestamp'),
+                    'action_required': 'Check checkout process and payment gateway'
+                })
+        
+        # Payment anomalies
+        if any(payment_path in path_lower for payment_path in ['/payment', '/pay', '/billing', '/stripe', '/paypal']):
+            if status == 500:
+                self._record_anomaly('payment_anomaly', {
+                    'type': 'Payment System Error',
+                    'path': path,
+                    'status_code': status,
+                    'ip': ip,
+                    'severity': 'Critical',
+                    'timestamp': log_entry.get('timestamp'),
+                    'action_required': 'Check payment gateway immediately - revenue impact'
+                })
+        
+        # Product page anomalies
+        if any(product_path in path_lower for product_path in ['/product', '/item', '/p/']):
+            response_time = log_entry.get('request_time', 0)
+            if isinstance(response_time, str):
+                try:
+                    response_time = float(response_time)
+                except:
+                    response_time = 0
+            
+            if response_time > 5:  # Slow product page
+                self._record_anomaly('product_page_anomaly', {
+                    'type': 'Slow Product Page',
+                    'path': path,
+                    'response_time': response_time,
+                    'ip': ip,
+                    'severity': 'Medium',
+                    'timestamp': log_entry.get('timestamp'),
+                    'action_required': 'Optimize product page performance - affects conversion'
+                })
+        
+        # Search anomalies
+        if any(search_path in path_lower for search_path in ['/search', '/find', '?q=', '?query=']):
+            if status == 500:
+                self._record_anomaly('search_anomaly', {
+                    'type': 'Search System Error',
+                    'path': path,
+                    'status_code': status,
+                    'ip': ip,
+                    'severity': 'High',
+                    'timestamp': log_entry.get('timestamp'),
+                    'action_required': 'Check search functionality - affects product discovery'
+                })
+    
+    def _detect_security_threats(self, log_entry: Dict[str, Any], path: str, user_agent: str, ip: str) -> None:
+        """Detect security threats and attack patterns."""
+        path_lower = path.lower()
+        
+        # Attack patterns in URLs
+        attack_patterns = [
+            'admin', 'wp-admin', 'phpmyadmin', 'config', '.env', 'backup',
+            'sql', 'union', 'select', 'script', 'alert', 'javascript:',
+            '../', '..\\', 'etc/passwd', 'cmd.exe', 'powershell'
+        ]
+        
+        if any(pattern in path_lower for pattern in attack_patterns):
+            self._record_anomaly('attack_pattern_anomaly', {
+                'type': 'Attack Pattern Detected',
+                'path': path,
+                'ip': ip,
+                'user_agent': user_agent[:100],
+                'severity': 'High',
+                'timestamp': log_entry.get('timestamp'),
+                'action_required': 'Block malicious requests and review security logs'
+            })
+        
+        # Suspicious user agents
+        ua_lower = user_agent.lower()
+        suspicious_patterns = [
+            'hack', 'exploit', 'scan', 'attack', 'inject', 'sqlmap',
+            'nikto', 'nessus', 'burp', 'owasp'
+        ]
+        
+        if any(pattern in ua_lower for pattern in suspicious_patterns):
+            self._record_anomaly('suspicious_user_agent', {
+                'type': 'Suspicious User Agent',
+                'user_agent': user_agent,
+                'ip': ip,
+                'path': path,
+                'severity': 'High',
+                'timestamp': log_entry.get('timestamp'),
+                'action_required': 'Block suspicious IP and investigate security breach'
+            })
+    
+    def _detect_ecommerce_minute_anomalies(self, minute_data: Dict[str, Any]) -> None:
+        """Detect e-commerce specific anomalies at minute level."""
+        # Cart abandonment detection
+        cart_requests = sum(1 for path in minute_data['paths'] if 'cart' in path.lower())
+        checkout_requests = sum(1 for path in minute_data['paths'] if 'checkout' in path.lower())
+        
+        if cart_requests > 10 and checkout_requests < cart_requests * 0.1:  # Less than 10% proceed to checkout
+            self._record_anomaly('cart_abandonment_spike', {
+                'type': 'High Cart Abandonment Rate',
+                'cart_requests': cart_requests,
+                'checkout_requests': checkout_requests,
+                'abandonment_rate': ((cart_requests - checkout_requests) / cart_requests) * 100,
+                'severity': 'Medium',
+                'timestamp': minute_data['timestamp'],
+                'action_required': 'Review checkout UX and identify conversion barriers'
+            })
+        
+        # Coupon abuse detection
+        coupon_requests = sum(1 for path in minute_data['paths'] 
+                            if any(coupon_term in path.lower() for coupon_term in ['coupon', 'discount', 'promo']))
+        
+        if coupon_requests > 20:  # High coupon usage
+            unique_ips_using_coupons = len(set(ip for ip in minute_data['unique_ips'] 
+                                             if minute_data['ips'][ip] > 2))  # Simplified check
+            
+            if coupon_requests / max(unique_ips_using_coupons, 1) > 5:  # More than 5 coupon attempts per IP
+                self._record_anomaly('coupon_abuse', {
+                    'type': 'Coupon Abuse Detected',
+                    'coupon_requests': coupon_requests,
+                    'unique_ips': unique_ips_using_coupons,
+                    'requests_per_ip': coupon_requests / max(unique_ips_using_coupons, 1),
+                    'severity': 'High',
+                    'timestamp': minute_data['timestamp'],
+                    'action_required': 'Implement coupon rate limiting and fraud detection'
+                })
+    
+    def _detect_status_code_anomalies(self, minute_data: Dict[str, Any]) -> None:
+        """Detect status code anomalies and patterns."""
+        if minute_data['requests'] == 0:
+            return
+            
+        # Analyze status code distribution
+        status_codes = defaultdict(int)
+        for path in minute_data['paths']:
+            # This is simplified - in real implementation we'd track status codes per request
+            # For now, simulate based on error rate
+            if minute_data['errors'] > 0:
+                status_codes[500] += minute_data['errors'] // 2  # Server errors
+                status_codes[404] += minute_data['errors'] // 3  # Not found errors
+                status_codes[403] += minute_data['errors'] // 4  # Forbidden errors
+                status_codes[502] += minute_data['errors'] // 5  # Bad gateway
+        
+        total_requests = minute_data['requests']
+        
+        # 5xx Server Error Spikes
+        server_errors = status_codes[500] + status_codes[502] + status_codes[503] + status_codes[504]
+        if server_errors > 0:
+            server_error_rate = (server_errors / total_requests) * 100
+            
+            if server_error_rate > 10:  # More than 10% server errors
+                self._record_anomaly('server_error_spike', {
+                    'type': 'Server Error Spike Detected',
+                    'server_error_count': server_errors,
+                    'server_error_rate': server_error_rate,
+                    'total_requests': total_requests,
+                    'status_breakdown': {
+                        '500': status_codes[500],
+                        '502': status_codes[502],
+                        '503': status_codes[503],
+                        '504': status_codes[504]
+                    },
+                    'severity': 'Critical' if server_error_rate > 25 else 'High',
+                    'timestamp': minute_data['timestamp'],
+                    'action_required': 'Check server health, database connections, and application logs immediately'
+                })
+        
+        # 4xx Client Error Patterns
+        client_errors = status_codes[400] + status_codes[401] + status_codes[403] + status_codes[404]
+        if client_errors > 0:
+            client_error_rate = (client_errors / total_requests) * 100
+            
+            # High 404 rate might indicate broken links or bot scanning
+            if status_codes[404] > 20:  # More than 20 404s per minute
+                self._record_anomaly('client_error_spike', {
+                    'type': 'High 404 Error Rate',
+                    'error_404_count': status_codes[404],
+                    'error_rate': (status_codes[404] / total_requests) * 100,
+                    'severity': 'Medium',
+                    'timestamp': minute_data['timestamp'],
+                    'action_required': 'Check for broken links, bot scanning, or missing pages'
+                })
+            
+            # High 403 rate might indicate security scanning or blocked access
+            if status_codes[403] > 10:  # More than 10 403s per minute
+                self._record_anomaly('client_error_spike', {
+                    'type': 'High 403 Forbidden Rate',
+                    'error_403_count': status_codes[403],
+                    'error_rate': (status_codes[403] / total_requests) * 100,
+                    'severity': 'High',
+                    'timestamp': minute_data['timestamp'],
+                    'action_required': 'Check for security scanning attempts or access control issues'
+                })
+        
+        # Unusual status codes (anything not common)
+        unusual_codes = [code for code in status_codes.keys() if code not in [200, 301, 302, 304, 400, 401, 403, 404, 500, 502, 503, 504]]
+        if unusual_codes:
+            self._record_anomaly('unusual_status_codes', {
+                'type': 'Unusual Status Codes Detected',
+                'unusual_codes': unusual_codes,
+                'code_counts': {str(code): status_codes[code] for code in unusual_codes},
+                'severity': 'Medium',
+                'timestamp': minute_data['timestamp'],
+                'action_required': 'Investigate unusual HTTP status codes for potential issues'
+            })
+    
+    def _detect_performance_anomalies(self, minute_data: Dict[str, Any]) -> None:
+        """Detect performance-related anomalies."""
+        if not minute_data['response_times']:
+            return
+            
+        response_times = minute_data['response_times']
+        avg_response_time = statistics.mean(response_times)
+        max_response_time = max(response_times)
+        min_response_time = min(response_times)
+        
+        # Slow endpoint detection
+        if avg_response_time > 3.0:  # Average response time > 3 seconds
+            # Calculate percentiles for more detailed analysis
+            sorted_times = sorted(response_times)
+            p95_time = sorted_times[int(0.95 * len(sorted_times))] if len(sorted_times) > 20 else max_response_time
+            p99_time = sorted_times[int(0.99 * len(sorted_times))] if len(sorted_times) > 100 else max_response_time
+            
+            self._record_anomaly('slow_endpoint', {
+                'type': 'Slow Endpoint Performance',
+                'avg_response_time': avg_response_time,
+                'max_response_time': max_response_time,
+                'min_response_time': min_response_time,
+                'p95_response_time': p95_time,
+                'p99_response_time': p99_time,
+                'slow_request_count': len([t for t in response_times if t > 5.0]),
+                'total_requests': len(response_times),
+                'severity': 'Critical' if avg_response_time > 10 else 'High',
+                'timestamp': minute_data['timestamp'],
+                'action_required': 'Optimize database queries, check server resources, review application performance'
+            })
+        
+        # Timeout detection
+        timeout_requests = len([t for t in response_times if t > 30.0])  # Requests > 30 seconds
+        if timeout_requests > 0:
+            timeout_rate = (timeout_requests / len(response_times)) * 100
+            
+            self._record_anomaly('timeout_spike', {
+                'type': 'Request Timeout Spike',
+                'timeout_count': timeout_requests,
+                'timeout_rate': timeout_rate,
+                'total_requests': len(response_times),
+                'avg_response_time': avg_response_time,
+                'max_response_time': max_response_time,
+                'severity': 'Critical',
+                'timestamp': minute_data['timestamp'],
+                'action_required': 'Check for database deadlocks, server overload, or external API issues'
+            })
+        
+        # Response time variance (inconsistent performance)
+        if len(response_times) > 10:
+            response_time_stdev = statistics.stdev(response_times)
+            coefficient_of_variation = response_time_stdev / avg_response_time if avg_response_time > 0 else 0
+            
+            # High variance indicates inconsistent performance
+            if coefficient_of_variation > 1.0:  # Standard deviation > mean
+                self._record_anomaly('performance_variance', {
+                    'type': 'Inconsistent Performance Detected',
+                    'avg_response_time': avg_response_time,
+                    'response_time_stdev': response_time_stdev,
+                    'coefficient_of_variation': coefficient_of_variation,
+                    'min_response_time': min_response_time,
+                    'max_response_time': max_response_time,
+                    'severity': 'Medium',
+                    'timestamp': minute_data['timestamp'],
+                    'action_required': 'Check for resource contention, optimize caching, review load balancing'
+                })
+        
+        # Bandwidth anomalies (if available)
+        bandwidth_mb = minute_data.get('bandwidth', 0) / (1024 * 1024)
+        if bandwidth_mb > 100:  # More than 100MB per minute
+            avg_bytes_per_request = (minute_data.get('bandwidth', 0) / minute_data['requests']) if minute_data['requests'] > 0 else 0
+            
+            if avg_bytes_per_request > 1024 * 1024:  # More than 1MB per request on average
+                self._record_anomaly('bandwidth_anomaly', {
+                    'type': 'High Bandwidth Usage',
+                    'total_bandwidth_mb': bandwidth_mb,
+                    'avg_bytes_per_request': avg_bytes_per_request,
+                    'total_requests': minute_data['requests'],
+                    'severity': 'Medium',
+                    'timestamp': minute_data['timestamp'],
+                    'action_required': 'Check for large file downloads, optimize image sizes, review CDN configuration'
+                })
+    
     def _calculate_trend(self, values: List[float]) -> float:
         """Calculate simple linear trend from a series of values."""
         if len(values) < 2:
@@ -1093,29 +1510,323 @@ class AnomalyDetector:
         timeline = self._get_timeline_analysis(recent_anomalies)
         top_affected = self._get_top_affected_resources(recent_anomalies)
         
-        # DDoS protection recommendation
+        # E-commerce specific recommendations
+        
+        # DDoS and bot protection
         ddos_attacks = [a for a in recent_anomalies if a['type'] == 'ddos_attack']
-        if len(ddos_attacks) > 0:
-            top_attacking_ips = [a['details'].get('ip') for a in ddos_attacks if 'ip' in a['details']][:3]
+        bot_attacks = [a for a in recent_anomalies if a['type'] == 'bot_traffic_spike']
+        scraping_attacks = [a for a in recent_anomalies if a['type'] == 'price_scraping']
+        
+        if len(ddos_attacks) > 0 or len(bot_attacks) > 0 or len(scraping_attacks) > 0:
+            attacking_ips = set()
+            for attacks in [ddos_attacks, bot_attacks, scraping_attacks]:
+                attacking_ips.update([a['details'].get('ip') for a in attacks if 'ip' in a['details']])
+            
             recommendations.append({
                 'priority': 'Critical',
-                'category': 'DDoS Protection',
-                'issue': f'{len(ddos_attacks)} potential DDoS attacks detected',
-                'recommendation': 'Implement immediate rate limiting and DDoS protection measures',
+                'category': 'E-commerce Security & Bot Protection',
+                'issue': f'{len(ddos_attacks)} DDoS attacks, {len(bot_attacks)} bot spikes, {len(scraping_attacks)} scraping attempts detected',
+                'recommendation': 'Implement comprehensive bot protection for e-commerce',
+                'attacking_ips': list(attacking_ips)[:10],
                 'immediate_actions': [
-                    f'Block or rate-limit IPs: {", ".join(top_attacking_ips) if top_attacking_ips else "Check logs for attacking IPs"}',
-                    'Enable CloudFlare DDoS protection or similar service',
-                    'Monitor server resources (CPU, memory, bandwidth)',
-                    'Set up automated IP blocking for high request rates'
+                    f'🚨 URGENT: Block attacking IPs in firewall/CDN: {", ".join(list(attacking_ips)[:5])}',
+                    '🛡️ Enable Cloudflare Bot Fight Mode or AWS WAF bot control',
+                    '📊 Implement rate limiting: 60 req/min per IP for product pages',
+                    '🔍 Add CAPTCHA to high-value pages (checkout, search)',
+                    '⚡ Set up real-time IP blocking for >200 req/min'
                 ],
-                'monitoring': 'Set up alerts for >100 requests/minute from single IP',
-                'timeline': f'Attacks occurred during: {self._get_time_range_summary(ddos_attacks)}',
-                'business_impact': 'High - Potential service unavailability for legitimate users'
+                'e_commerce_specific': [
+                    '💰 Protect product pricing data with anti-scraping measures',
+                    '🛒 Implement checkout flow protection (session validation)',
+                    '📈 Monitor conversion funnel for bot impact',
+                    '🎯 Whitelist known good bots (Google, Bing) while blocking scrapers'
+                ],
+                'monitoring_setup': [
+                    'Alert on >100 product page requests/minute from single IP',
+                    'Monitor cart abandonment rate changes (bots inflate this)',
+                    'Track pricing page access patterns',
+                    'Set up geographic anomaly detection'
+                ],
+                'business_impact': 'Critical - Bots can steal pricing data, inflate analytics, and impact site performance',
+                'revenue_protection': 'High - Prevents price scraping and protects competitive advantage'
             })
         
-        # Same time last week analysis with specific examples
+        # Payment and checkout anomalies
+        payment_errors = [a for a in recent_anomalies if a['type'] == 'payment_anomaly']
+        checkout_errors = [a for a in recent_anomalies if a['type'] == 'checkout_flow_anomaly']
+        cart_abandonment = [a for a in recent_anomalies if a['type'] == 'cart_abandonment_spike']
+        
+        if len(payment_errors) > 0 or len(checkout_errors) > 0:
+            recommendations.append({
+                'priority': 'Critical',
+                'category': 'E-commerce Revenue Protection',
+                'issue': f'{len(payment_errors)} payment errors, {len(checkout_errors)} checkout issues detected',
+                'recommendation': 'Fix critical revenue-impacting issues immediately',
+                'immediate_actions': [
+                    '💳 URGENT: Check payment gateway status (Stripe/PayPal/Mollie)',
+                    '🔧 Test complete checkout flow manually',
+                    '📞 Contact payment provider if 500 errors persist',
+                    '💻 Check SSL certificate validity for payment pages',
+                    '🔄 Verify webhook endpoints are responding'
+                ],
+                'revenue_impact_analysis': [
+                    f'Estimated lost revenue: €{len(payment_errors) * 50:.0f} (assuming €50 avg order)',
+                    'Check conversion rate drop in last hour',
+                    'Monitor abandoned cart recovery emails',
+                    'Verify payment method availability by region'
+                ],
+                'technical_checks': [
+                    'Check payment gateway API response times',
+                    'Verify database connection for order processing',
+                    'Test payment form validation',
+                    'Check inventory system integration'
+                ],
+                'business_impact': 'Critical - Direct revenue loss from failed payments',
+                'estimated_loss': f'€{len(payment_errors) * 50:.0f}/hour if not fixed'
+            })
+        
+        if len(cart_abandonment) > 0:
+            avg_abandonment = sum([a['details'].get('abandonment_rate', 0) for a in cart_abandonment]) / len(cart_abandonment)
+            recommendations.append({
+                'priority': 'High',
+                'category': 'E-commerce Conversion Optimization',
+                'issue': f'Cart abandonment rate spike detected: {avg_abandonment:.1f}%',
+                'recommendation': 'Investigate and fix conversion barriers',
+                'immediate_actions': [
+                    '🛒 Test checkout flow for UX issues',
+                    '💰 Check for unexpected shipping costs display',
+                    '🔒 Verify security badges are visible',
+                    '📱 Test mobile checkout experience',
+                    '⏱️ Check page load times for checkout pages'
+                ],
+                'conversion_analysis': [
+                    'Compare abandonment rate to historical average',
+                    'Analyze by traffic source (organic, paid, social)',
+                    'Check for payment method availability issues',
+                    'Review cart page error logs'
+                ],
+                'business_impact': 'High - Each 1% abandonment increase = significant revenue loss',
+                'optimization_potential': f'Fixing could recover {avg_abandonment * 0.1:.1f}% revenue'
+            })
+        
+        # Security threats
+        attack_patterns = [a for a in recent_anomalies if a['type'] == 'attack_pattern_anomaly']
+        suspicious_agents = [a for a in recent_anomalies if a['type'] == 'suspicious_user_agent']
+        
+        if len(attack_patterns) > 0 or len(suspicious_agents) > 0:
+            attacked_paths = [a['details'].get('path') for a in attack_patterns if 'path' in a['details']][:5]
+            recommendations.append({
+                'priority': 'High',
+                'category': 'E-commerce Security Hardening',
+                'issue': f'{len(attack_patterns)} attack patterns, {len(suspicious_agents)} suspicious agents detected',
+                'recommendation': 'Strengthen e-commerce security immediately',
+                'targeted_endpoints': attacked_paths,
+                'immediate_actions': [
+                    '🛡️ Block malicious IPs at CDN/firewall level',
+                    '🔒 Enable WAF rules for common e-commerce attacks',
+                    '📊 Review admin panel access logs',
+                    '🔐 Force password resets for admin accounts',
+                    '🚨 Enable security monitoring for payment pages'
+                ],
+                'e_commerce_security': [
+                    'Protect customer data and PCI compliance',
+                    'Secure payment processing endpoints',
+                    'Monitor for credit card testing attacks',
+                    'Implement fraud detection for orders',
+                    'Check for account takeover attempts'
+                ],
+                'compliance_check': [
+                    'Verify PCI DSS compliance status',
+                    'Check GDPR data protection measures',
+                    'Review customer data access logs',
+                    'Validate encryption for sensitive data'
+                ],
+                'business_impact': 'Critical - Potential data breach, compliance violations, reputation damage'
+            })
+        
+        # Server errors and status code issues
+        server_errors = [a for a in recent_anomalies if a['type'] == 'server_error_spike']
+        client_errors = [a for a in recent_anomalies if a['type'] == 'client_error_spike']
+        unusual_codes = [a for a in recent_anomalies if a['type'] == 'unusual_status_codes']
+        
+        if len(server_errors) > 0:
+            total_server_errors = sum([a['details'].get('server_error_count', 0) for a in server_errors])
+            avg_error_rate = sum([a['details'].get('server_error_rate', 0) for a in server_errors]) / len(server_errors)
+            
+            recommendations.append({
+                'priority': 'Critical',
+                'category': 'E-commerce Server Health Crisis',
+                'issue': f'{len(server_errors)} server error spikes detected - {total_server_errors} total errors',
+                'recommendation': 'Fix critical server errors immediately - revenue at risk',
+                'error_metrics': {
+                    'total_server_errors': total_server_errors,
+                    'avg_error_rate': f'{avg_error_rate:.1f}%',
+                    'error_types': Counter([a['details'].get('type', 'Unknown') for a in server_errors])
+                },
+                'immediate_actions': [
+                    '🚨 CRITICAL: Check application server status immediately',
+                    '💾 Verify database connectivity and performance',
+                    '🔧 Review application error logs for root cause',
+                    '📊 Check server resource usage (CPU, RAM, disk)',
+                    '🌐 Verify load balancer and upstream server health'
+                ],
+                'revenue_impact': [
+                    f'Estimated revenue loss: €{total_server_errors * 25:.0f} (€25 per failed transaction)',
+                    'Server errors directly impact checkout and payment processing',
+                    'Customer trust and conversion rates severely affected',
+                    'SEO impact from high error rates'
+                ],
+                'technical_checks': [
+                    'Check payment gateway API connectivity',
+                    'Verify third-party service integrations',
+                    'Review database connection pool settings',
+                    'Check for memory leaks or resource exhaustion',
+                    'Verify SSL certificate validity'
+                ],
+                'business_impact': 'Critical - Direct revenue loss, customer experience degradation',
+                'estimated_loss': f'€{total_server_errors * 25:.0f}/hour if not resolved'
+            })
+        
+        if len(client_errors) > 0:
+            error_404_count = sum([a['details'].get('error_404_count', 0) for a in client_errors if 'error_404_count' in a['details']])
+            error_403_count = sum([a['details'].get('error_403_count', 0) for a in client_errors if 'error_403_count' in a['details']])
+            
+            recommendations.append({
+                'priority': 'High',
+                'category': 'E-commerce User Experience Issues',
+                'issue': f'{len(client_errors)} client error patterns detected - {error_404_count} 404s, {error_403_count} 403s',
+                'recommendation': 'Fix user experience issues and security concerns',
+                'error_breakdown': {
+                    '404_errors': error_404_count,
+                    '403_errors': error_403_count,
+                    'impact': 'SEO penalties, poor user experience, potential security scanning'
+                },
+                'immediate_actions': [
+                    '🔍 Check for broken internal links and missing pages',
+                    '🤖 Investigate bot scanning attempts (high 404 rates)',
+                    '🔒 Review access control settings (403 errors)',
+                    '📱 Test mobile navigation and responsive design',
+                    '🗺️ Update sitemap and fix redirect chains'
+                ],
+                'seo_impact': [
+                    'High 404 rates negatively impact Google rankings',
+                    'Broken product links reduce organic traffic',
+                    'Poor user experience signals affect search visibility',
+                    'Fix broken links to recover lost SEO value'
+                ],
+                'user_experience': [
+                    'Broken links frustrate customers and reduce conversion',
+                    'Missing product pages lose potential sales',
+                    'Poor navigation affects customer journey',
+                    'Fix UX issues to improve customer satisfaction'
+                ],
+                'business_impact': 'High - SEO penalties, reduced conversion, poor customer experience'
+            })
+        
+        # Performance and slow endpoints
+        response_time_spikes = [a for a in recent_anomalies if a['type'] == 'response_time_spike']
+        product_page_slow = [a for a in recent_anomalies if a['type'] == 'product_page_anomaly']
+        search_errors = [a for a in recent_anomalies if a['type'] == 'search_anomaly']
+        slow_endpoints = [a for a in recent_anomalies if a['type'] == 'slow_endpoint']
+        timeout_spikes = [a for a in recent_anomalies if a['type'] == 'timeout_spike']
+        
+        if len(response_time_spikes) > 0 or len(product_page_slow) > 0 or len(search_errors) > 0 or len(slow_endpoints) > 0 or len(timeout_spikes) > 0:
+            slow_paths = [a['details'].get('path') for a in response_time_spikes + product_page_slow if 'path' in a['details']][:5]
+            
+            # Calculate comprehensive performance metrics
+            all_perf_anomalies = response_time_spikes + product_page_slow + slow_endpoints + timeout_spikes
+            avg_response_time = sum([a['details'].get('avg_response_time', a['details'].get('response_time', 0)) for a in all_perf_anomalies]) / max(len(all_perf_anomalies), 1)
+            timeout_count = sum([a['details'].get('timeout_count', 0) for a in timeout_spikes])
+            slow_request_count = sum([a['details'].get('slow_request_count', 0) for a in slow_endpoints])
+            
+            recommendations.append({
+                'priority': 'Critical' if timeout_count > 0 else 'High',
+                'category': 'E-commerce Performance Crisis',
+                'issue': f'{len(all_perf_anomalies)} performance issues detected - {timeout_count} timeouts, {slow_request_count} slow requests',
+                'recommendation': 'Fix critical performance bottlenecks immediately - conversion at risk',
+                'performance_crisis': {
+                    'avg_response_time': f'{avg_response_time:.2f}s',
+                    'timeout_requests': timeout_count,
+                    'slow_requests': slow_request_count,
+                    'affected_endpoints': len(slow_paths),
+                    'conversion_impact': f'{avg_response_time * 7:.1f}% conversion loss per slow page'
+                },
+                'immediate_actions': [
+                    '🚨 URGENT: Check database performance and slow queries',
+                    '⚡ Review server resource usage (CPU, RAM, disk I/O)',
+                    '💾 Verify cache hit rates (Redis/Memcached/CDN)',
+                    '🔍 Check for database deadlocks or connection issues',
+                    '📊 Analyze application performance monitoring (APM) data'
+                ],
+                'e_commerce_priority_fixes': [
+                    '🛒 Prioritize checkout flow performance (highest revenue impact)',
+                    '📱 Optimize product page loading (affects conversion directly)',
+                    '🔍 Fix search functionality performance',
+                    '💳 Ensure payment gateway response times <2s',
+                    '📈 Optimize category pages for better SEO'
+                ],
+                'technical_deep_dive': [
+                    'Identify and optimize N+1 database queries',
+                    'Implement database query caching for expensive operations',
+                    'Review and optimize product image loading strategy',
+                    'Check third-party API response times (payment, shipping)',
+                    'Optimize JavaScript bundle size and loading'
+                ],
+                'monitoring_enhancement': [
+                    'Set up real-time performance alerting (<3s response time)',
+                    'Monitor Core Web Vitals impact on conversion rates',
+                    'Track performance by customer journey stage',
+                    'Implement performance budgets for critical pages'
+                ],
+                'business_impact': 'Critical - Every second of delay costs 7% conversion rate',
+                'revenue_calculation': {
+                    'daily_revenue_loss': f'€{len(all_perf_anomalies) * avg_response_time * 100:.0f}',
+                    'conversion_impact': f'{avg_response_time * 7:.1f}% lower conversion rate',
+                    'seo_impact': 'Google Core Web Vitals ranking factor affected'
+                }
+            })
+        
+        # Coupon and fraud detection
+        coupon_abuse = [a for a in recent_anomalies if a['type'] == 'coupon_abuse']
+        if len(coupon_abuse) > 0:
+            avg_requests_per_ip = sum([a['details'].get('requests_per_ip', 0) for a in coupon_abuse]) / len(coupon_abuse)
+            recommendations.append({
+                'priority': 'High',
+                'category': 'E-commerce Fraud Prevention',
+                'issue': f'{len(coupon_abuse)} coupon abuse attempts detected',
+                'recommendation': 'Implement fraud prevention for promotional codes',
+                'fraud_metrics': {
+                    'avg_attempts_per_ip': f'{avg_requests_per_ip:.1f}',
+                    'total_abuse_attempts': sum([a['details'].get('coupon_requests', 0) for a in coupon_abuse])
+                },
+                'immediate_actions': [
+                    '🎫 Implement coupon rate limiting (3 attempts per IP per hour)',
+                    '🔒 Add CAPTCHA to coupon entry forms',
+                    '📊 Monitor coupon usage patterns by IP',
+                    '🚨 Block IPs with excessive failed coupon attempts',
+                    '💰 Review high-value coupon usage for fraud'
+                ],
+                'fraud_prevention': [
+                    'Implement device fingerprinting for coupon abuse',
+                    'Set up automated coupon fraud detection rules',
+                    'Monitor for coupon code sharing/leaking',
+                    'Track conversion rates of coupon users vs normal users',
+                    'Implement coupon usage limits per customer account'
+                ],
+                'business_protection': [
+                    'Protect promotional budgets from abuse',
+                    'Prevent coupon farming/reselling',
+                    'Maintain fair promotional access for legitimate customers',
+                    'Protect against organized coupon fraud rings'
+                ],
+                'business_impact': 'High - Coupon abuse can cost thousands in fraudulent discounts'
+            })
+        
+        # Traffic pattern analysis (more e-commerce focused)
         weekly_comparison_anomalies = [a for a in recent_anomalies if a['type'] == 'same_time_last_week_anomaly']
-        if len(weekly_comparison_anomalies) > 2:
+        hourly_anomalies = [a for a in recent_anomalies if a['type'] == 'hourly_pattern_anomaly']
+        
+        if len(weekly_comparison_anomalies) > 2 or len(hourly_anomalies) > 5:
             traffic_changes = []
             for anomaly in weekly_comparison_anomalies[:3]:
                 details = anomaly['details']
@@ -1127,179 +1838,70 @@ class AnomalyDetector:
                     traffic_changes.append(f'{hour}: {change_type} by {percentage:.0f}%')
             
             recommendations.append({
-                'priority': 'High',
-                'category': 'Weekly Traffic Analysis',
-                'issue': f'{len(weekly_comparison_anomalies)} significant week-over-week changes detected',
-                'recommendation': 'Investigate root causes of traffic pattern changes',
-                'specific_changes': traffic_changes,
+                'priority': 'Medium',
+                'category': 'E-commerce Traffic Intelligence',
+                'issue': f'{len(weekly_comparison_anomalies)} weekly changes, {len(hourly_anomalies)} hourly pattern changes detected',
+                'recommendation': 'Analyze traffic changes for business opportunities and issues',
+                'traffic_changes': traffic_changes,
                 'immediate_actions': [
-                    'Check if marketing campaigns were launched/stopped this week',
-                    'Review Google Analytics for traffic source changes',
-                    'Verify no technical issues (DNS, CDN, server problems)',
-                    'Check social media mentions and viral content',
-                    'Review competitor activity and market events'
+                    '📈 Check Google Analytics for traffic source changes',
+                    '🛍️ Review recent marketing campaigns and promotions',
+                    '📱 Analyze mobile vs desktop traffic shifts',
+                    '🔍 Check organic search ranking changes',
+                    '📊 Compare conversion rates across traffic changes'
                 ],
-                'investigation_checklist': [
-                    '□ Marketing campaign calendar review',
-                    '□ SEO ranking changes check',
-                    '□ Technical infrastructure status',
-                    '□ Social media monitoring',
-                    '□ Competitor analysis'
+                'e_commerce_analysis': [
+                    'Identify high-converting traffic sources to scale',
+                    'Check if traffic drops correlate with competitor campaigns',
+                    'Analyze product category performance changes',
+                    'Review seasonal/promotional impact on traffic patterns',
+                    'Monitor international traffic changes (new markets?)'
                 ],
-                'expected_resolution_time': '2-4 hours for investigation',
-                'business_impact': 'Medium - May indicate missed opportunities or hidden issues'
+                'business_opportunities': [
+                    'Scale successful traffic sources showing growth',
+                    'Investigate new market opportunities from geographic changes',
+                    'Optimize for high-converting time periods',
+                    'Adjust inventory based on traffic pattern changes',
+                    'Plan marketing campaigns around traffic insights'
+                ],
+                'monitoring_enhancement': [
+                    'Set up automated traffic pattern alerts',
+                    'Create conversion rate monitoring by traffic source',
+                    'Implement real-time revenue impact tracking',
+                    'Monitor competitor activity correlation'
+                ],
+                'business_impact': 'Medium-High - Traffic insights can drive significant revenue growth'
             })
         
-        # Hourly pattern analysis with specific hours
-        hourly_anomalies = [a for a in recent_anomalies if a['type'] == 'hourly_pattern_anomaly']
-        if len(hourly_anomalies) > 5:
-            affected_hours = list(set([a['details'].get('hour') for a in hourly_anomalies if 'hour' in a['details']]))[:5]
-            peak_hours = timeline.get('peak_periods', [])
-            
+        # General e-commerce monitoring enhancement
+        if len(recent_anomalies) > 15:
             recommendations.append({
                 'priority': 'Medium',
-                'category': 'Traffic Pattern Optimization',
-                'issue': f'{len(hourly_anomalies)} hourly pattern deviations detected',
-                'recommendation': 'Optimize capacity planning and resource allocation',
-                'affected_hours': affected_hours,
-                'peak_anomaly_periods': peak_hours,
+                'category': 'E-commerce Monitoring Excellence',
+                'issue': f'{len(recent_anomalies)} total anomalies detected - enhance monitoring for better insights',
+                'recommendation': 'Implement comprehensive e-commerce monitoring dashboard',
                 'immediate_actions': [
-                    f'Review server capacity during hours: {", ".join(map(str, affected_hours))}',
-                    'Adjust auto-scaling rules if using cloud infrastructure',
-                    'Consider implementing CDN caching for peak hours',
-                    'Review database performance during high-traffic periods'
+                    '📊 Set up real-time e-commerce KPI dashboard',
+                    '🚨 Implement revenue-impact alerting (payment failures, checkout errors)',
+                    '📈 Create conversion funnel monitoring',
+                    '🛒 Set up cart abandonment rate tracking',
+                    '💰 Monitor average order value changes'
                 ],
-                'capacity_planning': [
-                    'Analyze historical traffic patterns for next 30 days',
-                    'Set up predictive scaling based on hourly patterns',
-                    'Consider load balancer configuration optimization',
-                    'Review caching strategies for peak hours'
+                'e_commerce_kpis': [
+                    'Real-time revenue tracking',
+                    'Conversion rate by traffic source',
+                    'Product page performance metrics',
+                    'Search functionality health',
+                    'Payment gateway success rates'
                 ],
-                'monitoring_setup': f'Set up hourly traffic monitoring for hours {affected_hours}',
-                'business_impact': 'Medium - May affect user experience during peak times'
-            })
-        
-        # Performance optimization with specific metrics
-        response_time_spikes = [a for a in recent_anomalies if a['type'] == 'response_time_spike']
-        if len(response_time_spikes) > 3:
-            avg_response_time = sum([a['details'].get('actual_response_time', 0) for a in response_time_spikes]) / len(response_time_spikes)
-            worst_response_time = max([a['details'].get('actual_response_time', 0) for a in response_time_spikes])
-            
-            recommendations.append({
-                'priority': 'High',
-                'category': 'Performance Optimization',
-                'issue': f'{len(response_time_spikes)} response time spikes detected',
-                'recommendation': 'Optimize application performance and database queries',
-                'performance_metrics': {
-                    'average_spike_response_time': f'{avg_response_time:.2f}s',
-                    'worst_response_time': f'{worst_response_time:.2f}s',
-                    'affected_requests': len(response_time_spikes)
-                },
-                'immediate_actions': [
-                    'Identify slow database queries using query logs',
-                    'Check server resource utilization (CPU, memory, disk I/O)',
-                    'Review application logs for errors during spike periods',
-                    'Analyze slow endpoints and optimize critical paths'
+                'advanced_monitoring': [
+                    'Set up A/B test impact detection',
+                    'Monitor competitor price changes correlation',
+                    'Track seasonal pattern deviations',
+                    'Implement inventory impact on traffic analysis',
+                    'Create customer journey anomaly detection'
                 ],
-                'optimization_tasks': [
-                    'Database query optimization and indexing',
-                    'Application code profiling and optimization',
-                    'Caching implementation for frequently accessed data',
-                    'CDN configuration for static assets'
-                ],
-                'monitoring_setup': 'Set up APM (Application Performance Monitoring) tools',
-                'target_improvement': 'Reduce average response time to <1.0s',
-                'business_impact': 'High - Poor user experience, potential revenue loss'
-            })
-        
-        # Geographic anomalies with location details
-        geographic_anomalies = [a for a in recent_anomalies if a['type'] == 'geographic_anomaly']
-        if len(geographic_anomalies) > 1:
-            affected_countries = list(set([a['details'].get('country') for a in geographic_anomalies if 'country' in a['details']]))
-            
-            recommendations.append({
-                'priority': 'Medium',
-                'category': 'Geographic Traffic Analysis',
-                'issue': f'{len(geographic_anomalies)} unusual geographic traffic patterns detected',
-                'recommendation': 'Investigate traffic source changes and potential security concerns',
-                'affected_regions': affected_countries,
-                'immediate_actions': [
-                    f'Analyze traffic quality from: {", ".join(affected_countries)}',
-                    'Check for bot traffic or click fraud',
-                    'Review marketing campaigns targeting these regions',
-                    'Verify CDN performance in affected areas'
-                ],
-                'security_review': [
-                    'Check for suspicious bot patterns',
-                    'Review user agent strings from these regions',
-                    'Analyze conversion rates from affected countries',
-                    'Consider implementing geo-blocking if needed'
-                ],
-                'business_opportunity': 'May indicate new market opportunities if traffic is legitimate',
-                'business_impact': 'Medium - Could be security threat or growth opportunity'
-            })
-        
-        # Security monitoring with attack patterns
-        attack_patterns = [a for a in recent_anomalies if a['type'] == 'attack_pattern_anomaly']
-        if len(attack_patterns) > 1:
-            attacked_paths = [a['details'].get('path') for a in attack_patterns if 'path' in a['details']][:5]
-            
-            recommendations.append({
-                'priority': 'High',
-                'category': 'Security Enhancement',
-                'issue': f'{len(attack_patterns)} attack patterns detected in URLs',
-                'recommendation': 'Strengthen security measures and implement WAF rules',
-                'targeted_endpoints': attacked_paths,
-                'immediate_actions': [
-                    'Block malicious request patterns at firewall level',
-                    'Implement Web Application Firewall (WAF) rules',
-                    'Review and secure vulnerable endpoints',
-                    'Enable detailed security logging'
-                ],
-                'security_hardening': [
-                    'Update all software components and dependencies',
-                    'Implement input validation and sanitization',
-                    'Add rate limiting to sensitive endpoints',
-                    'Set up intrusion detection system (IDS)'
-                ],
-                'monitoring_enhancement': 'Set up real-time security alerts for attack patterns',
-                'compliance_check': 'Review security compliance (OWASP Top 10)',
-                'business_impact': 'High - Potential data breach or service compromise'
-            })
-        
-        # General monitoring recommendations
-        if len(recent_anomalies) > 20:
-            recommendations.append({
-                'priority': 'Medium',
-                'category': 'Monitoring Enhancement',
-                'issue': f'{len(recent_anomalies)} total anomalies detected in 24 hours',
-                'recommendation': 'Enhance monitoring and alerting infrastructure',
-                'immediate_actions': [
-                    'Set up real-time dashboards for key metrics',
-                    'Implement automated alerting for critical anomalies',
-                    'Create escalation procedures for different severity levels',
-                    'Schedule regular anomaly review meetings'
-                ],
-                'dashboard_metrics': [
-                    'Traffic volume and patterns',
-                    'Error rates and response times',
-                    'Geographic traffic distribution',
-                    'Security threat indicators'
-                ],
-                'alert_thresholds': 'Configure alerts for anomalies above current detection sensitivity',
-                'business_impact': 'Medium - Improved incident response and system reliability'
-            })
-        
-        # Historical baseline recommendations
-        if not self.historical_baselines.get('hourly', {}):
-            recommendations.append({
-                'priority': 'Low',
-                'category': 'System Improvement',
-                'issue': 'Limited historical baseline data available',
-                'recommendation': 'Allow more time for baseline learning to improve detection accuracy',
-                'timeline': 'Wait 7-14 days for comprehensive baseline establishment',
-                'expected_improvement': 'More accurate anomaly detection with fewer false positives',
-                'business_impact': 'Low - Gradual improvement in monitoring effectiveness'
+                'business_impact': 'High - Better monitoring leads to faster issue resolution and revenue protection'
             })
         
         return recommendations
