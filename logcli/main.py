@@ -343,13 +343,19 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
             run_interactive_static(stats, log_filter)
         else:
             # Batch processing mode with integrated security and API analysis
-            process_hypernode_logs_with_enhanced_analysis(log_filter, stats, use_yesterday=yesterday)
+            security_analyzer, api_analyzer = process_hypernode_logs_with_enhanced_analysis(log_filter, stats, use_yesterday=yesterday)
             
             if summary_only:
                 display_summary_only(stats)
+                # Display enhanced analysis results at the end for summary mode too
+                display_enhanced_security_analysis(security_analyzer)
+                display_enhanced_api_analysis(api_analyzer)
             else:
                 ui = SimpleConsoleUI(stats)
                 ui.display_summary()
+                # Display enhanced analysis results at the end
+                display_enhanced_security_analysis(security_analyzer)
+                display_enhanced_api_analysis(api_analyzer)
             
             # Handle exports
             if any([export_csv, export_json, export_charts]):
@@ -420,9 +426,8 @@ def process_hypernode_logs_with_enhanced_analysis(log_filter: LogFilter, stats: 
     
     console.print(f"[green]Processed {processed_entries:,} entries from {total_entries:,} total entries[/green]")
     
-    # Display enhanced analysis results
-    display_enhanced_security_analysis(security_analyzer)
-    display_enhanced_api_analysis(api_analyzer)
+    # Store analyzers for later display
+    return security_analyzer, api_analyzer
 
 
 def process_hypernode_logs_with_callback(callback_func, analysis_type: str = "analysis", additional_args: Optional[List[str]] = None, use_yesterday: bool = False):
