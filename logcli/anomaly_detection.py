@@ -304,6 +304,7 @@ class AnomalyDetector:
             'response_time_spike': 0,
             'slow_endpoint': 0,
             'timeout_spike': 0,
+            'performance_variance': 0,
             'bandwidth_anomaly': 0,
             
             # E-commerce specific anomalies
@@ -321,6 +322,7 @@ class AnomalyDetector:
             'scanning_behavior': 0,
             'fraud_pattern': 0,
             'suspicious_user_agent': 0,
+            'user_agent_anomaly': 0,
             'geographic_anomaly': 0,
             
             # Behavioral anomalies
