@@ -12,6 +12,7 @@ from datetime import datetime
 import click
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 from .parser import LogParser
 from .filters import LogFilter, create_filter_from_preset
@@ -341,8 +342,8 @@ def analyze(log_files, follow, interactive, output, filter_preset, countries, st
             process_hypernode_logs(log_filter, stats, use_yesterday=yesterday)
             run_interactive_static(stats, log_filter)
         else:
-            # Batch processing mode
-            process_hypernode_logs(log_filter, stats, use_yesterday=yesterday)
+            # Batch processing mode with integrated security and API analysis
+            process_hypernode_logs_with_enhanced_analysis(log_filter, stats, use_yesterday=yesterday)
             
             if summary_only:
                 display_summary_only(stats)
@@ -382,6 +383,46 @@ def process_hypernode_logs(log_filter: LogFilter, stats: StatisticsAggregator, a
         raise
     
     console.print(f"[green]Processed {processed_entries:,} entries from {total_entries:,} total entries[/green]")
+
+
+def process_hypernode_logs_with_enhanced_analysis(log_filter: LogFilter, stats: StatisticsAggregator, additional_args: Optional[List[str]] = None, use_yesterday: bool = False):
+    """Process logs with enhanced analysis including security patterns and API misuse detection."""
+    from .security import SecurityAnalyzer
+    from .api_analysis import APIAnalyzer
+    
+    command = get_hypernode_command()
+    
+    # Initialize analyzers
+    security_analyzer = SecurityAnalyzer()
+    api_analyzer = APIAnalyzer()
+    
+    processed_entries = 0
+    total_entries = 0
+    
+    try:
+        console.print("[blue]Processing logs with enhanced security and API analysis...[/blue]")
+        
+        for log_entry in command.get_log_entries(additional_args, use_yesterday):
+            total_entries += 1
+            
+            # Apply filters for main stats
+            if log_filter.should_include(log_entry):
+                stats.add_entry(log_entry)
+                processed_entries += 1
+            
+            # Always analyze for security patterns and API misuse (regardless of filters)
+            security_analyzer._analyze_entry(log_entry)
+            api_analyzer.analyze_entry(log_entry)
+    
+    except Exception as e:
+        console.print(f"[red]Error processing Hypernode logs with enhanced analysis: {str(e)}[/red]")
+        raise
+    
+    console.print(f"[green]Processed {processed_entries:,} entries from {total_entries:,} total entries[/green]")
+    
+    # Display enhanced analysis results
+    display_enhanced_security_analysis(security_analyzer)
+    display_enhanced_api_analysis(api_analyzer)
 
 
 def process_hypernode_logs_with_callback(callback_func, analysis_type: str = "analysis", additional_args: Optional[List[str]] = None, use_yesterday: bool = False):
@@ -533,6 +574,132 @@ def run_interactive_realtime(log_files: List[str], parser: LogParser, log_filter
         # Run TUI
         app = LogAnalyzerTUI(stats, log_filter)
         app.run()
+
+
+def display_enhanced_security_analysis(security_analyzer):
+    """Display enhanced security analysis with focus on patterns and top abusive IPs."""
+    console.print("\n[bold red]🛡️  SECURITY ANALYSIS - PATTERNS & THREATS[/bold red]")
+    
+    # Get security data
+    summary = security_analyzer.get_security_summary()
+    suspicious_ips = security_analyzer.get_suspicious_ips()[:15]  # Top 15 most threatening IPs
+    attack_patterns = security_analyzer.get_attack_patterns()
+    
+    # Security patterns overview
+    if attack_patterns:
+        console.print("\n[bold yellow]🔍 Attack Patterns Detected:[/bold yellow]")
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Attack Type", style="red", no_wrap=True)
+        table.add_column("Attempts", justify="right", style="bright_red")
+        
+        for pattern, count in sorted(attack_patterns.items(), key=lambda x: x[1], reverse=True)[:10]:
+            table.add_row(pattern, f"{count:,}")
+        console.print(table)
+    
+    # Top abusive IP addresses with detailed threat info
+    if suspicious_ips:
+        console.print(f"\n[bold red]⚠️  Top {len(suspicious_ips)} Most Abusive IP Addresses:[/bold red]")
+        table = Table(show_header=True, header_style="bold red")
+        table.add_column("IP Address", style="bright_red", no_wrap=True, width=15)
+        table.add_column("Threat Score", justify="right", style="red", width=12)
+        table.add_column("Requests", justify="right", style="yellow", width=10)
+        table.add_column("Error Rate", justify="right", style="orange1", width=10)
+        table.add_column("Attack Types", style="bright_red", width=25)
+        table.add_column("Failed Logins", justify="right", style="red1", width=12)
+        
+        for ip_data in suspicious_ips:
+            ip = ip_data['ip']
+            threat_score = f"{ip_data['threat_score']:.1f}"
+            requests = f"{ip_data['total_requests']:,}"
+            error_rate = f"{ip_data['error_rate']:.1f}%"
+            failed_logins = f"{ip_data['failed_logins']:,}"
+            
+            # Summarize attack types
+            attacks = ip_data['attack_attempts']
+            attack_summary = []
+            if attacks['sql_injection'] > 0:
+                attack_summary.append(f"SQL: {attacks['sql_injection']}")
+            if attacks['xss'] > 0:
+                attack_summary.append(f"XSS: {attacks['xss']}")
+            if attacks['directory_traversal'] > 0:
+                attack_summary.append(f"DirTrav: {attacks['directory_traversal']}")
+            if attacks['command_injection'] > 0:
+                attack_summary.append(f"CmdInj: {attacks['command_injection']}")
+            
+            attack_text = ", ".join(attack_summary) if attack_summary else "High Error Rate"
+            
+            table.add_row(ip, threat_score, requests, error_rate, attack_text, failed_logins)
+        
+        console.print(table)
+    
+    # Quick summary stats
+    console.print(f"\n[bold blue]📊 Security Summary:[/bold blue]")
+    console.print(f"  • Total attack attempts: [red]{summary.get('total_attack_attempts', 0):,}[/red]")
+    console.print(f"  • Suspicious IPs: [yellow]{summary.get('suspicious_ips', 0):,}[/yellow]")
+    console.print(f"  • Potential DDoS IPs: [red]{summary.get('potential_ddos_ips', 0):,}[/red]")
+    console.print(f"  • Brute force IPs: [orange1]{summary.get('brute_force_ips', 0):,}[/orange1]")
+
+
+def display_enhanced_api_analysis(api_analyzer):
+    """Display enhanced API analysis with focus on misuse and negative calls."""
+    console.print("\n[bold blue]🔌 API ANALYSIS - MISUSE & NEGATIVE PATTERNS[/bold blue]")
+    
+    # Get API data
+    api_summary = api_analyzer.get_api_summary()
+    security_issues = api_summary.get('security_issues', {})
+    
+    # API misuse overview
+    console.print("\n[bold yellow]⚠️  API Misuse Patterns:[/bold yellow]")
+    table = Table(show_header=True, header_style="bold yellow")
+    table.add_column("Issue Type", style="yellow", no_wrap=True)
+    table.add_column("Count", justify="right", style="bright_red")
+    table.add_column("Description", style="white")
+    
+    misuse_descriptions = {
+        'unauthenticated_access': 'Unauthorized API access attempts',
+        'excessive_requests': 'IPs with excessive API requests',
+        'suspicious_queries': 'Suspicious query patterns detected',
+        'potential_abuse': 'High error rate endpoints (potential abuse)'
+    }
+    
+    for issue_type, count in security_issues.items():
+        if count > 0:
+            description = misuse_descriptions.get(issue_type, 'Unknown issue type')
+            table.add_row(issue_type.replace('_', ' ').title(), f"{count:,}", description)
+    
+    console.print(table)
+    
+    # Top problematic endpoints with high error rates
+    top_endpoints = api_summary.get('top_endpoints', {})
+    highest_error_endpoints = top_endpoints.get('highest_error_rate', {})
+    
+    if highest_error_endpoints:
+        console.print(f"\n[bold red]🚫 API Endpoints with High Error Rates:[/bold red]")
+        table = Table(show_header=True, header_style="bold red")
+        table.add_column("Endpoint", style="red", no_wrap=False, width=50)
+        table.add_column("Error Rate", justify="right", style="bright_red", width=12)
+        
+        for endpoint, error_rate in list(highest_error_endpoints.items())[:10]:
+            table.add_row(endpoint, f"{error_rate:.1f}%")
+        console.print(table)
+    
+    # Get top abusive IPs from API analyzer's security issues
+    if hasattr(api_analyzer, 'security_issues') and api_analyzer.security_issues.get('excessive_requests'):
+        console.print(f"\n[bold red]🎯 Top IPs with Excessive API Requests:[/bold red]")
+        table = Table(show_header=True, header_style="bold red")
+        table.add_column("IP Address", style="bright_red", no_wrap=True, width=15)
+        table.add_column("Excessive Requests", justify="right", style="red", width=18)
+        
+        excessive_requests = dict(api_analyzer.security_issues['excessive_requests'].most_common(10))
+        for ip, count in excessive_requests.items():
+            table.add_row(ip, f"{count:,}")
+        console.print(table)
+    
+    # Quick API summary stats
+    console.print(f"\n[bold blue]📊 API Summary:[/bold blue]")
+    console.print(f"  • Total API requests: [green]{api_summary.get('total_api_requests', 0):,}[/green]")
+    console.print(f"  • Total endpoints: [blue]{api_summary.get('total_endpoints', 0):,}[/blue]")
+    console.print(f"  • Overall error rate: [red]{api_summary.get('error_rate', 0):.1f}%[/red]")
 
 
 def run_interactive_static(stats: StatisticsAggregator, log_filter: LogFilter):
