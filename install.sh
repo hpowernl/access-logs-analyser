@@ -6,7 +6,6 @@
 set -e  # Exit on error
 
 echo "🚀 Installing Hypernode Log Analyzer..."
-echo "   Direct system installation (no venv)"
 echo ""
 
 # Colors for output
@@ -16,97 +15,84 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+# Spinner function
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\'
+    while [ "$(ps a | awk '{print $1}' | grep $pid)" ]; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "    \b\b\b\b"
 }
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+# Function to run command with spinner
+run_with_spinner() {
+    local message="$1"
+    local command="$2"
+    
+    printf "${BLUE}${message}${NC}"
+    $command > /dev/null 2>&1 &
+    local pid=$!
+    spinner $pid
+    wait $pid
+    local exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        printf "\r${GREEN}✓${NC} ${message}\n"
+    else
+        printf "\r${RED}✗${NC} ${message}\n"
+        return $exit_code
+    fi
 }
 
 # Check if Python 3 is installed
-print_status "Checking Python installation..."
 if ! command -v python3 &> /dev/null; then
-    print_error "Python 3 is not installed. Please install Python 3 first."
+    echo -e "${RED}✗ Python 3 is not installed. Please install Python 3 first.${NC}"
     exit 1
 fi
-
-PYTHON_VERSION=$(python3 --version 2>&1 | cut -d' ' -f2 | cut -d'.' -f1,2)
-print_success "Found Python $PYTHON_VERSION"
 
 # Check if pip is installed
-print_status "Checking pip installation..."
 if ! command -v pip3 &> /dev/null; then
-    print_error "pip3 is not installed. Please install pip3 first."
+    echo -e "${RED}✗ pip3 is not installed. Please install pip3 first.${NC}"
     exit 1
 fi
 
-print_success "Found pip3"
-
 # Install Python dependencies and logcli module
-print_status "Installing Python packages..."
-echo "   Trying different installation methods..."
-echo ""
-
-# Try different installation methods
 INSTALL_SUCCESS=false
 
 # Method 1: Try regular pip3
-print_status "Method 1: Regular pip3 install..."
-if pip3 install -r requirements.txt && pip3 install -e . 2>/dev/null; then
-    print_success "Dependencies and logcli installed with pip3"
+if pip3 install -r requirements.txt > /dev/null 2>&1 && pip3 install -e . > /dev/null 2>&1; then
     INSTALL_SUCCESS=true
-else
-    print_warning "Regular pip3 failed (externally-managed-environment)"
 fi
 
 # Method 2: Try with --break-system-packages (if method 1 failed)
 if [ "$INSTALL_SUCCESS" = false ]; then
-    print_status "Method 2: pip3 with --break-system-packages..."
-    if pip3 install -r requirements.txt --break-system-packages && pip3 install -e . --break-system-packages 2>/dev/null; then
-        print_success "Dependencies and logcli installed with --break-system-packages"
+    if pip3 install -r requirements.txt --break-system-packages > /dev/null 2>&1 && pip3 install -e . --break-system-packages > /dev/null 2>&1; then
         INSTALL_SUCCESS=true
-    else
-        print_warning "pip3 --break-system-packages failed"
     fi
 fi
 
 # Method 3: Try pipx (if available and method 1&2 failed)
 if [ "$INSTALL_SUCCESS" = false ] && command -v pipx &> /dev/null; then
-    print_status "Method 3: Using pipx..."
-    if pipx install rich click pandas plotly && pip3 install -e . 2>/dev/null; then
-        print_success "Core dependencies and logcli installed with pipx"
+    if pipx install rich click pandas plotly > /dev/null 2>&1 && pip3 install -e . > /dev/null 2>&1; then
         INSTALL_SUCCESS=true
-    else
-        print_warning "pipx installation failed"
     fi
 fi
 
 # Method 4: Create a simple venv (if all else fails)
 if [ "$INSTALL_SUCCESS" = false ]; then
-    print_status "Method 4: Creating minimal venv..."
-    if python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/pip install -e .; then
-        print_success "Dependencies and logcli installed in .venv"
-        print_warning "Note: You'll need to activate venv: source .venv/bin/activate"
-        
-        # logcli wrapper will automatically detect and use venv
+    if python3 -m venv .venv > /dev/null 2>&1 && .venv/bin/pip install -r requirements.txt > /dev/null 2>&1 && .venv/bin/pip install -e . > /dev/null 2>&1; then
         INSTALL_SUCCESS=true
-    else
-        print_warning "venv creation failed"
     fi
 fi
 
 if [ "$INSTALL_SUCCESS" = false ]; then
-    print_error "All installation methods failed!"
+    echo -e "${RED}✗ Installation failed!${NC}"
     echo ""
     echo "🔧 Manual Installation Options:"
     echo "   1. sudo pip3 install -r requirements.txt && sudo pip3 install -e ."
@@ -115,14 +101,9 @@ if [ "$INSTALL_SUCCESS" = false ]; then
     echo "   4. Use system packages: apt install python3-textual python3-rich python3-click"
     echo ""
     exit 1
-else
-    print_success "Python dependencies and logcli module installed successfully"
 fi
 
-# opencli has been removed - using CLI-only approach
-
 # Create logcli wrapper script
-print_status "Creating logcli wrapper script..."
 cat > hlogcli << 'EOF'
 #!/bin/bash
 # Hypernode Log Analyzer - logcli wrapper
@@ -148,57 +129,32 @@ exec $PYTHON_CMD -m logcli.main "$@"
 EOF
 
 chmod +x hlogcli
-print_success "hlogcli wrapper script created"
 
-# Check if ~/bin is in PATH
-print_status "Checking user PATH..."
-if [[ ":$PATH:" == *":$HOME/bin:"* ]] || [[ ":$PATH:" == *":~/bin:"* ]]; then
-    print_success "~/bin is already in PATH"
-else
-    print_warning "~/bin is not in PATH (will be created if needed)"
-fi
+# Install to user profile (no root needed)
+# Create ~/bin directory if it doesn't exist
+mkdir -p ~/bin
 
-# Install in user profile (no root needed)
-echo ""
-echo "🔧 Installation Options:"
-echo "   1. Use locally: ./hlogcli (CLI)"
-echo "   2. Install to user profile: ~/bin/ (no root needed)"
-echo ""
-read -p "Install to user profile? (Y/n): " -n 1 -r
-echo
+# Create symlink to ~/bin
+ln -sf "$(pwd)/hlogcli" ~/bin/hlogcli
 
-# Default to Yes if just Enter is pressed
-if [[ $REPLY =~ ^[Nn]$ ]]; then
-    print_success "Local installation complete!"
-    print_status "Use: ./hlogcli for command-line analysis"
-else
-    print_status "Installing to user profile..."
-    
-    # Create ~/bin directory if it doesn't exist
-    mkdir -p ~/bin
-    
-    # Create symlink to ~/bin
-    if ln -sf "$(pwd)/hlogcli" ~/bin/hlogcli; then
-        print_success "User profile installation complete!"
-        print_success "hlogcli installed to ~/bin/hlogcli"
-        
-        # Check if ~/bin is in PATH
-        if [[ ":$PATH:" == *":$HOME/bin:"* ]] || [[ ":$PATH:" == *":~/bin:"* ]]; then
-            print_success "~/bin is already in PATH"
-            print_success "You can now run 'hlogcli' from anywhere"
-        else
-            print_warning "~/bin is not in PATH"
-            echo ""
-            echo "🔧 Add ~/bin to PATH by adding this to ~/.bashrc or ~/.profile:"
-            echo "   export PATH=\"\$HOME/bin:\$PATH\""
-            echo ""
-            echo "Then reload with: source ~/.bashrc"
-            echo "Or log out and log back in"
-        fi
-    else
-        print_error "Failed to install to user profile"
-        print_warning "You can still use: ./hlogcli"
+# Add ~/bin to PATH if not already there
+if [[ ":$PATH:" != *":$HOME/bin:"* ]] && [[ ":$PATH:" != *":~/bin:"* ]]; then
+    # Add to .bashrc if it exists
+    if [ -f ~/.bashrc ]; then
+        echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
     fi
+    
+    # Add to .profile if it exists
+    if [ -f ~/.profile ]; then
+        echo 'export PATH="$HOME/bin:$PATH"' >> ~/.profile
+    fi
+        
+    # Add to current session
+    export PATH="$HOME/bin:$PATH"
+    
+    # Create a temporary script to source the updated PATH
+    echo 'export PATH="$HOME/bin:$PATH"' > /tmp/hlogcli_path_update.sh
+    echo "source /tmp/hlogcli_path_update.sh" >> /tmp/hlogcli_path_update.sh
 fi
 
 # Show usage instructions
@@ -207,10 +163,8 @@ echo "🎉 Installation Complete!"
 echo ""
 echo "📋 Usage:"
 echo "   Command-line:     ./hlogcli analyze"
-if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-    echo "   User (CLI):       hlogcli analyze (if ~/bin is in PATH)"
-    echo "   Direct:           ~/bin/hlogcli"
-fi
+echo "   User (CLI):       hlogcli analyze (if ~/bin is in PATH)"
+echo "   Direct:           ~/bin/hlogcli"
 echo ""
 echo "📁 Log Analysis:"
 echo "   • Platform detection for Hypernode environments"
@@ -229,4 +183,6 @@ echo "   • If modules not found: pip3 install -r requirements.txt"
 echo "   • If permission denied: chmod +x hlogcli"
 echo "   • For CLI help: ./hlogcli --help"
 echo ""
-print_success "Ready to analyze your logs! 🚀"
+echo "✅ PATH updated - hlogcli is now available!"
+echo "   If 'hlogcli' command not found, run: source ~/.bashrc"
+echo ""
