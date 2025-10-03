@@ -2481,7 +2481,7 @@ def anomalies(log_files, sensitivity, window_size, realtime_alerts,
     print_data_item("Recent Anomalies", recent_info, Colors.WARNING, console)
     print_data_item("Critical Anomalies", format_number(anomaly_summary['critical_anomalies']), Colors.ERROR, console)
     print_data_item("High Severity", format_number(anomaly_summary['high_severity_anomalies']), Colors.ALERT, console)
-    print ret_item("Medium Severity", format_number(anomaly_summary['medium_severity_anomalies']), Colors.WARNING, console)
+    print_data_item("Medium Severity", format_number(anomaly_summary['medium_severity_anomalies']), Colors.WARNING, console)
     
     # Show top anomaly types
     if anomaly_summary['top_anomaly_types']:
