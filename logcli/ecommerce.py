@@ -178,6 +178,13 @@ class EcommerceAnalyzer:
         self.checkout_error_patterns = Counter()
         self.checkout_error_details = []
         
+        # IP-based tracking
+        self.login_attempts_by_ip = defaultdict(lambda: {'total': 0, 'failed': 0, 'paths': []})
+        self.admin_access_by_ip = defaultdict(lambda: {'requests': 0, 'paths': set()})
+        self.checkout_errors_by_ip = defaultdict(lambda: {'errors': 0, 'error_types': []})
+        self.api_usage_by_ip = defaultdict(lambda: {'requests': 0, 'endpoints': Counter()})
+        self.category_ips = defaultdict(lambda: Counter())  # Track unique IPs per category
+        
         # Total stats
         self.total_requests = 0
         self.ecommerce_requests = 0
@@ -420,6 +427,33 @@ class EcommerceAnalyzer:
                     self.hourly_category_stats[hour_key][category]['response_times'].append(response_time)
                 if status >= 400:
                     self.hourly_category_stats[hour_key][category]['errors'] += 1
+            
+            # IP-based tracking
+            if ip:
+                ip_str = str(ip)
+                self.category_ips[category][ip_str] += 1
+                
+                # Track login attempts
+                if category == 'login':
+                    self.login_attempts_by_ip[ip_str]['total'] += 1
+                    self.login_attempts_by_ip[ip_str]['paths'].append(path)
+                    if status >= 400:
+                        self.login_attempts_by_ip[ip_str]['failed'] += 1
+                
+                # Track admin access
+                if category == 'admin':
+                    self.admin_access_by_ip[ip_str]['requests'] += 1
+                    self.admin_access_by_ip[ip_str]['paths'].add(path)
+                
+                # Track checkout errors
+                if category == 'checkout' and status >= 400:
+                    self.checkout_errors_by_ip[ip_str]['errors'] += 1
+                    self.checkout_errors_by_ip[ip_str]['error_types'].append(status)
+                
+                # Track API usage
+                if category in ['api', 'api_rest', 'api_graphql']:
+                    self.api_usage_by_ip[ip_str]['requests'] += 1
+                    self.api_usage_by_ip[ip_str]['endpoints'][path] += 1
             
             # Track errors
             if status >= 400:
@@ -774,6 +808,100 @@ class EcommerceAnalyzer:
             'peak_hour': peak_hour,
             'worst_performance_hour': worst_hour,
             'hours_analyzed': len(hourly_data)
+        }
+    
+    def get_ip_statistics(self, category: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get top IPs for a specific category."""
+        if category not in self.category_ips or not self.category_ips[category]:
+            return []
+        
+        top_ips = []
+        for ip, count in self.category_ips[category].most_common(limit):
+            ip_data = {
+                'ip': ip,
+                'requests': count
+            }
+            
+            # Add category-specific details
+            if category == 'login' and ip in self.login_attempts_by_ip:
+                login_data = self.login_attempts_by_ip[ip]
+                ip_data['total_attempts'] = login_data['total']
+                ip_data['failed_attempts'] = login_data['failed']
+                ip_data['success_rate'] = ((login_data['total'] - login_data['failed']) / 
+                                          login_data['total'] * 100) if login_data['total'] > 0 else 0
+            
+            if category == 'admin' and ip in self.admin_access_by_ip:
+                admin_data = self.admin_access_by_ip[ip]
+                ip_data['admin_requests'] = admin_data['requests']
+                ip_data['unique_paths'] = len(admin_data['paths'])
+            
+            if category == 'checkout' and ip in self.checkout_errors_by_ip:
+                error_data = self.checkout_errors_by_ip[ip]
+                ip_data['checkout_errors'] = error_data['errors']
+                ip_data['error_types'] = dict(Counter(error_data['error_types']))
+            
+            if category in ['api', 'api_rest', 'api_graphql'] and ip in self.api_usage_by_ip:
+                api_data = self.api_usage_by_ip[ip]
+                ip_data['api_requests'] = api_data['requests']
+                ip_data['unique_endpoints'] = len(api_data['endpoints'])
+                ip_data['top_endpoints'] = dict(api_data['endpoints'].most_common(3))
+            
+            top_ips.append(ip_data)
+        
+        return top_ips
+    
+    def get_login_security_details(self) -> Dict[str, Any]:
+        """Get detailed login security analysis with IPs."""
+        if not self.login_attempts_by_ip:
+            return {}
+        
+        # Find suspicious IPs (high failure rate)
+        suspicious_ips = []
+        for ip, data in self.login_attempts_by_ip.items():
+            if data['total'] >= 5:  # At least 5 attempts
+                failure_rate = (data['failed'] / data['total'] * 100)
+                if failure_rate > 50:  # >50% failure rate
+                    suspicious_ips.append({
+                        'ip': ip,
+                        'total_attempts': data['total'],
+                        'failed_attempts': data['failed'],
+                        'failure_rate': failure_rate,
+                        'severity': 'HIGH' if failure_rate > 80 else 'MEDIUM'
+                    })
+        
+        # Sort by failure rate and attempt count
+        suspicious_ips.sort(key=lambda x: (x['failure_rate'], x['total_attempts']), reverse=True)
+        
+        return {
+            'total_ips': len(self.login_attempts_by_ip),
+            'suspicious_ips': suspicious_ips[:10],  # Top 10 suspicious
+            'total_suspicious': len(suspicious_ips)
+        }
+    
+    def get_admin_access_details(self) -> Dict[str, Any]:
+        """Get detailed admin access analysis with IPs."""
+        if not self.admin_access_by_ip:
+            return {}
+        
+        # Sort by request count
+        top_admin_ips = sorted(
+            self.admin_access_by_ip.items(),
+            key=lambda x: x[1]['requests'],
+            reverse=True
+        )[:10]
+        
+        admin_ips = []
+        for ip, data in top_admin_ips:
+            admin_ips.append({
+                'ip': ip,
+                'requests': data['requests'],
+                'unique_paths': len(data['paths']),
+                'sample_paths': list(data['paths'])[:3]  # Show first 3 paths
+            })
+        
+        return {
+            'total_admin_ips': len(self.admin_access_by_ip),
+            'top_ips': admin_ips
         }
     
     def get_enhanced_recommendations(self) -> List[Dict[str, Any]]:

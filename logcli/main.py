@@ -1886,8 +1886,9 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
         console.print("Make sure you're analyzing logs from a Magento, WooCommerce, or Shopware 6 site.")
         return
     
-    # If no specific flags, show default overview
-    if not has_specific_flags:
+    # Always show comprehensive overview for better insights
+    # Flags now add EXTRA detailed analysis on top of default
+    if True:  # Always show default overview
         # Checkout performance
         checkout_stats = analyzer.get_category_stats('checkout')
         if checkout_stats and checkout_stats['count'] > 0:
@@ -1899,6 +1900,16 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
                 console.print(f"  Errors: [red]{checkout_stats['errors']:,}[/red] ({checkout_stats['error_rate']:.1f}%)")
             if checkout_stats['slow_count'] > 0:
                 console.print(f"  Slow (>2s): [yellow]{checkout_stats['slow_count']:,}[/yellow]")
+            
+            # Show top IPs
+            top_ips = analyzer.get_ip_statistics('checkout', limit=5)
+            if top_ips:
+                console.print(f"  Top IPs:")
+                for ip_data in top_ips[:3]:
+                    ip_str = f"    • {ip_data['ip']}: {ip_data['requests']} requests"
+                    if 'checkout_errors' in ip_data and ip_data['checkout_errors'] > 0:
+                        ip_str += f" [red]({ip_data['checkout_errors']} errors)[/red]"
+                    console.print(ip_str)
         
         # Admin performance
         admin_stats = analyzer.get_category_stats('admin')
@@ -1909,6 +1920,13 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
             console.print(f"  P95: {admin_stats['response_time_p95']:.3f}s")
             if admin_stats['slow_count'] > 0:
                 console.print(f"  Slow (>2s): [yellow]{admin_stats['slow_count']:,}[/yellow]")
+            
+            # Show admin access IPs
+            admin_details = analyzer.get_admin_access_details()
+            if admin_details and admin_details.get('top_ips'):
+                console.print(f"  Admin access IPs ({admin_details['total_admin_ips']} unique):")
+                for ip_data in admin_details['top_ips'][:3]:
+                    console.print(f"    • {ip_data['ip']}: {ip_data['requests']} requests, {ip_data['unique_paths']} paths")
         
         # API performance
         api_stats = analyzer.get_category_stats('api') or analyzer.get_category_stats('api_rest')
@@ -1918,6 +1936,14 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
             console.print(f"  Avg response time: {api_stats['response_time_avg']:.3f}s")
             if api_stats['errors'] > 0:
                 console.print(f"  Errors: [red]{api_stats['errors']:,}[/red] ({api_stats['error_rate']:.1f}%)")
+            
+            # Show top API users
+            api_category = 'api' if 'api' in analyzer.category_ips else 'api_rest'
+            top_api_ips = analyzer.get_ip_statistics(api_category, limit=5)
+            if top_api_ips:
+                console.print(f"  Top API users:")
+                for ip_data in top_api_ips[:3]:
+                    console.print(f"    • {ip_data['ip']}: {ip_data['requests']} requests")
         
         # GraphQL (Magento specific)
         graphql_stats = analyzer.get_category_stats('api_graphql')
@@ -1936,6 +1962,15 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
                 console.print(f"  Failed logins: [{error_color}]{login_stats['errors']:,}[/{error_color}] ({login_stats['error_rate']:.1f}%)")
                 if login_stats['error_rate'] > 30:
                     console.print(f"  [red]⚠️  High failure rate - possible brute force attack![/red]")
+            
+            # Show login security details
+            login_details = analyzer.get_login_security_details()
+            if login_details and login_details.get('suspicious_ips'):
+                console.print(f"  Suspicious IPs ({login_details['total_suspicious']} found):")
+                for ip_data in login_details['suspicious_ips'][:3]:
+                    severity_color = "red" if ip_data['severity'] == 'HIGH' else "yellow"
+                    console.print(f"    • [{severity_color}]{ip_data['ip']}[/{severity_color}]: {ip_data['total_attempts']} attempts, "
+                                f"{ip_data['failed_attempts']} failed ({ip_data['failure_rate']:.0f}%)")
         
         # Media performance
         media_stats = analyzer.get_category_stats('media')
@@ -2019,14 +2054,14 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
                 if 'action_items' in rec and rec['action_items']:
                     console.print(f"    [dim]Actions: {', '.join(rec['action_items'][:2])}[/dim]")
         
-        # Usage hints
-        console.print(f"\n[dim]💡 Use flags for detailed analysis:[/dim]")
-        console.print(f"[dim]   --checkout-analysis   Detailed checkout metrics[/dim]")
-        console.print(f"[dim]   --admin-analysis      Admin panel deep-dive[/dim]")
-        console.print(f"[dim]   --api-analysis        API endpoint analysis[/dim]")
-        console.print(f"[dim]   --login-security      Login security audit[/dim]")
-        console.print(f"[dim]   --media-analysis      Media optimization tips[/dim]")
-        console.print(f"[dim]   --detailed            Show all sections[/dim]")
+        # Usage hints for even MORE detail
+        console.print(f"\n[dim]💡 Use flags for even MORE detailed analysis:[/dim]")
+        console.print(f"[dim]   --checkout-analysis   Full checkout breakdown with funnel & error patterns[/dim]")
+        console.print(f"[dim]   --admin-analysis      All admin operations with slowest paths[/dim]")
+        console.print(f"[dim]   --api-analysis        GraphQL query breakdown & operation stats[/dim]")
+        console.print(f"[dim]   --login-security      Complete security audit with all IPs[/dim]")
+        console.print(f"[dim]   --media-analysis      Image optimization with size analysis[/dim]")
+        console.print(f"[dim]   --detailed            ALL sections with maximum detail[/dim]")
     
     # Detailed analysis sections
     if checkout_analysis or detailed:

@@ -172,7 +172,7 @@ chmod +x hlogcli
 **NEW: Specialized analysis for Magento 2, WooCommerce, and Shopware 6!**
 
 ```bash
-# Auto-detect platform and show overview
+# Auto-detect platform and show comprehensive analysis (now shows everything!)
 ./hlogcli ecommerce
 
 # Force specific platform analysis
@@ -205,13 +205,19 @@ chmod +x hlogcli
 - 🎯 **Conversion Funnel**: Track user journey from homepage to checkout
 - ⚠️ **Checkout Errors**: Detailed error pattern analysis
 
-**Advanced Features (Phase 2):**
+**Advanced Features (Phase 2 Complete!):**
 - 🔷 **GraphQL Query Analysis**: Operation tracking, performance per query type (Magento)
 - 🎯 **Conversion Funnel Tracking**: Homepage → Category → Product → Cart → Checkout
 - 📊 **Cart Abandonment Rate**: Track and analyze abandoned carts
 - 🚨 **Critical Issue Detection**: Automatic detection of payment/cart system errors
 - 📈 **Enhanced Recommendations**: Action items with specific steps to take
 - ⏰ **Time-based Analysis**: Performance trends per category by hour
+- 🌐 **IP Address Tracking**: See which IPs are doing what
+  - Login attempts per IP with failure rates
+  - Admin access tracking with unique paths
+  - Checkout errors per IP
+  - API usage per IP with endpoint breakdown
+  - Top IPs per category
 
 **Platform-specific features:**
 - **Magento 2**: GraphQL operation parsing, query performance, customer sections, Varnish cache
