@@ -150,7 +150,6 @@ def cli(ctx):
       hlogcli content                           # Content type and resource analysis
       hlogcli anomalies                         # Anomaly detection and ML analysis
       hlogcli search --status 404               # Search for specific entries
-      hlogcli report --format html              # Generate comprehensive reports
     
     \b
     Features:

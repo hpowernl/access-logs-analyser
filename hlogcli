@@ -15,7 +15,6 @@
 #   hlogcli content                    # Content type and resource analysis (NEW!)
 #   hlogcli anomalies                  # ML-based anomaly detection (NEW!)
 #   hlogcli search --status 404        # Search for specific entries
-#   hlogcli report --format html       # Generate comprehensive reports
 #   hlogcli --help                     # Show all available commands
 #
 # For detailed help on any command:
