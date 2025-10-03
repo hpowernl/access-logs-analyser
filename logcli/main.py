@@ -1878,7 +1878,6 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
     # Get platform summary
     try:
         platform_summary = analyzer.get_platform_summary()
-        console.print(f"[dim]DEBUG: Platform summary obtained[/dim]")
     except Exception as e:
         console.print(f"[red]Error getting platform summary: {e}[/red]")
         import traceback
@@ -1907,10 +1906,13 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
     # Always show comprehensive overview for better insights
     # Flags now add EXTRA detailed analysis on top of default
     if True:  # Always show default overview
-        # Checkout performance
+        # 🛍️ CHECKOUT COMPLETE SECTION
         checkout_stats = analyzer.get_category_stats('checkout')
         if checkout_stats and checkout_stats['count'] > 0:
-            console.print(f"\n[bold]🛍️  Checkout Performance[/bold]")
+            console.print(f"\n[bold]🛍️  CHECKOUT COMPLETE[/bold]")
+            
+            # Performance Stats
+            console.print(f"\n[bold cyan]📊 Performance Statistics[/bold cyan]")
             console.print(f"  Requests: [cyan]{checkout_stats['count']:,}[/cyan]")
             console.print(f"  Avg response time: {checkout_stats['response_time_avg']:.3f}s")
             console.print(f"  P95: {checkout_stats['response_time_p95']:.3f}s")
@@ -1919,243 +1921,283 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
             if checkout_stats['slow_count'] > 0:
                 console.print(f"  Slow (>2s): [yellow]{checkout_stats['slow_count']:,}[/yellow]")
             
-            # Show top IPs
+            # Conversion Funnel (moved here to group with checkout)
+            try:
+                funnel = analyzer.get_conversion_funnel()
+                if funnel and funnel.get('funnel'):
+                    console.print(f"\n[bold cyan]🎯 Conversion Funnel[/bold cyan]")
+                    for step, data in funnel['funnel'].items():
+                        if data['visits'] > 0:
+                            drop_off_indicator = ""
+                            if data['drop_off_rate'] > 50:
+                                drop_off_indicator = f" [red](↓ {data['drop_off_rate']:.0f}% drop-off!)[/red]"
+                            elif data['drop_off_rate'] > 30:
+                                drop_off_indicator = f" [yellow](↓ {data['drop_off_rate']:.0f}% drop-off)[/yellow]"
+                            console.print(f"  {step.title()}: {data['visits']:,}{drop_off_indicator}")
+                
+                    if funnel.get('cart_abandonment_rate', 0) > 0:
+                        console.print(f"  Cart abandonment: [yellow]{funnel['cart_abandonment_rate']:.1f}%[/yellow]")
+            except Exception as e:
+                console.print(f"[red]Error getting conversion funnel: {e}[/red]")
+            
+            # Deep Error Analysis (moved here to group with checkout)
+            detailed_checkout = analyzer.get_deep_checkout_analysis()
+            if detailed_checkout and detailed_checkout.get('total_errors', 0) > 0:
+                console.print(f"\n[bold cyan]🚨 Error Analysis[/bold cyan]")
+                console.print(f"  Total checkout errors: [red]{detailed_checkout['total_errors']:,}[/red]")
+                
+                # Critical Issues Analysis
+                if detailed_checkout.get('critical_issues'):
+                    console.print(f"\n  [bold red]Critical Issues:[/bold red]")
+                    for issue in detailed_checkout['critical_issues']:
+                        if issue['type'] == 'RATE_LIMIT_EXCESS':
+                            console.print(f"    • [red]EXCESSIVE RATE LIMITING[/red] from IP: [yellow]{issue['ip']}[/yellow]")
+                            console.print(f"      → {issue['errors']} rate limit errors (possible bot attack or misconfiguration)")
+                        elif issue['type'] == 'APPLICATION_ERRORS':
+                            console.print(f"    • [red]APPLICATION STABILITY ISSUES[/red]: {issue['count']} application errors")
+                            console.print(f"      → {issue['description']}")
+                            if issue.get('recent_examples'):
+                                console.print(f"      Recent examples:")
+                                for example in issue['recent_examples'][:2]:
+                                    console.print(f"        - {example['timestamp']} | IP: {example['ip']} | {example['path']} (HTTP {example['status']})")
+                        elif issue['type'] == 'RATE_LIMITING':
+                            console.print(f"    • [yellow]RATE LIMIT CONFIGURATION[/yellow]: {issue['count']} HTTP 429 errors")
+                            console.print(f"      → {issue['description']}")
+                            if issue.get('recent_examples'):
+                                console.print(f"      Recent examples:")
+                                for example in issue['recent_examples'][:2]:
+                                    console.print(f"        - {example['timestamp']} | IP: {example['ip']} | {example['path']}")
+                
+                # Error Pattern Analysis
+                console.print(f"\n  [bold]📊 Error Patterns:[/bold]")
+                error_pattern_descriptions = {
+                    'cart_http_429': '🛒 Cart rate limiting (users blocked from cart actions)',
+                    'checkout_http_429': '💳 Checkout rate limiting (payment page blocked)',
+                    'checkout_server_error': '❌ Application errors during checkout (5xx errors)',
+                    'cart_server_error': '🛒 Cart application errors (server crashes during cart operations)', 
+                    'cart_http_500': '🔄 Cart server crashes (HTTP 500 Internal Server Error)',
+                    'cart_http_499': '🔌 Cart connection closed (HTTP 499 - client closed connection)',
+                    'cart_not_found': '❓ Cart not found errors (invalid cart IDs or expired sessions)',
+                    'payment_http_400': '✏️ Payment validation failures (incorrect payment data)',
+                    'checkout_not_found': '📄 Missing checkout pages (404 errors)',
+                    'checkout_http_403': '🚫 Access denied to checkout (permission errors)'
+                }
+                
+                sorted_patterns = sorted(detailed_checkout['error_patterns'].items(), key=lambda x: x[1], reverse=True)
+                for pattern, count in sorted_patterns[:3]:  # Top 3 only for overview
+                    description = error_pattern_descriptions.get(pattern, f"❓ Unknown error type: {pattern}")
+                    impact_pct = (count / detailed_checkout['total_errors']) * 100
+                    color = "red" if impact_pct > 25 else "yellow" if impact_pct > 10 else "blue"
+                    console.print(f"    • [{color}]{description}[/{color}]")
+                    console.print(f"      → {count:,} errors ({impact_pct:.1f}% of total)")
+            else:
+                console.print(f"\n[bold cyan]✅ No checkout errors detected![/bold cyan]")
+            
+            # Top IPs & Security (moved here to group with checkout)
             top_ips = analyzer.get_ip_statistics('checkout', limit=5)
             if top_ips:
-                console.print(f"  Top IPs:")
+                console.print(f"\n[bold cyan]🔒 Top Checkout IPs & Security[/bold cyan]")
                 for ip_data in top_ips[:3]:
-                    ip_str = f"    • {ip_data['ip']}: {ip_data['requests']} requests"
+                    ip_str = f"  • {ip_data['ip']}: {ip_data['requests']} requests"
                     if 'checkout_errors' in ip_data and ip_data['checkout_errors'] > 0:
                         ip_str += f" [red]({ip_data['checkout_errors']} errors)[/red]"
                     console.print(ip_str)
         
-        # Admin performance
+        # 💼 ADMIN PANEL COMPLETE SECTION
         admin_stats = analyzer.get_category_stats('admin')
         if admin_stats and admin_stats['count'] > 0:
-            console.print(f"\n[bold]💼 Admin Panel[/bold]")
+            console.print(f"\n[bold]💼 ADMIN PANEL COMPLETE[/bold]")
+            
+            # Performance Stats
+            console.print(f"\n[bold magenta]📊 Performance Statistics[/bold magenta]")
             console.print(f"  Requests: [cyan]{admin_stats['count']:,}[/cyan]")
             console.print(f"  Avg response time: {admin_stats['response_time_avg']:.3f}s")
             console.print(f"  P95: {admin_stats['response_time_p95']:.3f}s")
             if admin_stats['slow_count'] > 0:
                 console.print(f"  Slow (>2s): [yellow]{admin_stats['slow_count']:,}[/yellow]")
             
-            # Show admin access IPs
+            # Show admin access IPs & Security Analysis
             admin_details = analyzer.get_admin_access_details()
             if admin_details and admin_details.get('top_ips'):
-                console.print(f"  Admin access IPs ({admin_details['total_admin_ips']} unique):")
+                console.print(f"\n[bold magenta]🔒 Access Analysis & Security[/bold magenta]")
+                console.print(f"  Total admin IPs: {admin_details['total_admin_ips']} unique")
+                console.print(f"  Top admin users:")
                 for ip_data in admin_details['top_ips'][:3]:
                     console.print(f"    • {ip_data['ip']}: {ip_data['requests']} requests, {ip_data['unique_paths']} paths")
+                    
+            # Slowest Operations (add here for completeness)
+            slowest_admin = analyzer.get_slowest_endpoints('admin', 3)
+            if slowest_admin:
+                console.print(f"\n[bold magenta]🐌 Slowest Operations[/bold magenta]")
+                for endpoint, avg_time in slowest_admin:
+                    display_endpoint = endpoint if len(endpoint) <= 50 else endpoint[:47] + "..."
+                    color = "red" if avg_time > 5 else "yellow"
+                    console.print(f"    [{color}]{avg_time:.3f}s[/{color}] - {display_endpoint}")
         
-        # API performance
+        # 🔌 API COMPLETE SECTION (REST + GraphQL)
         api_stats = analyzer.get_category_stats('api') or analyzer.get_category_stats('api_rest')
-        if api_stats and api_stats['count'] > 0:
-            console.print(f"\n[bold]🔌 API Performance[/bold]")
-            console.print(f"  Requests: [cyan]{api_stats['count']:,}[/cyan]")
-            console.print(f"  Avg response time: {api_stats['response_time_avg']:.3f}s")
-            if api_stats['errors'] > 0:
-                console.print(f"  Errors: [red]{api_stats['errors']:,}[/red] ({api_stats['error_rate']:.1f}%)")
-            
-            # Show top API users
-            api_category = 'api' if 'api' in analyzer.category_ips else 'api_rest'
-            top_api_ips = analyzer.get_ip_statistics(api_category, limit=5)
-            if top_api_ips:
-                console.print(f"  Top API users:")
-                for ip_data in top_api_ips[:3]:
-                    console.print(f"    • {ip_data['ip']}: {ip_data['requests']} requests")
-        
-        # GraphQL (Magento specific)
         graphql_stats = analyzer.get_category_stats('api_graphql')
-        if graphql_stats and graphql_stats['count'] > 0:
-            console.print(f"\n[bold]🔷 GraphQL API[/bold]")
-            console.print(f"  Requests: [cyan]{graphql_stats['count']:,}[/cyan]")
-            console.print(f"  Avg response time: {graphql_stats['response_time_avg']:.3f}s")
         
-        # Login security
+        if (api_stats and api_stats['count'] > 0) or (graphql_stats and graphql_stats['count'] > 0):
+            console.print(f"\n[bold]🔌 API COMPLETE (REST + GraphQL)[/bold]")
+            
+            # REST API Stats
+            if api_stats and api_stats['count'] > 0:
+                console.print(f"\n[bold green]📊 REST API Statistics[/bold green]")
+                console.print(f"  Requests: [cyan]{api_stats['count']:,}[/cyan]")
+                console.print(f"  Avg response time: {api_stats['response_time_avg']:.3f}s")
+                if api_stats['errors'] > 0:
+                    console.print(f"  Errors: [red]{api_stats['errors']:,}[/red] ({api_stats['error_rate']:.1f}%)")
+                
+                # Show top API users
+                api_category = 'api' if 'api' in analyzer.category_ips else 'api_rest'
+                top_api_ips = analyzer.get_ip_statistics(api_category, limit=5)
+                if top_api_ips:
+                    console.print(f"  Top API users:")
+                    for ip_data in top_api_ips[:3]:
+                        console.print(f"    • {ip_data['ip']}: {ip_data['requests']} requests")
+            
+            # GraphQL Stats (combined and detailed)
+            try:
+                graphql_detailed_stats = analyzer.get_graphql_statistics()
+                if graphql_detailed_stats and graphql_detailed_stats.get('total_queries', 0) > 0:
+                    console.print(f"\n[bold green]🔷 GraphQL API Statistics[/bold green]")
+                    console.print(f"  Total queries: [cyan]{graphql_detailed_stats['total_queries']:,}[/cyan]")
+                    console.print(f"  Unique operations: {graphql_detailed_stats['unique_operations']}")
+                    if graphql_stats and graphql_stats['count'] > 0:
+                        console.print(f"  Avg response time: {graphql_stats['response_time_avg']:.3f}s")
+                    
+                    if graphql_detailed_stats['total_errors'] > 0:
+                        error_color = "red" if graphql_detailed_stats['error_rate'] > 5 else "yellow"
+                        console.print(f"  Errors: [{error_color}]{graphql_detailed_stats['total_errors']:,}[/{error_color}] ({graphql_detailed_stats['error_rate']:.1f}%)")
+                    
+                    # Top GraphQL Operations
+                    if graphql_detailed_stats['top_operations']:
+                        console.print(f"  Top operations:")
+                        for operation, count in graphql_detailed_stats['top_operations'][:3]:
+                            console.print(f"    • {operation}: {count:,}")
+                            
+                    # Performance by Operation (detailed)
+                    if graphql_detailed_stats.get('operation_stats'):
+                        console.print(f"\n[bold green]📈 Operation Performance Analysis[/bold green]")
+                        sorted_ops = sorted(graphql_detailed_stats['operation_stats'].items(), 
+                                          key=lambda x: x[1]['avg_response_time'], reverse=True)
+                        for op, stats in sorted_ops[:3]:
+                            console.print(f"    {op}:")
+                            console.print(f"      Requests: {stats['count']}, Avg: {stats['avg_response_time']:.3f}s, Errors: {stats['errors']}")
+            except Exception as e:
+                console.print(f"[red]Error getting GraphQL stats: {e}[/red]")
+        
+        # 🔐 LOGIN & SECURITY COMPLETE SECTION
         login_stats = analyzer.get_category_stats('login')
         if login_stats and login_stats['count'] > 0:
-            console.print(f"\n[bold]🔐 Login/Authentication[/bold]")
+            console.print(f"\n[bold]🔐 LOGIN & SECURITY COMPLETE[/bold]")
+            
+            # Login Statistics
+            console.print(f"\n[bold red]📊 Login Statistics[/bold red]")
             console.print(f"  Login attempts: [cyan]{login_stats['count']:,}[/cyan]")
             if login_stats['errors'] > 0:
                 error_color = "red" if login_stats['error_rate'] > 30 else "yellow"
                 console.print(f"  Failed logins: [{error_color}]{login_stats['errors']:,}[/{error_color}] ({login_stats['error_rate']:.1f}%)")
                 if login_stats['error_rate'] > 30:
                     console.print(f"  [red]⚠️  High failure rate - possible brute force attack![/red]")
+                else:
+                    console.print(f"  [green]✅ Login failure rate is normal[/green]")
             
-            # Show login security details
+            # Brute Force Detection & Suspicious IPs  
             login_details = analyzer.get_login_security_details()
             if login_details and login_details.get('suspicious_ips'):
-                console.print(f"  Suspicious IPs ({login_details['total_suspicious']} found):")
-                for ip_data in login_details['suspicious_ips'][:3]:
-                    severity_color = "red" if ip_data['severity'] == 'HIGH' else "yellow"
-                    console.print(f"    • [{severity_color}]{ip_data['ip']}[/{severity_color}]: {ip_data['total_attempts']} attempts, "
-                                f"{ip_data['failed_attempts']} failed ({ip_data['failure_rate']:.0f}%)")
+                if login_details['total_suspicious'] > 0:
+                    console.print(f"\n[bold red]🚨 Brute Force Detection[/bold red]")
+                    console.print(f"  Suspicious IPs found: {login_details['total_suspicious']}")
+                    console.print(f"  Top threats:")
+                    for ip_data in login_details['suspicious_ips'][:3]:
+                        severity_color = "red" if ip_data['severity'] == 'HIGH' else "yellow"
+                        console.print(f"    • [{severity_color}]{ip_data['ip']}[/{severity_color}]: {ip_data['total_attempts']} attempts, "
+                                    f"{ip_data['failed_attempts']} failed ({ip_data['failure_rate']:.0f}%)")
+                else:
+                    console.print(f"\n[bold red]🔒 Security Status[/bold red]")
+                    console.print(f"  [green]✅ No suspicious login activity detected[/green]")
+            
+            # Security Recommendations would go here if we had specific login security recommendations
         
-        # Media performance
+        # 🖼️ MEDIA & PERFORMANCE COMPLETE SECTION
         media_stats = analyzer.get_category_stats('media')
         if media_stats and media_stats['count'] > 0:
-            console.print(f"\n[bold]🖼️  Media/Images[/bold]")
+            console.print(f"\n[bold]🖼️  MEDIA & PERFORMANCE COMPLETE[/bold]")
+            
+            # Bandwidth & File Size Analysis
+            console.print(f"\n[bold cyan]📊 Bandwidth & File Statistics[/bold cyan]")
             console.print(f"  Requests: [cyan]{media_stats['count']:,}[/cyan]")
             console.print(f"  Total bandwidth: {media_stats['bytes_total']/1024/1024/1024:.2f} GB")
             console.print(f"  Avg file size: {media_stats['bytes_avg']/1024:.1f} KB")
-            if media_stats['bytes_avg'] > 200 * 1024:  # >200KB
-                console.print(f"  [yellow]⚠️  Large images detected - consider optimization[/yellow]")
+            console.print(f"  Avg response time: {media_stats['response_time_avg']:.3f}s")
+            
+            # Optimization Status & Recommendations
+            console.print(f"\n[bold cyan]🚀 Optimization Status[/bold cyan]")
+            if media_stats['bytes_avg'] > 500 * 1024:
+                console.print(f"  [red]⚠️  Very large images (avg >500KB) - urgent optimization needed![/red]")
+                console.print(f"  [red]💡 Recommended actions:[/red]")
+                console.print(f"    • Implement WebP format")
+                console.print(f"    • Add aggressive compression")
+                console.print(f"    • Set up CDN with image optimization")
+            elif media_stats['bytes_avg'] > 200 * 1024:
+                console.print(f"  [yellow]⚠️  Large images (avg >200KB) - consider optimization[/yellow]")
+                console.print(f"  [yellow]💡 Recommended actions:[/yellow]")
+                console.print(f"    • Consider WebP format")
+                console.print(f"    • Enable compression")
+                console.print(f"    • Add lazy loading")
+            else:
+                console.print(f"  [green]✅ Image sizes are reasonable[/green]")
+                console.print(f"  [green]💡 Current status: Good performance[/green]")
+                
+            # Top Media IPs (for traffic analysis)
+            top_media_ips = analyzer.get_ip_statistics('media', limit=5)
+            if top_media_ips:
+                console.print(f"\n[bold cyan]🔒 Top Media Traffic[/bold cyan]")
+                console.print(f"  Bandwidth leaders:")
+                for ip_data in top_media_ips[:3]:
+                    console.print(f"    • {ip_data['ip']}: {ip_data['requests']} requests")
         
-        # Product pages
+        # 🏪 ADDITIONAL STORE SECTIONS
         product_stats = analyzer.get_category_stats('product')
-        if product_stats and product_stats['count'] > 0:
-            console.print(f"\n[bold]📦 Product Pages[/bold]")
-            console.print(f"  Requests: [cyan]{product_stats['count']:,}[/cyan]")
-            console.print(f"  Avg response time: {product_stats['response_time_avg']:.3f}s")
-        
-        # Search
         search_stats = analyzer.get_category_stats('search')
-        if search_stats and search_stats['count'] > 0:
-            console.print(f"\n[bold]🔍 Search[/bold]")
-            console.print(f"  Requests: [cyan]{search_stats['count']:,}[/cyan]")
-            console.print(f"  Avg response time: {search_stats['response_time_avg']:.3f}s")
         
-        # GraphQL Statistics (Magento specific)
-        try:
-            graphql_stats = analyzer.get_graphql_statistics()
-            console.print(f"[dim]DEBUG: GraphQL stats obtained: {bool(graphql_stats)}[/dim]")
-            if graphql_stats and graphql_stats.get('total_queries', 0) > 0:
-                console.print(f"\n[bold]🔷 GraphQL API (Magento)[/bold]")
-                console.print(f"  Total queries: [cyan]{graphql_stats['total_queries']:,}[/cyan]")
-                console.print(f"  Unique operations: {graphql_stats['unique_operations']}")
-                if graphql_stats['total_errors'] > 0:
-                    error_color = "red" if graphql_stats['error_rate'] > 5 else "yellow"
-                    console.print(f"  Errors: [{error_color}]{graphql_stats['total_errors']:,}[/{error_color}] ({graphql_stats['error_rate']:.1f}%)")
-                
-                if graphql_stats['top_operations']:
-                    console.print(f"  Top operations:")
-                    for operation, count in graphql_stats['top_operations'][:3]:
-                        console.print(f"    • {operation}: {count:,}")
-        except Exception as e:
-            console.print(f"[red]Error getting GraphQL stats: {e}[/red]")
+        if (product_stats and product_stats['count'] > 0) or (search_stats and search_stats['count'] > 0):
+            console.print(f"\n[bold]🏪 ADDITIONAL STORE SECTIONS[/bold]")
+            
+            # Product pages
+            if product_stats and product_stats['count'] > 0:
+                console.print(f"\n[bold yellow]📦 Product Pages[/bold yellow]")
+                console.print(f"  Requests: [cyan]{product_stats['count']:,}[/cyan]")
+                console.print(f"  Avg response time: {product_stats['response_time_avg']:.3f}s")
+            
+            # Search
+            if search_stats and search_stats['count'] > 0:
+                console.print(f"\n[bold yellow]🔍 Search[/bold yellow]")
+                console.print(f"  Requests: [cyan]{search_stats['count']:,}[/cyan]")
+                console.print(f"  Avg response time: {search_stats['response_time_avg']:.3f}s")
         
-        # Conversion Funnel
-        try:
-            funnel = analyzer.get_conversion_funnel()
-            console.print(f"[dim]DEBUG: Funnel obtained: {bool(funnel)}[/dim]")
-            if funnel and funnel.get('funnel'):
-                console.print(f"\n[bold]🎯 Conversion Funnel[/bold]")
-                for step, data in funnel['funnel'].items():
-                    if data['visits'] > 0:
-                        drop_off_indicator = ""
-                        if data['drop_off_rate'] > 50:
-                            drop_off_indicator = f" [red](↓ {data['drop_off_rate']:.0f}% drop-off!)[/red]"
-                        elif data['drop_off_rate'] > 30:
-                            drop_off_indicator = f" [yellow](↓ {data['drop_off_rate']:.0f}% drop-off)[/yellow]"
-                        console.print(f"  {step.title()}: {data['visits']:,}{drop_off_indicator}")
-                
-                if funnel.get('cart_abandonment_rate', 0) > 0:
-                    console.print(f"  Cart abandonment: [yellow]{funnel['cart_abandonment_rate']:.1f}%[/yellow]")
-        except Exception as e:
-            console.print(f"[red]Error getting conversion funnel: {e}[/red]")
-        
-        # Deep Checkout Analysis
-        console.print(f"\n[bold blue]🔍 Deep Checkout Analysis[/bold blue]")
-        detailed_checkout = analyzer.get_deep_checkout_analysis()
-        if detailed_checkout and detailed_checkout.get('total_errors', 0) > 0:
-            console.print(f"[red]Total checkout errors: {detailed_checkout['total_errors']:,}[/red]")
-            
-            # Critical Issues Analysis
-            if detailed_checkout.get('critical_issues'):
-                console.print(f"\n[bold red]🚨 CRITICAL ISSUES FOUND:[/bold red]")
-                for issue in detailed_checkout['critical_issues']:
-                    if issue['type'] == 'RATE_LIMIT_EXCESS':
-                        console.print(f"  • [red]EXCESSIVE RATE LIMITING[/red] from IP: [yellow]{issue['ip']}[/yellow]")
-                        console.print(f"    → {issue['errors']} rate limit errors (possible bot attack or misconfiguration)")
-                    elif issue['type'] == 'SERVER_ERRORS':
-                        console.print(f"  • [red]SERVER STABILITY ISSUES[/red]: {issue['count']} server errors")
-                        console.print(f"    → {issue['description']}")
-                    elif issue['type'] == 'RATE_LIMITING':
-                        console.print(f"  • [yellow]RATE LIMIT CONFIGURATION[/yellow]: {issue['count']} HTTP 429 errors")
-                        console.print(f"    → {issue['description']}")
-            
-            # Detailed Error Pattern Breakdown
-            console.print(f"\n[bold]📊 Error Pattern Analysis:[/bold]")
-            error_pattern_descriptions = {
-                'cart_http_429': '🛒 Cart rate limiting (users blocked from cart actions)',
-                'checkout_http_429': '💳 Checkout rate limiting (payment page blocked)',
-                'checkout_server_error': '❌ Server errors during checkout (5xx errors)',
-                'cart_http_500': '🔄 Cart server crashes',
-                'payment_http_400': '✏️ Payment validation failures',
-                'checkout_not_found': '📄 Missing checkout pages',
-                'checkout_http_403': '🚫 Access denied to checkout'
-            }
-            
-            sorted_patterns = sorted(detailed_checkout['error_patterns'].items(), key=lambda x: x[1], reverse=True)
-            for pattern, count in sorted_patterns[:5]:
-                description = error_pattern_descriptions.get(pattern, pattern)
-                # Calculate impact percentage
-                impact_pct = (count / detailed_checkout['total_errors']) * 100
-                color = "red" if impact_pct > 25 else "yellow" if impact_pct > 10 else "blue"
-                console.print(f"  • [{color}]{description}[/{color}]")
-                console.print(f"    → {count:,} errors ({impact_pct:.1f}% of total)")
-            
-            # IP-Level Security Analysis  
-            if detailed_checkout.get('ip_analysis'):
-                console.print(f"\n[bold]🔒 Security Analysis by IP:[/bold]")
-                sorted_ips = sorted(detailed_checkout['ip_analysis'].items(), key=lambda x: x[1]['total_errors'], reverse=True)
-                for ip, data in sorted_ips[:5]:
-                    threat_level = "HIGH" if data['total_errors'] > 20 else "MEDIUM" if data['total_errors'] > 5 else "LOW"
-                    color = "red" if threat_level == "HIGH" else "yellow" if threat_level == "MEDIUM" else "blue"
-                    
-                    console.print(f"  • [{color}]{ip}[/{color}] ({threat_level} threat)")
-                    console.print(f"    → {data['total_errors']} checkout errors")
-                    
-                    if data['most_common_error']:
-                        error_type = data['most_common_error'][0]
-                        error_count = data['most_common_error'][1]
-                        console.print(f"    → Most common: {error_type} ({error_count}x)")
-                
-                
-            # Checkout Performance Timeline
-            if detailed_checkout.get('timeline_analysis'):
-                console.print(f"\n[bold]⏰ Error Timeline (recent hours):[/bold]")
-                timeline_items = list(detailed_checkout['timeline_analysis'].items())
-                timeline_items.sort()
-                recent_hours = timeline_items[-6:] if len(timeline_items) > 6 else timeline_items
-                for hour, count in recent_hours:
-                    if hour:
-                        hour_str = hour.strftime('%H:00')
-                        perf_status = "🔴 CRITICAL" if count > 50 else "🟡 HIGH" if count > 20 else "🔵 NORMAL"
-                        console.print(f"  • [blue]{hour_str}[/blue]: {count} errors [{perf_status}]")
-        else:
-            console.print(f"[green]✅ No checkout errors detected![/green]")
-        
-        # Recommendations
+        # 💡 OVERALL RECOMMENDATIONS & SUMMARY
         try:
             recommendations = analyzer.get_enhanced_recommendations()
-            console.print(f"[dim]DEBUG: Recommendations obtained: {len(recommendations) if recommendations else 0}[/dim]")
             if recommendations:
-                console.print(f"\n[bold]💡 Recommendations[/bold]")
+                console.print(f"\n[bold]💡 OVERALL RECOMMENDATIONS & SUMMARY[/bold]")
+                console.print(f"\n[bold blue]🎯 Priority Actions[/bold blue]")
                 for rec in recommendations[:5]:  # Top 5
                     priority_color = "red" if rec['priority'] in ['Critical', 'CRITICAL'] else "yellow" if rec['priority'] in ['High', 'HIGH'] else "blue"
                     console.print(f"  [{priority_color}]{rec['priority']}[/{priority_color}] - {rec['category']}")
                     console.print(f"    {rec['recommendation']}")
                     if 'action_items' in rec and rec['action_items']:
-                        console.print(f"    [dim]Actions: {', '.join(rec['action_items'][:2])}[/dim]")
+                        console.print(f"    [dim]Next steps: {', '.join(rec['action_items'][:2])}[/dim]")
+                        
         except Exception as e:
             console.print(f"[red]Error getting recommendations: {e}[/red]")
-        
-        # Usage hints for flags that filter to show ONLY specific sections
-        console.print(f"\n[dim]━━━━━ DETAILED BREAKDOWN ━━━━━[/dim]")
-        console.print(f"[dim]💡 Use flags to show ONLY specific sections (filters output):[/dim]")
-        console.print(f"[dim]   --checkout-analysis   ONLY checkout details (hides all else)[/dim]")
-        console.print(f"[dim]   --admin-analysis      ONLY admin panel details[/dim]")
-        console.print(f"[dim]   --api-analysis        ONLY API/GraphQL details[/dim]")
-        console.print(f"[dim]   --login-security      ONLY login security details[/dim]")
-        console.print(f"[dim]   --media-analysis      ONLY media/image details[/dim]")
     
     # Show ALL detailed analysis sections by default (no flags needed!)
     # Flags can be used to show ONLY specific sections
     show_all = not (checkout_analysis or admin_analysis or api_analysis or 
                     login_security or media_analysis)
-    
-    # Debug: Show what flags are set
-    console.print(f"\n[dim]🔧 DEBUG: Flags - checkout:{checkout_analysis}, admin:{admin_analysis}, api:{api_analysis}, login:{login_security}, media:{media_analysis}, show_all:{show_all}[/dim]")
     
     # Detailed analysis sections (always shown unless user picks specific ones)
     if checkout_analysis or show_all:

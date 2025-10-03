@@ -319,7 +319,7 @@ class EcommerceAnalyzer:
                 'path': path
             })
     
-    def analyze_checkout_error(self, path: str, status: int, method: str):
+    def analyze_checkout_error(self, path: str, status: int, method: str, log_entry: Dict[str, Any]):
         """Analyze checkout errors for patterns."""
         if status < 400 or 'checkout' not in path.lower():
             return
@@ -335,6 +335,10 @@ class EcommerceAnalyzer:
             error_type = "forbidden"
         elif status == 404:
             error_type = "not_found"
+        elif status == 429:
+            error_type = "http_429"
+        elif status == 499:
+            error_type = "http_499"
         elif status == 500:
             error_type = "server_error"
         elif status == 502:
@@ -362,7 +366,8 @@ class EcommerceAnalyzer:
             'method': method,
             'error_type': error_type,
             'timestamp': self.current_timestamp,
-            'ip': self.current_ip
+            'ip': self.current_ip,
+            'user_agent': log_entry.get('user_agent', 'Unknown')
         })
         
         # Track errors by IP for deeper analysis
@@ -415,19 +420,44 @@ class EcommerceAnalyzer:
         # Critical error analysis
         server_errors = [e for e in self.checkout_error_details if e['status'] >= 500]
         if server_errors:
+            # Show details of recent server errors with timestamps and IPs
+            recent_errors = sorted(server_errors, key=lambda x: x.get('timestamp') or datetime.now(), reverse=True)[:5]
+            error_examples = []
+            for error in recent_errors:
+                error_examples.append({
+                    'timestamp': error.get('timestamp').strftime('%Y-%m-%d %H:%M:%S') if error.get('timestamp') else 'Unknown',
+                    'ip': error.get('ip', 'Unknown'),
+                    'path': error.get('path', 'Unknown'),
+                    'status': error.get('status', 'Unknown'),
+                    'user_agent': error.get('user_agent', 'Unknown')[:50] + '...' if len(error.get('user_agent', '')) > 50 else error.get('user_agent', 'Unknown')
+                })
+            
             analysis['critical_issues'].append({
-                'type': 'SERVER_ERRORS',
+                'type': 'APPLICATION_ERRORS',
                 'count': len(server_errors),
-                'description': f'Server errors (5xx) detected - investigate server stability'
+                'description': f'Application errors (5xx) detected - check application logs for details',
+                'recent_examples': error_examples
             })
         
-        # Rate limit analysis
+        # Rate limit analysis with details
         rate_limit_errors = [e for e in self.checkout_error_details if e['status'] == 429]
         if rate_limit_errors:
+            # Show details of recent rate limit errors
+            recent_rate_limits = sorted(rate_limit_errors, key=lambda x: x.get('timestamp') or datetime.now(), reverse=True)[:5]
+            rate_limit_examples = []
+            for error in recent_rate_limits:
+                rate_limit_examples.append({
+                    'timestamp': error.get('timestamp').strftime('%Y-%m-%d %H:%M:%S') if error.get('timestamp') else 'Unknown',
+                    'ip': error.get('ip', 'Unknown'),
+                    'path': error.get('path', 'Unknown'),
+                    'user_agent': error.get('user_agent', 'Unknown')[:50] + '...' if len(error.get('user_agent', '')) > 50 else error.get('user_agent', 'Unknown')
+                })
+                
             analysis['critical_issues'].append({
                 'type': 'RATE_LIMITING',
                 'count': len(rate_limit_errors),
-                'description': 'HTTP 429 errors indicate aggressive rate limiting - check rate limit configuration'
+                'description': 'HTTP 429 errors indicate aggressive rate limiting - check rate limit configuration',
+                'recent_examples': rate_limit_examples
             })
         
         # Detailed error examples for troubleshooting
@@ -442,14 +472,17 @@ class EcommerceAnalyzer:
         path = log_entry.get('path', '/')
         method = log_entry.get('method', 'GET')
         status = log_entry.get('status', 0)
-        response_time = log_entry.get('response_time', 0)
-        bytes_sent = log_entry.get('bytes_sent', 0)
+        # Support both response_time (from parser.py) and request_time (from hypernode command)
+        response_time = log_entry.get('response_time') or log_entry.get('request_time', 0)
+        # Support both bytes_sent (from parser.py) and body_bytes_sent (from hypernode command)  
+        bytes_sent = log_entry.get('bytes_sent') or log_entry.get('body_bytes_sent', 0)
         timestamp = log_entry.get('timestamp')
         ip = log_entry.get('ip')
         
         # Store current context for deep analysis
         self.current_timestamp = timestamp
         self.current_ip = ip
+        self._current_log_entry = log_entry  # Store for user_agent access
         
         # Detect platform
         detected = self.detect_platform(path)
@@ -489,7 +522,7 @@ class EcommerceAnalyzer:
         
         # Analyze checkout errors
         if category == 'checkout' and status >= 400:
-            self.analyze_checkout_error(path, status, method)
+            self.analyze_checkout_error(path, status, method, log_entry)
         
         if category:
             self.ecommerce_requests += 1
