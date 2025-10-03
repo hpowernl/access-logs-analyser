@@ -17,7 +17,6 @@
 #   hlogcli search --status 404        # Search for specific entries
 #   hlogcli report --format html       # Generate comprehensive reports
 #   hlogcli --help                     # Show all available commands
-#   hlogcli --install-completion       # Install shell autocomplete
 #
 # For detailed help on any command:
 #   hlogcli <command> --help

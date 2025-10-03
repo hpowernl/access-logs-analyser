@@ -131,9 +131,8 @@ def is_hypernode_platform() -> bool:
 
 
 @click.group(invoke_without_command=True, context_settings={'help_option_names': ['-h', '--help']})
-@click.option('--install-completion', is_flag=True, help='Install shell completion for bash/zsh/fish')
 @click.pass_context
-def cli(ctx, install_completion):
+def cli(ctx):
     """Hypernode Log Analyzer - Advanced CLI tool for Nginx log analysis.
     
     A comprehensive log analysis toolkit specifically designed for Hypernode environments,
@@ -165,46 +164,6 @@ def cli(ctx, install_completion):
       • Comprehensive reporting with interactive visualizations
       • Configuration management and user profiles
     """
-    if install_completion:
-        import subprocess
-        import sys
-        
-        shell = os.environ.get('SHELL', '').split('/')[-1]
-        if shell in ['bash', 'zsh', 'fish']:
-            try:
-                # Generate completion script
-                completion_script = f"""
-# Hypernode Log Analyzer shell completion
-eval "$(_HLOGCLI_COMPLETE={shell}_source hlogcli)"
-"""
-                
-                if shell == 'bash':
-                    completion_file = os.path.expanduser('~/.bashrc')
-                elif shell == 'zsh':
-                    completion_file = os.path.expanduser('~/.zshrc')
-                elif shell == 'fish':
-                    completion_file = os.path.expanduser('~/.config/fish/config.fish')
-                
-                # Check if completion is already installed
-                if os.path.exists(completion_file):
-                    with open(completion_file, 'r') as f:
-                        if '_HLOGCLI_COMPLETE' in f.read():
-                            console.print(f"[yellow]Shell completion already installed for {shell}[/yellow]")
-                            return
-                
-                # Add completion to shell config
-                with open(completion_file, 'a') as f:
-                    f.write(completion_script)
-                
-                console.print(f"[green]✅ Shell completion installed for {shell}![/green]")
-                console.print(f"[blue]Please restart your shell or run: source {completion_file}[/blue]")
-                
-            except Exception as e:
-                console.print(f"[red]Failed to install completion: {e}[/red]")
-        else:
-            console.print(f"[red]Unsupported shell: {shell}. Supported: bash, zsh, fish[/red]")
-        
-        return
     
     # If no command is specified, show custom help without usage line
     if ctx.invoked_subcommand is None:
