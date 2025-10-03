@@ -22,6 +22,10 @@ from .ui import LogAnalyzerTUI, SimpleConsoleUI
 from .export import DataExporter, create_report_summary
 from .config import HYPERNODE_SETTINGS
 from .hypernode_command import get_hypernode_command
+from .ui_helpers import (
+    print_section_header, print_subsection, print_data_item,
+    format_number, format_percentage, Colors, Emoji
+)
 
 
 def complete_countries(ctx, param, incomplete):
@@ -130,7 +134,7 @@ def is_hypernode_platform() -> bool:
 @click.option('--install-completion', is_flag=True, help='Install shell completion for bash/zsh/fish')
 @click.pass_context
 def cli(ctx, install_completion):
-    """🚀 Hypernode Log Analyzer - Advanced CLI tool for Nginx log analysis.
+    """Hypernode Log Analyzer - Advanced CLI tool for Nginx log analysis.
     
     A comprehensive log analysis toolkit specifically designed for Hypernode environments,
     featuring direct log parsing via hypernode-parse-nginx-log command, security analysis, 
@@ -714,43 +718,62 @@ def run_interactive_static(stats: StatisticsAggregator, log_filter: LogFilter):
 
 
 def display_summary_only(stats: StatisticsAggregator):
-    """Display only summary statistics."""
+    """Display only summary statistics with clear hierarchy."""
     summary = stats.get_summary_stats()
     time_stats = summary.get('time_range_stats', {})
     
-    console.print(f"[bold blue]📊 ANALYSIS SUMMARY[/bold blue]")
+    # Main section header - only one emoji for entire command
+    print_section_header("ANALYSIS SUMMARY", Emoji.SUMMARY, console)
     
-    # Time range information
+    # Time range subsection
     if time_stats.get('earliest_timestamp') and time_stats.get('latest_timestamp'):
-        console.print(f"[bold cyan]⏰ TIME RANGE[/bold cyan]")
-        console.print(f"  From: [green]{time_stats['earliest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}[/green]")
-        console.print(f"  To: [green]{time_stats['latest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}[/green]")
+        print_subsection("Time Range", console, spacing_before=False)
         
+        from_time = time_stats['earliest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+        to_time = time_stats['latest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+        
+        print_data_item("From", from_time, Colors.SUCCESS, console)
+        print_data_item("To", to_time, Colors.SUCCESS, console)
+        
+        # Duration
         if time_stats.get('time_span_hours', 0) > 24:
-            console.print(f"  Duration: [yellow]{time_stats.get('time_span_days', 0):.1f} days[/yellow]")
+            duration = f"{time_stats.get('time_span_days', 0):.1f} days"
         else:
-            console.print(f"  Duration: [yellow]{time_stats.get('time_span_hours', 0):.1f} hours[/yellow]")
-        console.print()
+            duration = f"{time_stats.get('time_span_hours', 0):.1f} hours"
+        print_data_item("Duration", duration, Colors.WARNING, console)
     
-    # Request statistics
-    console.print(f"[bold green]📈 TRAFFIC STATISTICS[/bold green]")
-    console.print(f"  Total Requests: [green]{summary.get('total_requests', 0):,}[/green]")
-    console.print(f"  Unique Visitors: [green]{summary.get('unique_visitors', 0):,}[/green]")
+    # Traffic statistics subsection
+    print_subsection("Traffic Statistics", console)
     
+    total_requests = format_number(summary.get('total_requests', 0))
+    unique_visitors = format_number(summary.get('unique_visitors', 0))
+    
+    print_data_item("Total Requests", total_requests, Colors.SUCCESS, console)
+    print_data_item("Unique Visitors", unique_visitors, Colors.SUCCESS, console)
+    
+    # Rate metrics (if available)
     if time_stats.get('requests_per_hour', 0) > 0:
-        console.print(f"  Requests/Hour: [cyan]{time_stats.get('requests_per_hour', 0):.1f}[/cyan]")
-        console.print(f"  Requests/Minute: [cyan]{time_stats.get('requests_per_minute', 0):.1f}[/cyan]")
+        req_per_hour = f"{time_stats.get('requests_per_hour', 0):.1f}"
+        req_per_min = f"{time_stats.get('requests_per_minute', 0):.1f}"
+        print_data_item("Requests/Hour", req_per_hour, Colors.INFO, console)
+        print_data_item("Requests/Minute", req_per_min, Colors.INFO, console)
     
-    console.print(f"  Error Rate: [red]{summary.get('error_rate', 0):.2f}%[/red]")
-    console.print(f"  Bot Traffic: [yellow]{summary.get('bot_percentage', 0):.2f}%[/yellow]")
+    # Error and bot metrics
+    error_rate = format_percentage(summary.get('error_rate', 0))
+    bot_traffic = format_percentage(summary.get('bot_percentage', 0))
     
+    print_data_item("Error Rate", error_rate, Colors.ERROR, console)
+    print_data_item("Bot Traffic", bot_traffic, Colors.WARNING, console)
+    
+    # Performance metrics subsection
     rt_stats = summary.get('response_time_stats', {})
     if rt_stats:
-        console.print()
-        console.print(f"[bold purple]⚡ PERFORMANCE[/bold purple]")
-        console.print(f"  Avg Response Time: [cyan]{rt_stats.get('avg', 0):.3f}s[/cyan]")
-        console.print(f"  Max Response Time: [red]{rt_stats.get('max', 0):.3f}s[/red]")
-        console.print(f"  95th Percentile: [yellow]{rt_stats.get('p95', 0):.3f}s[/yellow]")
+        print_subsection("Performance Metrics", console)
+        
+        print_data_item("Average", f"{rt_stats.get('avg', 0):.3f}", Colors.INFO, console, unit="s")
+        print_data_item("Median", f"{rt_stats.get('median', 0):.3f}", Colors.INFO, console, unit="s")
+        print_data_item("95th Percentile", f"{rt_stats.get('p95', 0):.3f}", Colors.WARNING, console, unit="s")
+        print_data_item("Maximum", f"{rt_stats.get('max', 0):.3f}", Colors.ERROR, console, unit="s")
 
 
 def handle_exports(stats: StatisticsAggregator, output_dir: Optional[str], 
@@ -899,39 +922,45 @@ def security(log_files, scan_attacks, brute_force_detection,
     summary = analyzer.get_security_summary()
     suspicious_ips = analyzer.get_suspicious_ips()
 
-    if show_blocked:
-        blocked = analyzer.get_blocked_summary()
-        console.print("\n[bold yellow]🚫 BLOCKED TRAFFIC[/bold yellow]")
-        console.print(f"  Total blocked: {blocked['total']:,}")
-        if blocked['top_status_codes']:
-            console.print(f"  Top status: {blocked['top_status_codes']}")
-        if blocked['top_countries']:
-            console.print(f"  Top countries: {list(blocked['top_countries'].items())[:5]}")
-        if blocked['top_paths']:
-            console.print(f"  Top paths: {list(blocked['top_paths'].items())[:5]}")
-    
     # Show security summary by default (unless quiet mode)
     if show_summary and not quiet:
-        console.print("\n[bold blue]🛡️  SECURITY ANALYSIS SUMMARY[/bold blue]")
-        console.print(f"  📊 Total Requests: [cyan]{summary['total_requests']:,}[/cyan]")
-        console.print(f"  ❌ Total Errors: [red]{summary['total_errors']:,}[/red] ({summary['global_error_rate']:.1f}%)")
-        console.print(f"  🌐 Unique IPs: [cyan]{summary['unique_ips']:,}[/cyan]")
-        console.print(f"  🚨 Attack Attempts: [red]{summary['total_attack_attempts']:,}[/red]")
-        console.print(f"  🎯 Attack Types: [yellow]{summary['attack_types_detected']}[/yellow]")
+        print_section_header("SECURITY ANALYSIS", Emoji.SECURITY, console)
         
-        console.print(f"\n  ⚠️  Threat Analysis:")
-        console.print(f"    • Suspicious IPs: [red]{summary['suspicious_ips']}[/red] ({summary['suspicious_ip_percentage']:.1f}%)")
-        console.print(f"    • Potential DDoS IPs: [orange1]{summary['potential_ddos_ips']}[/orange1]")
-        console.print(f"    • Scanning IPs: [yellow]{summary['scanning_ips']}[/yellow]")
-        console.print(f"    • Admin Access IPs: [red]{summary['admin_access_ips']}[/red]")
+        # Blocked traffic subsection (if requested)
+        if show_blocked:
+            blocked = analyzer.get_blocked_summary()
+            print_subsection("Blocked Traffic", console, spacing_before=False)
+            print_data_item("Total blocked", format_number(blocked['total']), Colors.WARNING, console)
+            if blocked['top_status_codes']:
+                console.print(f"    • Top status: {blocked['top_status_codes']}")
+            if blocked['top_countries']:
+                console.print(f"    • Top countries: {list(blocked['top_countries'].items())[:5]}")
         
-        console.print(f"\n  🔍 Attack Categories:")
-        console.print(f"    • Brute Force: [orange1]{summary['brute_force_ips']}[/orange1] IPs")
-        console.print(f"    • SQL Injection: [red]{summary['sql_injection_ips']}[/red] IPs")
-        console.print(f"    • XSS Attempts: [red]{summary['xss_attempt_ips']}[/red] IPs")
-        console.print(f"    • Directory Traversal: [red]{summary['directory_traversal_ips']}[/red] IPs")
-        console.print(f"    • Command Injection: [red]{summary['command_injection_ips']}[/red] IPs")
-        console.print(f"    • Suspicious User Agents: [yellow]{summary['suspicious_user_agents']}[/yellow]")
+        # Overview subsection
+        print_subsection("Overview", console, spacing_before=not show_blocked)
+        print_data_item("Total Requests", format_number(summary['total_requests']), Colors.INFO, console)
+        error_text = f"{format_number(summary['total_errors'])} ({summary['global_error_rate']:.1f}%)"
+        print_data_item("Total Errors", error_text, Colors.ERROR, console)
+        print_data_item("Unique IPs", format_number(summary['unique_ips']), Colors.INFO, console)
+        print_data_item("Attack Attempts", format_number(summary['total_attack_attempts']), Colors.ERROR, console)
+        print_data_item("Attack Types Detected", str(summary['attack_types_detected']), Colors.WARNING, console)
+        
+        # Threat Analysis subsection
+        print_subsection("Threat Analysis", console)
+        susp_text = f"{summary['suspicious_ips']} ({summary['suspicious_ip_percentage']:.1f}%)"
+        print_data_item("Suspicious IPs", susp_text, Colors.ERROR, console)
+        print_data_item("Potential DDoS IPs", str(summary['potential_ddos_ips']), Colors.ALERT, console)
+        print_data_item("Scanning IPs", str(summary['scanning_ips']), Colors.WARNING, console)
+        print_data_item("Admin Access IPs", str(summary['admin_access_ips']), Colors.ERROR, console)
+        
+        # Attack Categories subsection
+        print_subsection("Attack Categories", console)
+        print_data_item("Brute Force", f"{summary['brute_force_ips']} IPs", Colors.ALERT, console)
+        print_data_item("SQL Injection", f"{summary['sql_injection_ips']} IPs", Colors.ERROR, console)
+        print_data_item("XSS Attempts", f"{summary['xss_attempt_ips']} IPs", Colors.ERROR, console)
+        print_data_item("Directory Traversal", f"{summary['directory_traversal_ips']} IPs", Colors.ERROR, console)
+        print_data_item("Command Injection", f"{summary['command_injection_ips']} IPs", Colors.ERROR, console)
+        print_data_item("Suspicious User Agents", str(summary['suspicious_user_agents']), Colors.WARNING, console)
         
         # Show compact e-commerce platform metrics if present
         platform = summary.get('platform', {})
@@ -1255,73 +1284,74 @@ def perf(log_files, response_time_analysis, slowest,
     
     # If no specific flags, show default overview
     if not has_specific_flags:
-        console.print("\n[bold cyan]⚡ PERFORMANCE OVERVIEW[/bold cyan]")
+        print_section_header("PERFORMANCE OVERVIEW", Emoji.PERFORMANCE, console)
         
         # Basic stats
         summary = analyzer.get_performance_summary()
         if summary.get('total_requests', 0) > 0:
-            console.print(f"\n[bold]📊 Summary Statistics[/bold]")
-            console.print(f"  Total requests analyzed: [green]{summary['total_requests']:,}[/green]")
-            console.print(f"  Slow requests (>2s): [yellow]{summary['slow_requests']:,}[/yellow]")
-            console.print(f"  Handlers analyzed: {summary['handlers_analyzed']}")
-            console.print(f"  Unique endpoints: {summary['endpoints_analyzed']}")
+            print_subsection("Summary Statistics", console, spacing_before=False)
+            print_data_item("Total requests analyzed", format_number(summary['total_requests']), Colors.SUCCESS, console)
+            print_data_item("Slow requests (>2s)", format_number(summary['slow_requests']), Colors.WARNING, console)
+            print_data_item("Handlers analyzed", str(summary['handlers_analyzed']), Colors.INFO, console)
+            print_data_item("Unique endpoints", str(summary['endpoints_analyzed']), Colors.INFO, console)
             
             # Response time stats
             rt_stats = summary.get('response_time_stats', {})
             if rt_stats:
-                console.print(f"\n[bold]⏱️  Response Time Statistics[/bold]")
-                console.print(f"  Average: [cyan]{rt_stats['avg']:.3f}s[/cyan]")
-                console.print(f"  Median: {rt_stats['median']:.3f}s")
-                console.print(f"  95th percentile: [yellow]{rt_stats['p95']:.3f}s[/yellow]")
-                console.print(f"  99th percentile: [red]{rt_stats['p99']:.3f}s[/red]")
-                console.print(f"  Max: {rt_stats['max']:.3f}s")
+                print_subsection("Response Time Statistics", console)
+                print_data_item("Average", f"{rt_stats['avg']:.3f}", Colors.INFO, console, unit="s")
+                print_data_item("Median", f"{rt_stats['median']:.3f}", Colors.INFO, console, unit="s")
+                print_data_item("95th percentile", f"{rt_stats['p95']:.3f}", Colors.WARNING, console, unit="s")
+                print_data_item("99th percentile", f"{rt_stats['p99']:.3f}", Colors.ERROR, console, unit="s")
+                print_data_item("Maximum", f"{rt_stats['max']:.3f}", Colors.ERROR, console, unit="s")
             
             # Handler performance
             handler_perf = analyzer.get_handler_performance()
             if handler_perf:
-                console.print(f"\n[bold]🔧 Handler Performance[/bold]")
+                print_subsection("Handler Performance", console)
                 for handler_name, stats in sorted(handler_perf.items(), 
                                                  key=lambda x: x[1]['requests'], 
                                                  reverse=True)[:5]:
-                    console.print(f"  {handler_name}:")
-                    console.print(f"    Requests: {stats['requests']:,}")
-                    console.print(f"    Avg response: {stats['avg_response_time']:.3f}s")
-                    console.print(f"    P95: {stats['p95_response_time']:.3f}s")
+                    console.print(f"    {handler_name}:")
+                    console.print(f"      • Requests: [{Colors.INFO}]{format_number(stats['requests'])}[/{Colors.INFO}]")
+                    console.print(f"      • Avg response: [{Colors.INFO}]{stats['avg_response_time']:.3f}s[/{Colors.INFO}]")
+                    console.print(f"      • P95: [{Colors.WARNING}]{stats['p95_response_time']:.3f}s[/{Colors.WARNING}]")
                     if stats['slow_requests'] > 0:
-                        console.print(f"    Slow (>2s): [yellow]{stats['slow_requests']:,}[/yellow]")
+                        console.print(f"      • Slow (>2s): [{Colors.WARNING}]{format_number(stats['slow_requests'])}[/{Colors.WARNING}]")
             
             # Top slowest endpoints
-            console.print(f"\n[bold]🐌 Top 10 Slowest Endpoints[/bold]")
+            print_subsection("Top 10 Slowest Endpoints", console)
             slow_endpoints = analyzer.get_slowest_endpoints(10)
             if slow_endpoints:
                 for endpoint, avg_time in slow_endpoints:
                     # Truncate long URLs
-                    display_endpoint = endpoint if len(endpoint) <= 70 else endpoint[:67] + "..."
-                    color = "red" if avg_time > 5 else "yellow" if avg_time > 2 else "white"
-                    console.print(f"  [{color}]{avg_time:.3f}s[/{color}] {display_endpoint}")
+                    display_endpoint = endpoint if len(endpoint) <= 60 else endpoint[:57] + "..."
+                    color = Colors.ERROR if avg_time > 5 else Colors.WARNING if avg_time > 2 else Colors.INFO
+                    console.print(f"    • [{color}]{avg_time:.3f}s[/{color}] {display_endpoint}")
             else:
-                console.print("  No slow endpoints found")
+                console.print("    No slow endpoints found")
             
             # Bandwidth stats
             bandwidth = summary.get('bandwidth_stats', {})
             if bandwidth:
-                console.print(f"\n[bold]📈 Bandwidth Usage[/bold]")
-                console.print(f"  Total transferred: [cyan]{bandwidth['total_gb']:.2f} GB[/cyan]")
-                console.print(f"  Average per request: {bandwidth['avg_per_request']/1024:.1f} KB")
+                print_subsection("Bandwidth Usage", console)
+                print_data_item("Total transferred", f"{bandwidth['total_gb']:.2f} GB", Colors.INFO, console)
+                print_data_item("Average per request", f"{bandwidth['avg_per_request']/1024:.1f} KB", Colors.INFO, console)
                 if bandwidth.get('peak_hour') and bandwidth['peak_hour'] != 'N/A':
-                    console.print(f"  Peak hour: {bandwidth['peak_hour']} ({bandwidth['peak_hour_gb']:.2f} GB)")
+                    peak_text = f"{bandwidth['peak_hour']} ({bandwidth['peak_hour_gb']:.2f} GB)"
+                    print_data_item("Peak hour", peak_text, Colors.WARNING, console)
             
             # Optimization recommendations
             recommendations = analyzer.get_optimization_recommendations()
             if recommendations:
-                console.print(f"\n[bold]💡 Optimization Recommendations[/bold]")
+                print_subsection("Optimization Recommendations", console)
                 for rec in recommendations[:3]:  # Show top 3
-                    priority_color = "red" if rec['priority'] == 'High' else "yellow"
-                    console.print(f"  [{priority_color}]{rec['priority']}[/{priority_color}] - {rec['category']}")
-                    console.print(f"    {rec['recommendation']}")
+                    priority_color = Colors.ERROR if rec['priority'] == 'High' else Colors.WARNING
+                    console.print(f"    [{priority_color}]{rec['priority']}[/{priority_color}] - {rec['category']}")
+                    console.print(f"      {rec['recommendation']}")
                 
                 if len(recommendations) > 3:
-                    console.print(f"\n  [dim]... and {len(recommendations) - 3} more recommendations[/dim]")
+                    console.print(f"\n    [dim]... and {len(recommendations) - 3} more recommendations[/dim]")
             
             # Usage hints
             console.print(f"\n[dim]💡 Use flags for detailed analysis:[/dim]")
@@ -1473,70 +1503,73 @@ def api(log_files, endpoint_analysis, graphql_analysis,
     api_summary = analyzer.get_api_summary()
     
     # Show API summary by default
-    console.print("\n[bold blue]🔌 API ANALYSIS SUMMARY[/bold blue]")
+    print_section_header("API ANALYSIS", Emoji.API, console)
+    
     if show_blocked:
         blocked = analyzer.get_blocked_summary()
-        console.print("\n[bold yellow]🚫 BLOCKED TRAFFIC[/bold yellow]")
-        console.print(f"  Total blocked: {blocked['total']:,}")
+        print_subsection("Blocked Traffic", console, spacing_before=False)
+        print_data_item("Total blocked", format_number(blocked['total']), Colors.WARNING, console)
         if blocked['top_status_codes']:
-            console.print(f"  Top status: {blocked['top_status_codes']}")
+            console.print(f"    • Top status: {blocked['top_status_codes']}")
         if blocked['top_endpoints']:
-            console.print(f"  Top endpoints: {list(blocked['top_endpoints'].items())[:5]}")
+            console.print(f"    • Top endpoints: {list(blocked['top_endpoints'].items())[:5]}")
         if blocked['top_countries']:
-            console.print(f"  Top countries: {list(blocked['top_countries'].items())[:5]}")
-    console.print(f"  📊 API Overview:")
-    console.print(f"    • Total API Requests: [cyan]{api_summary['total_api_requests']:,}[/cyan]")
-    console.print(f"    • Unique Endpoints: [cyan]{api_summary['total_endpoints']:,}[/cyan]")
-    console.print(f"    • Overall Error Rate: [red]{api_summary['error_rate']:.1f}%[/red]")
-    console.print(f"    • Total API Bandwidth: [yellow]{api_summary['total_bandwidth_mb']:.1f} MB[/yellow]")
+            console.print(f"    • Top countries: {list(blocked['top_countries'].items())[:5]}")
+    
+    print_subsection("Overview", console, spacing_before=not show_blocked)
+    print_data_item("Total API Requests", format_number(api_summary['total_api_requests']), Colors.INFO, console)
+    print_data_item("Unique Endpoints", format_number(api_summary['total_endpoints']), Colors.INFO, console)
+    print_data_item("Overall Error Rate", f"{api_summary['error_rate']:.1f}%", Colors.ERROR, console)
+    print_data_item("Total API Bandwidth", f"{api_summary['total_bandwidth_mb']:.1f} MB", Colors.WARNING, console)
     
     # Performance statistics
     if api_summary['performance_stats']:
+        print_subsection("Performance", console)
         perf = api_summary['performance_stats']
-        console.print(f"\n  ⚡ API Performance:")
-        console.print(f"    • Average Response Time: [cyan]{perf['avg_response_time']:.3f}s[/cyan]")
-        console.print(f"    • 95th Percentile: [yellow]{perf['p95_response_time']:.3f}s[/yellow]")
-        console.print(f"    • Slowest Response: [red]{perf['max_response_time']:.3f}s[/red]")
+        print_data_item("Average Response Time", f"{perf['avg_response_time']:.3f}", Colors.INFO, console, unit="s")
+        print_data_item("95th Percentile", f"{perf['p95_response_time']:.3f}", Colors.WARNING, console, unit="s")
+        print_data_item('Slowest Response', f"{perf['max_response_time']:.3f}", Colors.ERROR, console, unit="s")
     
     # Top endpoints
     if api_summary['top_endpoints']['most_popular']:
-        console.print(f"\n  🏆 Most Popular API Endpoints:")
+        print_subsection("Most Popular API Endpoints", console)
         for endpoint, requests in list(api_summary['top_endpoints']['most_popular'].items())[:top_endpoints]:
-            endpoint_display = endpoint[:60] + "..." if len(endpoint) > 60 else endpoint
-            console.print(f"    • [green]{endpoint_display}[/green]: {requests:,} requests")
+            endpoint_display = endpoint[:50] + "..." if len(endpoint) > 55 else endpoint
+            print_data_item(endpoint_display, format_number(requests), Colors.SUCCESS, console)
     
     # Security issues
     security = api_summary['security_issues']
     if any(security.values()):
-        console.print(f"\n  🚨 API Security Issues:")
+        print_subsection("API Security Issues", console)
         if security['unauthenticated_access'] > 0:
-            console.print(f"    • Unauthenticated Access: [red]{security['unauthenticated_access']}[/red] endpoints")
+            print_data_item("Unauthenticated Access", f"{security['unauthenticated_access']} endpoints", Colors.ERROR, console)
         if security['excessive_requests'] > 0:
-            console.print(f"    • Excessive Requests: [orange1]{security['excessive_requests']}[/orange1] IPs")
+            print_data_item("Excessive Requests", f"{security['exclusive_requests']} IPs", Colors.ALERT, console)
         if security['suspicious_queries'] > 0:
-            console.print(f"    • Suspicious Queries: [red]{security['suspicious_queries']}[/red] endpoints")
+            print_data_item("Suspicious Queries", f"{security['suspicious_queries']} endpoints", Colors.ERROR, console)
         if security['potential_abuse'] > 0:
-            console.print(f"    • Potential Abuse: [red]{security['potential_abuse']}[/red] endpoints")
+            print_data_item("Potential Abuse", f"{security['potential_abuse']} endpoints", Colors.ERROR, console)
     else:
-        console.print(f"\n  ✅ No significant API security issues detected")
+        console.print(f"    [{Colors.SUCCESS}]No significant API security issues detected[/{Colors.SUCCESS}]")
     
     # Show detailed analysis sections if requested
     if endpoint_analysis:
-        console.print("\n[bold yellow]📈 ENDPOINT PERFORMANCE ANALYSIS[/bold yellow]")
+        print_subsection("Endpoint Performance Analysis", console)
         
         # Slowest endpoints
         if api_summary['top_endpoints']['slowest']:
-            console.print(f"  🐌 Slowest Endpoints:")
+            console.print(f"    Slowest Endpoints:")
             for endpoint, count in list(api_summary['top_endpoints']['slowest'].items())[:5]:
                 endpoint_details = analyzer.get_endpoint_details(endpoint)
                 avg_time = endpoint_details['performance_stats'].get('avg_response_time', 0)
-                console.print(f"    • [red]{endpoint}[/red]: {avg_time:.3f}s avg ({count:,} slow requests)")
+                slow_info = f"{avg_time:.3f}s avg ({format_number(count)} slow requests)"
+                console.print(f"      • [{Colors.ERROR}]{endpoint}[/{Colors.ERROR}]: {slow_info}")
         
         # Highest error rate endpoints
         if api_summary['top_endpoints']['highest_error_rate']:
-            console.print(f"\n  ❌ Highest Error Rate Endpoints:")
+            console.print(f"\n    Highest Error Rate Endpoints:")
             for endpoint, error_rate in list(api_summary['top_endpoints']['highest_error_rate'].items())[:5]:
-                console.print(f"    • [red]{endpoint}[/red]: {error_rate:.1f}% error rate")
+                console.print(f"      • [{Colors.ERROR}]{endpoint}[/{Colors.ERROR}]: {error_rate:.1f}% error rate")
     
     if graphql_analysis:
         graphql_data = api_summary['graphql_analysis']
@@ -1670,44 +1703,47 @@ def content(log_files, content_type_analysis, file_extension_analysis,
     content_summary = analyzer.get_content_summary()
     
     # Show content summary by default
-    console.print("\n[bold blue]📁 CONTENT ANALYSIS SUMMARY[/bold blue]")
-    console.print(f"  📊 Content Overview:")
-    console.print(f"    • Total Requests: [cyan]{content_summary['total_requests']:,}[/cyan]")
-    console.print(f"    • Total Bandwidth: [yellow]{content_summary['total_bandwidth_mb']:.1f} MB[/yellow]")
-    console.print(f"    • Content Types: [cyan]{len(content_summary['content_distribution'])}[/cyan]")
-    console.print(f"    • File Extensions: [cyan]{len(content_summary['extension_analysis'])}[/cyan]")
+    print_section_header("CONTENT ANALYSIS", "📁", console)
+    
+    print_subsection("Content Overview", console, spacing_before=False)
+    print_data_item("Total Requests", format_number(content_summary['total_requests']), Colors.INFO, console)
+    print_data_item("Total Bandwidth", f"{content_summary['total_bandwidth_mb']:.1f} MB", Colors.WARNING, console)
+    print_data_item("Content Types", str(len(content_summary['content_distribution'])), Colors.INFO, console)
+    print_data_item("File Extensions", str(len(content_summary['extension_analysis'])), Colors.INFO, console)
     
     # Top content types
     if content_summary['content_distribution']:
-        console.print(f"\n  🏆 Top Content Types:")
+        print_subsection("Top Content Types", console)
         for content_type, data in list(content_summary['content_distribution'].items())[:top_content]:
             content_display = content_type[:50] + "..." if len(content_type) > 50 else content_type
-            console.print(f"    • [green]{content_display}[/green]: {data['requests']:,} requests ({data['percentage']:.1f}%)")
+            requests_info = f"{format_number(data['requests'])} ({data['percentage']:.1f}%)"
+            print_data_item(content_display, requests_info, Colors.SUCCESS, console)
             console.print(f"      └─ {data['bandwidth_mb']:.1f} MB, {data['avg_response_time']:.3f}s avg, {data['error_rate']:.1f}% errors")
     
     # Resource categories
     if content_summary['category_analysis']:
-        console.print(f"\n  📂 Resource Categories:")
+        print_subsection("Resource Categories", console)
         for category, data in list(content_summary['category_analysis'].items())[:5]:
-            console.print(f"    • [blue]{category}[/blue]: {data['requests']:,} requests, {data['bandwidth_mb']:.1f} MB")
+            category_info = f"{format_number(data['requests'])} requests, {data['bandwidth_mb']:.1f} MB"
+            print_data_item(category, category_info, Colors.INFO, console)
             console.print(f"      └─ {data['avg_response_time']:.3f}s avg, {data['error_rate']:.1f}% errors")
     
     # Optimization opportunities
     optimization = content_summary['optimization_opportunities']
     if any(optimization.values()):
-        console.print(f"\n  🔧 Optimization Opportunities:")
+        print_subsection("Optimization Opportunities", console)
         if optimization['large_images'] > 0:
-            console.print(f"    • Large Images: [red]{optimization['large_images']}[/red] files need optimization")
+            print_data_item("Large Images", f"{optimization['large_images']} files", Colors.ERROR, console)
         if optimization['unoptimized_resources'] > 0:
-            console.print(f"    • Unoptimized Resources: [orange1]{optimization['unoptimized_resources']}[/orange1] JS/CSS files")
+            print_data_item("Unoptimized Resources", f"{optimization['unoptimized_resources']} JS/CSS files", Colors.ALERT, console)
         if optimization['missing_images'] > 0:
-            console.print(f"    • Missing Images: [red]{optimization['missing_images']}[/red] broken image links")
+            print_data_item("Missing Images", f"{optimization['missing_images']} broken links", Colors.ERROR, console)
         if optimization['broken_links'] > 0:
-            console.print(f"    • Broken Links: [red]{optimization['broken_links']}[/red] 404 errors")
+            print_data_item("Broken Links", f"{optimization['broken_links']} 404 errors", Colors.ERROR, console)
         if optimization['redirect_chains'] > 0:
-            console.print(f"    • Redirect Chains: [yellow]{optimization['redirect_chains']}[/yellow] redirects")
+            print_data_item("Redirect Chains", f"{optimization['redirect_chains']} redirects", Colors.WARNING, console)
     else:
-        console.print(f"\n  ✅ No major optimization issues detected")
+        console.print(f"    [{Colors.SUCCESS}]No major optimization issues detected[/{Colors.SUCCESS}]")
     
     # Show detailed analysis sections if requested
     if content_type_analysis:
@@ -1889,62 +1925,64 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
                          login_security or media_analysis or detailed)
     
     # Show platform detection
-    console.print("\n[bold cyan]🛒 E-COMMERCE ANALYSIS[/bold cyan]")
+    print_section_header("E-COMMERCE ANALYSIS", Emoji.ECOMMERCE, console)
     
     if platform_summary['detected_platform']:
         platform_name = platform_summary['detected_platform'].title()
         confidence = platform_summary['confidence']
-        console.print(f"\n[bold]🔍 Platform Detection[/bold]")
-        console.print(f"  Detected: [green]{platform_name}[/green] ({confidence:.0f}% confidence)")
-        console.print(f"  Total requests: {platform_summary['total_requests']:,}")
-        console.print(f"  E-commerce requests: [cyan]{platform_summary['ecommerce_requests']:,}[/cyan] ({platform_summary['ecommerce_percentage']:.1f}%)")
+        print_subsection("Platform Detection", console, spacing_before=False)
+        print_data_item("Detected", f"{platform_name} ({confidence:.0f}% confidence)", Colors.SUCCESS, console)
+        print_data_item("Total requests", format_number(platform_summary['total_requests']), Colors.INFO, console)
+        ecom_req = f"{format_number(platform_summary['ecommerce_requests'])} ({platform_summary['ecommerce_percentage']:.1f}%)"
+        print_data_item("E-commerce requests", ecom_req, Colors.INFO, console)
     else:
-        console.print("\n[yellow]⚠️  No e-commerce platform detected in logs[/yellow]")
-        console.print("Make sure you're analyzing logs from a Magento, WooCommerce, or Shopware 6 site.")
+        console.print(f"  [{Colors.WARNING}]No e-commerce platform detected in logs[/{Colors.WARNING}]")
+        console.print("  Make sure you're analyzing logs from a Magento, WooCommerce, or Shopware 6 site.")
         return
     
     # Always show comprehensive overview for better insights
     # Flags now add EXTRA detailed analysis on top of default
     if True:  # Always show default overview
-        # 🛍️ CHECKOUT COMPLETE SECTION
+        # Checkout section
         checkout_stats = analyzer.get_category_stats('checkout')
         if checkout_stats and checkout_stats['count'] > 0:
-            console.print(f"\n[bold]🛍️  CHECKOUT COMPLETE[/bold]")
+            print_subsection("Checkout Flow", console)
             
-            # Performance Stats
-            console.print(f"\n[bold cyan]📊 Performance Statistics[/bold cyan]")
-            console.print(f"  Requests: [cyan]{checkout_stats['count']:,}[/cyan]")
-            console.print(f"  Avg response time: {checkout_stats['response_time_avg']:.3f}s")
-            console.print(f"  P95: {checkout_stats['response_time_p95']:.3f}s")
+            # Performance Stats as nested subsection
+            console.print(f"    [bold]Performance[/bold]")
+            print_data_item("Requests", format_number(checkout_stats['count']), Colors.INFO, console, indent=6)
+            print_data_item("Avg response time", f"{checkout_stats['response_time_avg']:.3f}", Colors.INFO, console, indent=6, unit="s")
+            print_data_item("P95", f"{checkout_stats['response_time_p95']:.3f}", Colors.WARNING, console, indent=6, unit="s")
             if checkout_stats['errors'] > 0:
-                console.print(f"  Errors: [red]{checkout_stats['errors']:,}[/red] ({checkout_stats['error_rate']:.1f}%)")
+                error_text = f"{format_number(checkout_stats['errors'])} ({checkout_stats['error_rate']:.1f}%)"
+                print_data_item("Errors", error_text, Colors.ERROR, console, indent=6)
             if checkout_stats['slow_count'] > 0:
-                console.print(f"  Slow (>2s): [yellow]{checkout_stats['slow_count']:,}[/yellow]")
+                print_data_item("Slow (>2s)", format_number(checkout_stats['slow_count']), Colors.WARNING, console, indent=6)
             
             # Conversion Funnel (moved here to group with checkout)
             try:
                 funnel = analyzer.get_conversion_funnel()
                 if funnel and funnel.get('funnel'):
-                    console.print(f"\n[bold cyan]🎯 Conversion Funnel[/bold cyan]")
+                    console.print(f"\n    [bold]Conversion Funnel[/bold]")
                     for step, data in funnel['funnel'].items():
                         if data['visits'] > 0:
                             drop_off_indicator = ""
                             if data['drop_off_rate'] > 50:
-                                drop_off_indicator = f" [red](↓ {data['drop_off_rate']:.0f}% drop-off!)[/red]"
+                                drop_off_indicator = f" [{Colors.ERROR}](↓ {data['drop_off_rate']:.0f}% drop-off!)[/{Colors.ERROR}]"
                             elif data['drop_off_rate'] > 30:
-                                drop_off_indicator = f" [yellow](↓ {data['drop_off_rate']:.0f}% drop-off)[/yellow]"
-                            console.print(f"  {step.title()}: {data['visits']:,}{drop_off_indicator}")
+                                drop_off_indicator = f" [{Colors.WARNING}](↓ {data['drop_off_rate']:.0f}% drop-off)[/{Colors.WARNING}]"
+                            print_data_item(step.title(), f"{format_number(data['visits'])}{drop_off_indicator}", Colors.INFO, console, indent=6)
                 
                     if funnel.get('cart_abandonment_rate', 0) > 0:
-                        console.print(f"  Cart abandonment: [yellow]{funnel['cart_abandonment_rate']:.1f}%[/yellow]")
+                        print_data_item("Cart abandonment", f"{funnel['cart_abandonment_rate']:.1f}%", Colors.WARNING, console, indent=6)
             except Exception as e:
-                console.print(f"[red]Error getting conversion funnel: {e}[/red]")
+                console.print(f"    [{Colors.ERROR}]Error getting conversion funnel: {e}[/{Colors.ERROR}]")
             
             # Deep Error Analysis (moved here to group with checkout)
             detailed_checkout = analyzer.get_deep_checkout_analysis()
             if detailed_checkout and detailed_checkout.get('total_errors', 0) > 0:
-                console.print(f"\n[bold cyan]🚨 Error Analysis[/bold cyan]")
-                console.print(f"  Total checkout errors: [red]{detailed_checkout['total_errors']:,}[/red]")
+                console.print(f"\n    [bold]Error Analysis[/bold]")
+                print_data_item("Total checkout errors", format_number(detailed_checkout['total_errors']), Colors.ERROR, console, indent=6)
                 
                 # Critical Issues Analysis
                 if detailed_checkout.get('critical_issues'):
@@ -2435,29 +2473,31 @@ def anomalies(log_files, sensitivity, window_size, realtime_alerts,
     recent_anomalies = detector.get_recent_anomalies(hours=recent_hours)
     
     # Show anomaly summary by default
-    console.print("\n[bold blue]🤖 ANOMALY DETECTION SUMMARY[/bold blue]")
-    console.print(f"  📊 Detection Overview:")
-    console.print(f"    • Total Anomalies Detected: [cyan]{anomaly_summary['total_anomalies']:,}[/cyan]")
-    console.print(f"    • Recent Anomalies ({recent_hours}h): [yellow]{anomaly_summary['recent_anomalies']:,}[/yellow]")
-    console.print(f"    • Critical Anomalies: [red]{anomaly_summary['critical_anomalies']:,}[/red]")
-    console.print(f"    • High Severity: [orange1]{anomaly_summary['high_severity_anomalies']:,}[/orange1]")
-    console.print(f"    • Medium Severity: [yellow]{anomaly_summary['medium_severity_anomalies']:,}[/yellow]")
+    print_section_header("ANOMALY DETECTION", "🤖", console)
+    
+    print_subsection("Detection Overview", console, spacing_before=False)
+    print_data_item("Total Anomalies Detected", format_number(anomaly_summary['total_anomalies']), Colors.INFO, console)
+    recent_info = f"{format_number(anomaly_summary['recent_anomalies'])} ({recent_hours}h)"
+    print_data_item("Recent Anomalies", recent_info, Colors.WARNING, console)
+    print_data_item("Critical Anomalies", format_number(anomaly_summary['critical_anomalies']), Colors.ERROR, console)
+    print_data_item("High Severity", format_number(anomaly_summary['high_severity_anomalies']), Colors.ALERT, console)
+    print ret_item("Medium Severity", format_number(anomaly_summary['medium_severity_anomalies']), Colors.WARNING, console)
     
     # Show top anomaly types
     if anomaly_summary['top_anomaly_types']:
-        console.print(f"\n  🏆 Top Anomaly Types:")
+        print_subsection("Top Anomaly Types", console)
         for anomaly_type, count in anomaly_summary['top_anomaly_types'].items():
             type_display = anomaly_type.replace('_', ' ').title()
-            console.print(f"    • [red]{type_display}[/red]: {count:,} detections")
+            print_data_item(type_display, format_number(count), Colors.ERROR, console)
     
     # Show baseline metrics if available
     if anomaly_summary['baseline_metrics']:
+        print_subsection("Baseline Metrics", console)
         baseline = anomaly_summary['baseline_metrics']
-        console.print(f"\n  📈 Baseline Metrics:")
-        console.print(f"    • Avg Requests/Min: [cyan]{baseline.get('avg_requests_per_minute', 0):.1f}[/cyan]")
-        console.print(f"    • Avg Unique IPs/Min: [blue]{baseline.get('avg_unique_ips_per_minute', 0):.1f}[/blue]")
-        console.print(f"    • Avg Error Rate: [red]{baseline.get('avg_error_rate_per_minute', 0):.1f}%[/red]")
-        console.print(f"    • Avg Response Time: [green]{baseline.get('avg_response_time_per_minute', 0):.3f}s[/green]")
+        print_data_item("Avg Requests/Min", f"{baseline.get('avg_requests_per_minute', 0):.1f}", Colors.INFO, console)
+        print_data_item("Avg Unique IPs/Min", f"{baseline.get('avg_unique_ips_per_minute', 0):.1f}", Colors.INFO, console)
+        print_data_item("Avg Error Rate", f"{baseline.get('avg_error_rate_per_minute', 0):.1f}%", Colors.ERROR, console)
+        print_data_item("Avg Response Time", f"{baseline.get('avg_response_time_per_minute', 0):.3f}", Colors.INFO, console, unit="s")
     
     # Show real-time alerts if requested
     if realtime_alerts and recent_anomalies:
@@ -2836,7 +2876,7 @@ def bots(log_files, classify_types, behavior_analysis,
                                    llm_bot_analysis, ai_impact_analysis])
     
     if show_basic_overview:
-        console.print("\n[bold blue]🤖 COMPREHENSIVE BOT ANALYSIS[/bold blue]")
+        print_section_header("COMPREHENSIVE BOT ANALYSIS", Emoji.BOTS, console)
         
         # Basic classification
         bot_types = analyzer.get_bot_classification()
@@ -2844,26 +2884,26 @@ def bots(log_files, classify_types, behavior_analysis,
         
         if total_bot_requests > 0:
             # Overall statistics
-            console.print(f"  [bold cyan]📊 OVERALL STATISTICS[/bold cyan]")
-            console.print(f"    • Total bot requests: [cyan]{total_bot_requests:,}[/cyan]")
-            console.print(f"    • Unique bot types detected: [green]{len(analyzer.bot_requests)}[/green]")
-            console.print(f"    • Unknown/unclassified bots: [yellow]{len(analyzer.unknown_bots)}[/yellow]")
+            print_subsection("Overall Statistics", console, spacing_before=False)
+            print_data_item("Total bot requests", format_number(total_bot_requests), Colors.INFO, console)
+            print_data_item("Unique bot types detected", str(len(analyzer.bot_requests)), Colors.SUCCESS, console)
+            print_data_item("Unknown/unclassified bots", str(len(analyzer.unknown_bots)), Colors.WARNING, console)
             
             # Resource impact details
             impact = analyzer.get_resource_impact()
-            console.print(f"\n  [bold orange1]📈 RESOURCE IMPACT[/bold orange1]")
-            console.print(f"    • Bot traffic percentage: [orange1]{impact['percentage_of_traffic']:.1f}%[/orange1] of total traffic")
-            console.print(f"    • Total bandwidth consumed: [yellow]{impact['bandwidth_gb']:.2f} GB[/yellow]")
-            console.print(f"    • Average response time: [cyan]{impact['avg_response_time']:.3f}s[/cyan]")
-            console.print(f"    • Server load from bots: [red]{impact['server_load_pct']:.1f}%[/red]")
+            print_subsection("Resource Impact", console)
+            print_data_item("Bot traffic percentage", f"{impact['percentage_of_traffic']:.1f}%", Colors.ALERT, console)
+            print_data_item("Total bandwidth consumed", f"{impact['bandwidth_gb']:.2f} GB", Colors.WARNING, console)
+            print_data_item("Average response time", f"{impact['avg_response_time']:.3f}", Colors.INFO, console, unit="s")
+            print_data_item("Server load from bots", f"{impact['server_load_pct']:.1f}%", Colors.ERROR, console)
             
             # Bot categories breakdown
-            console.print(f"\n  [bold green]🔍 BOT CATEGORIES BREAKDOWN[/bold green]")
+            print_subsection("Bot Categories Breakdown", console)
             for bot_type, count in sorted(bot_types.items(), key=lambda x: x[1], reverse=True):
                 percentage = (count / total_bot_requests) * 100
                 bar_length = int(percentage / 5)  # Scale bar
                 bar = "▓" * bar_length + "░" * (20 - bar_length)
-                console.print(f"    • {bot_type.replace('_', ' ').title()}: [green]{count:,}[/green] ({percentage:.1f}%) [{bar}]")
+                console.print(f"    • [{Colors.SUCCESS}]{bot_type.replace('_', ' ').title()}[/{Colors.SUCCESS}]: {format_number(count)} ({percentage:.1f}%) [{bar}]")
             
             # Top individual bots with more details
             individual_bots = []
@@ -3170,10 +3210,12 @@ def search(log_files, ip, path, status, user_agent,
     process_hypernode_logs_with_callback(search_entry, "search", use_yesterday=yesterday)
     
     # Display results
-    console.print(f"\n[bold green]🔍 SEARCH RESULTS ({len(results)} entries)[/bold green]")
+    print_section_header("SEARCH RESULTS", "🔍", console)
+    
+    console.print(f"    [{Colors.INFO}]Found {len(results)} matching entries[/{Colors.INFO}]")
     
     if not results:
-        console.print("[yellow]No matching entries found.[/yellow]")
+        console.print(f"    [{Colors.WARNING}]No matching entries found[/{Colors.WARNING}]")
         return
     
     # Show results in a table

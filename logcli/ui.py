@@ -25,6 +25,10 @@ from .aggregators import StatisticsAggregator, RealTimeAggregator
 from .filters import LogFilter, FilterPresets
 from .export import DataExporter, create_report_summary
 from .dns_utils import dns_lookup
+from .ui_helpers import (
+    print_section_header, print_subsection, print_data_item,
+    format_number, format_percentage, Colors, Emoji
+)
 
 
 class LogAnalyzerTUI(App):
@@ -127,52 +131,52 @@ class LogAnalyzerTUI(App):
         summary = self.stats.get_summary_stats()
         time_stats = summary.get('time_range_stats', {})
         
-        summary_text = f"""[bold blue]📊 ANALYSIS OVERVIEW[/bold blue]
-"""
+        # Use consistent formatting with CLI
+        summary_lines = []
+        summary_lines.append("═" * 63)
+        summary_lines.append("[bold blue]ANALYSIS OVERVIEW[/bold blue]")
+        summary_lines.append("═" * 63)
+        summary_lines.append("")
         
         # Time range information
         if time_stats.get('earliest_timestamp') and time_stats.get('latest_timestamp'):
-            summary_text += f"""
-[bold cyan]⏰ TIME RANGE[/bold cyan]
-From: [green]{time_stats['earliest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}[/green]
-To: [green]{time_stats['latest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}[/green]
-"""
+            summary_lines.append("  Time Range")
+            summary_lines.append(f"    • From: [{Colors.SUCCESS}]{time_stats['earliest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}[/{Colors.SUCCESS}]")
+            summary_lines.append(f"    • To: [{Colors.SUCCESS}]{time_stats['latest_timestamp'].strftime('%Y-%m-%d %H:%M:%S')}[/{Colors.SUCCESS}]")
             if time_stats.get('time_span_hours', 0) > 24:
-                summary_text += f"Duration: [yellow]{time_stats.get('time_span_days', 0):.1f} days[/yellow]\n"
+                summary_lines.append(f"    • Duration: [{Colors.WARNING}]{time_stats.get('time_span_days', 0):.1f} days[/{Colors.WARNING}]")
             else:
-                summary_text += f"Duration: [yellow]{time_stats.get('time_span_hours', 0):.1f} hours[/yellow]\n"
+                summary_lines.append(f"    • Duration: [{Colors.WARNING}]{time_stats.get('time_span_hours', 0):.1f} hours[/{Colors.WARNING}]")
+            summary_lines.append("")
         
-        summary_text += f"""
-[bold green]📈 TRAFFIC STATISTICS[/bold green]
-Total Requests: [green]{summary.get('total_requests', 0):,}[/green]
-Unique Visitors: [green]{summary.get('unique_visitors', 0):,}[/green]
-"""
+        # Traffic statistics
+        summary_lines.append("  Traffic Statistics")
+        summary_lines.append(f"    • Total Requests: [{Colors.SUCCESS}]{format_number(summary.get('total_requests', 0))}[/{Colors.SUCCESS}]")
+        summary_lines.append(f"    • Unique Visitors: [{Colors.SUCCESS}]{format_number(summary.get('unique_visitors', 0))}[/{Colors.SUCCESS}]")
         
         if time_stats.get('requests_per_hour', 0) > 0:
-            summary_text += f"""Requests/Hour: [cyan]{time_stats.get('requests_per_hour', 0):.1f}[/cyan]
-Requests/Minute: [cyan]{time_stats.get('requests_per_minute', 0):.1f}[/cyan]
-"""
+            summary_lines.append(f"    • Requests/Hour: [{Colors.INFO}]{time_stats.get('requests_per_hour', 0):.1f}[/{Colors.INFO}]")
+            summary_lines.append(f"    • Requests/Minute: [{Colors.INFO}]{time_stats.get('requests_per_minute', 0):.1f}[/{Colors.INFO}]")
         
-        summary_text += f"""Error Rate: [red]{summary.get('error_rate', 0):.2f}%[/red]
-Bot Traffic: [yellow]{summary.get('bot_percentage', 0):.2f}%[/yellow]
-"""
+        summary_lines.append(f"    • Error Rate: [{Colors.ERROR}]{format_percentage(summary.get('error_rate', 0))}[/{Colors.ERROR}]")
+        summary_lines.append(f"    • Bot Traffic: [{Colors.WARNING}]{format_percentage(summary.get('bot_percentage', 0))}[/{Colors.WARNING}]")
+        summary_lines.append("")
         
         rt_stats = summary.get('response_time_stats', {})
         if rt_stats:
-            summary_text += f"""
-[bold purple]⚡ PERFORMANCE[/bold purple]
-Average: [cyan]{rt_stats.get('avg', 0):.3f}s[/cyan]
-Maximum: [red]{rt_stats.get('max', 0):.3f}s[/red]
-95th Percentile: [yellow]{rt_stats.get('p95', 0):.3f}s[/yellow]
-"""
+            summary_lines.append("  Performance Metrics")
+            summary_lines.append(f"    • Average: [{Colors.INFO}]{rt_stats.get('avg', 0):.3f}s[/{Colors.INFO}]")
+            summary_lines.append(f"    • Maximum: [{Colors.ERROR}]{rt_stats.get('max', 0):.3f}s[/{Colors.ERROR}]")
+            summary_lines.append(f"    • 95th Percentile: [{Colors.WARNING}]{rt_stats.get('p95', 0):.3f}s[/{Colors.WARNING}]")
+            summary_lines.append("")
         
         bandwidth = summary.get('bandwidth_stats', {})
         if bandwidth:
-            summary_text += f"""
-[bold magenta]💾 BANDWIDTH[/bold magenta]
-Total: [green]{bandwidth.get('total_gb', 0):.2f} GB[/green]
-Avg/Request: [cyan]{bandwidth.get('avg_bytes_per_request', 0):,.0f} bytes[/cyan]
-"""
+            summary_lines.append("  Bandwidth Usage")
+            summary_lines.append(f"    • Total: [{Colors.SUCCESS}]{bandwidth.get('total_gb', 0):.2f} GB[/{Colors.SUCCESS}]")
+            summary_lines.append(f"    • Avg/Request: [{Colors.INFO}]{format_number(bandwidth.get('avg_bytes_per_request', 0))} bytes[/{Colors.INFO}]")
+        
+        summary_text = "\n".join(summary_lines)
         
         summary_widget = self.query_one("#summary-stats", Static)
         summary_widget.update(summary_text)
@@ -399,54 +403,47 @@ class SimpleConsoleUI:
         self.console = Console()
     
     def display_summary(self) -> None:
-        """Display a summary of statistics."""
+        """Display a summary of statistics with consistent formatting."""
         summary = self.stats.get_summary_stats()
         time_stats = summary.get('time_range_stats', {})
         
-        # Create time range table first
+        # Use consistent UI helpers
+        print_section_header("ANALYSIS SUMMARY", Emoji.SUMMARY, self.console)
+        
+        # Time range information
         if time_stats.get('earliest_timestamp') and time_stats.get('latest_timestamp'):
-            time_table = Table(title="⏰ Analysis Time Range", show_header=True)
-            time_table.add_column("Metric", style="bold cyan")
-            time_table.add_column("Value", style="green")
-            
-            time_table.add_row("From", time_stats['earliest_timestamp'].strftime('%Y-%m-%d %H:%M:%S'))
-            time_table.add_row("To", time_stats['latest_timestamp'].strftime('%Y-%m-%d %H:%M:%S'))
-            
+            print_subsection("Time Range", self.console, spacing_before=False)
+            print_data_item("From", time_stats['earliest_timestamp'].strftime('%Y-%m-%d %H:%M:%S'), Colors.SUCCESS, self.console)
+            print_data_item("To", time_stats['latest_timestamp'].strftime('%Y-%m-%d %H:%M:%S'), Colors.SUCCESS, self.console)
             if time_stats.get('time_span_hours', 0) > 24:
-                time_table.add_row("Duration", f"{time_stats.get('time_span_days', 0):.1f} days")
+                duration = f"{time_stats.get('time_span_days', 0):.1f} days"
             else:
-                time_table.add_row("Duration", f"{time_stats.get('time_span_hours', 0):.1f} hours")
-            
-            if time_stats.get('requests_per_hour', 0) > 0:
-                time_table.add_row("Requests/Hour", f"{time_stats.get('requests_per_hour', 0):.1f}")
-                time_table.add_row("Requests/Minute", f"{time_stats.get('requests_per_minute', 0):.1f}")
-            
-            self.console.print(time_table)
-            self.console.print()
+                duration = f"{time_stats.get('time_span_hours', 0):.1f} hours"
+            print_data_item("Duration", duration, Colors.WARNING, self.console)
         
-        # Create summary table
-        summary_table = Table(title="📊 Traffic Statistics", show_header=True)
-        summary_table.add_column("Metric", style="bold blue")
-        summary_table.add_column("Value", style="green")
+        print_subsection("Traffic Statistics", self.console)
+        print_data_item("Total Requests", format_number(summary.get('total_requests', 0)), Colors.SUCCESS, self.console)
+        print_data_item("Unique Visitors", format_number(summary.get('unique_visitors', 0)), Colors.SUCCESS, self.console)
         
-        summary_table.add_row("Total Requests", f"{summary.get('total_requests', 0):,}")
-        summary_table.add_row("Unique Visitors", f"{summary.get('unique_visitors', 0):,}")
-        summary_table.add_row("Error Rate", f"{summary.get('error_rate', 0):.2f}%")
-        summary_table.add_row("Bot Traffic", f"{summary.get('bot_percentage', 0):.2f}%")
+        if time_stats.get('requests_per_hour', 0) > 0:
+            print_data_item("Requests/Hour", f"{time_stats.get('requests_per_hour', 0):.1f}", Colors.INFO, self.console)
+            print_data_item("Requests/Minute", f"{time_stats.get('requests_per_minute', 0):.1f}", Colors.INFO, self.console)
+        
+        print_data_item("Error Rate", format_percentage(summary.get('error_rate', 0)), Colors.ERROR, self.console)
+        print_data_item("Bot Traffic", format_percentage(summary.get('bot_percentage', 0)), Colors.WARNING, self.console)
         
         rt_stats = summary.get('response_time_stats', {})
         if rt_stats:
-            summary_table.add_row("Avg Response Time", f"{rt_stats.get('avg', 0):.3f}s")
-            summary_table.add_row("Max Response Time", f"{rt_stats.get('max', 0):.3f}s")
-            summary_table.add_row("95th Percentile", f"{rt_stats.get('p95', 0):.3f}s")
+            print_subsection("Performance Metrics", self.console)
+            print_data_item("Average", f"{rt_stats.get('avg', 0):.3f}", Colors.INFO, self.console, unit="s")
+            print_data_item("Maximum", f"{rt_stats.get('max', 0):.3f}", Colors.ERROR, self.console, unit="s")
+            print_data_item("95th Percentile", f"{rt_stats.get('p95', 0):.3f}", Colors.WARNING, self.console, unit="s")
         
         bandwidth = summary.get('bandwidth_stats', {})
         if bandwidth:
-            summary_table.add_row("Total Bandwidth", f"{bandwidth.get('total_gb', 0):.2f} GB")
-            summary_table.add_row("Avg/Request", f"{bandwidth.get('avg_bytes_per_request', 0):,.0f} bytes")
-        
-        self.console.print(summary_table)
-        self.console.print()
+            print_subsection("Bandwidth Usage", self.console)
+            print_data_item("Total", f"{bandwidth.get('total_gb', 0):.2f} GB", Colors.SUCCESS, self.console)
+            print_data_item("Avg/Request", f"{format_number(bandwidth.get('avg_bytes_per_request', 0))} bytes", Colors.INFO, self.console)
         
         # Top countries
         countries_table = Table(title="Top Countries", show_header=True)

@@ -395,6 +395,7 @@ test_*.py
 *.md.tmp
 *.md.bak
 
-# Local Cursor/AI assistant files
-.cursor/
-!.cursor/rules/
+.*/
+!.*/
+
+*.md
