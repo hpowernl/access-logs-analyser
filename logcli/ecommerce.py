@@ -185,6 +185,10 @@ class EcommerceAnalyzer:
         self.api_usage_by_ip = defaultdict(lambda: {'requests': 0, 'endpoints': Counter()})
         self.category_ips = defaultdict(lambda: Counter())  # Track unique IPs per category
         
+        # Current context for deep analysis
+        self.current_timestamp = None
+        self.current_ip = None
+        
         # Total stats
         self.total_requests = 0
         self.ecommerce_requests = 0
@@ -441,6 +445,11 @@ class EcommerceAnalyzer:
         response_time = log_entry.get('response_time', 0)
         bytes_sent = log_entry.get('bytes_sent', 0)
         timestamp = log_entry.get('timestamp')
+        ip = log_entry.get('ip')
+        
+        # Store current context for deep analysis
+        self.current_timestamp = timestamp
+        self.current_ip = ip
         
         # Detect platform
         detected = self.detect_platform(path)

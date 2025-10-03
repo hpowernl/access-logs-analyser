@@ -2019,64 +2019,126 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
             graphql_stats = analyzer.get_graphql_statistics()
             console.print(f"[dim]DEBUG: GraphQL stats obtained: {bool(graphql_stats)}[/dim]")
             if graphql_stats and graphql_stats.get('total_queries', 0) > 0:
-            console.print(f"\n[bold]🔷 GraphQL API (Magento)[/bold]")
-            console.print(f"  Total queries: [cyan]{graphql_stats['total_queries']:,}[/cyan]")
-            console.print(f"  Unique operations: {graphql_stats['unique_operations']}")
-            if graphql_stats['total_errors'] > 0:
-                error_color = "red" if graphql_stats['error_rate'] > 5 else "yellow"
-                console.print(f"  Errors: [{error_color}]{graphql_stats['total_errors']:,}[/{error_color}] ({graphql_stats['error_rate']:.1f}%)")
-            
-            if graphql_stats['top_operations']:
-                console.print(f"  Top operations:")
-                for operation, count in graphql_stats['top_operations'][:3]:
-                    console.print(f"    • {operation}: {count:,}")
+                console.print(f"\n[bold]🔷 GraphQL API (Magento)[/bold]")
+                console.print(f"  Total queries: [cyan]{graphql_stats['total_queries']:,}[/cyan]")
+                console.print(f"  Unique operations: {graphql_stats['unique_operations']}")
+                if graphql_stats['total_errors'] > 0:
+                    error_color = "red" if graphql_stats['error_rate'] > 5 else "yellow"
+                    console.print(f"  Errors: [{error_color}]{graphql_stats['total_errors']:,}[/{error_color}] ({graphql_stats['error_rate']:.1f}%)")
+                
+                if graphql_stats['top_operations']:
+                    console.print(f"  Top operations:")
+                    for operation, count in graphql_stats['top_operations'][:3]:
+                        console.print(f"    • {operation}: {count:,}")
+        except Exception as e:
+            console.print(f"[red]Error getting GraphQL stats: {e}[/red]")
         
         # Conversion Funnel
         try:
             funnel = analyzer.get_conversion_funnel()
             console.print(f"[dim]DEBUG: Funnel obtained: {bool(funnel)}[/dim]")
             if funnel and funnel.get('funnel'):
-            console.print(f"\n[bold]🎯 Conversion Funnel[/bold]")
-            for step, data in funnel['funnel'].items():
-                if data['visits'] > 0:
-                    drop_off_indicator = ""
-                    if data['drop_off_rate'] > 50:
-                        drop_off_indicator = f" [red](↓ {data['drop_off_rate']:.0f}% drop-off!)[/red]"
-                    elif data['drop_off_rate'] > 30:
-                        drop_off_indicator = f" [yellow](↓ {data['drop_off_rate']:.0f}% drop-off)[/yellow]"
-                    console.print(f"  {step.title()}: {data['visits']:,}{drop_off_indicator}")
-            
-            if funnel.get('cart_abandonment_rate', 0) > 0:
-                console.print(f"  Cart abandonment: [yellow]{funnel['cart_abandonment_rate']:.1f}%[/yellow]")
+                console.print(f"\n[bold]🎯 Conversion Funnel[/bold]")
+                for step, data in funnel['funnel'].items():
+                    if data['visits'] > 0:
+                        drop_off_indicator = ""
+                        if data['drop_off_rate'] > 50:
+                            drop_off_indicator = f" [red](↓ {data['drop_off_rate']:.0f}% drop-off!)[/red]"
+                        elif data['drop_off_rate'] > 30:
+                            drop_off_indicator = f" [yellow](↓ {data['drop_off_rate']:.0f}% drop-off)[/yellow]"
+                        console.print(f"  {step.title()}: {data['visits']:,}{drop_off_indicator}")
+                
+                if funnel.get('cart_abandonment_rate', 0) > 0:
+                    console.print(f"  Cart abandonment: [yellow]{funnel['cart_abandonment_rate']:.1f}%[/yellow]")
+        except Exception as e:
+            console.print(f"[red]Error getting conversion funnel: {e}[/red]")
         
-        # Checkout Errors
-        checkout_errors = analyzer.get_checkout_error_analysis()
-        if checkout_errors and checkout_errors.get('total_errors', 0) > 0:
-            console.print(f"\n[bold]⚠️  Checkout Errors[/bold]")
-            console.print(f"  Total errors: [red]{checkout_errors['total_errors']:,}[/red]")
+        # Deep Checkout Analysis
+        console.print(f"\n[bold blue]🔍 Deep Checkout Analysis[/bold blue]")
+        detailed_checkout = analyzer.get_deep_checkout_analysis()
+        if detailed_checkout and detailed_checkout.get('total_errors', 0) > 0:
+            console.print(f"[red]Total checkout errors: {detailed_checkout['total_errors']:,}[/red]")
             
-            if checkout_errors.get('critical_issues'):
-                console.print(f"  Critical issues:")
-                for issue in checkout_errors['critical_issues']:
-                    console.print(f"    • [{issue['severity']}]{issue['issue']}: {issue['count']}[/{issue['severity']}]")
+            # Critical Issues Analysis
+            if detailed_checkout.get('critical_issues'):
+                console.print(f"\n[bold red]🚨 CRITICAL ISSUES FOUND:[/bold red]")
+                for issue in detailed_checkout['critical_issues']:
+                    if issue['type'] == 'RATE_LIMIT_EXCESS':
+                        console.print(f"  • [red]EXCESSIVE RATE LIMITING[/red] from IP: [yellow]{issue['ip']}[/yellow]")
+                        console.print(f"    → {issue['errors']} rate limit errors (possible bot attack or misconfiguration)")
+                    elif issue['type'] == 'SERVER_ERRORS':
+                        console.print(f"  • [red]SERVER STABILITY ISSUES[/red]: {issue['count']} server errors")
+                        console.print(f"    → {issue['description']}")
+                    elif issue['type'] == 'RATE_LIMITING':
+                        console.print(f"  • [yellow]RATE LIMIT CONFIGURATION[/yellow]: {issue['count']} HTTP 429 errors")
+                        console.print(f"    → {issue['description']}")
             
-            if checkout_errors.get('error_patterns'):
-                console.print(f"  Top error patterns:")
-                for pattern, count in list(checkout_errors['error_patterns'].items())[:3]:
-                    console.print(f"    • {pattern}: {count}")
+            # Detailed Error Pattern Breakdown
+            console.print(f"\n[bold]📊 Error Pattern Analysis:[/bold]")
+            error_pattern_descriptions = {
+                'cart_http_429': '🛒 Cart rate limiting (users blocked from cart actions)',
+                'checkout_http_429': '💳 Checkout rate limiting (payment page blocked)',
+                'checkout_server_error': '❌ Server errors during checkout (5xx errors)',
+                'cart_http_500': '🔄 Cart server crashes',
+                'payment_http_400': '✏️ Payment validation failures',
+                'checkout_not_found': '📄 Missing checkout pages',
+                'checkout_http_403': '🚫 Access denied to checkout'
+            }
+            
+            sorted_patterns = sorted(detailed_checkout['error_patterns'].items(), key=lambda x: x[1], reverse=True)
+            for pattern, count in sorted_patterns[:5]:
+                description = error_pattern_descriptions.get(pattern, pattern)
+                # Calculate impact percentage
+                impact_pct = (count / detailed_checkout['total_errors']) * 100
+                color = "red" if impact_pct > 25 else "yellow" if impact_pct > 10 else "blue"
+                console.print(f"  • [{color}]{description}[/{color}]")
+                console.print(f"    → {count:,} errors ({impact_pct:.1f}% of total)")
+            
+            # IP-Level Security Analysis  
+            if detailed_checkout.get('ip_analysis'):
+                console.print(f"\n[bold]🔒 Security Analysis by IP:[/bold]")
+                sorted_ips = sorted(detailed_checkout['ip_analysis'].items(), key=lambda x: x[1]['total_errors'], reverse=True)
+                for ip, data in sorted_ips[:5]:
+                    threat_level = "HIGH" if data['total_errors'] > 20 else "MEDIUM" if data['total_errors'] > 5 else "LOW"
+                    color = "red" if threat_level == "HIGH" else "yellow" if threat_level == "MEDIUM" else "blue"
+                    
+                    console.print(f"  • [{color}]{ip}[/{color}] ({threat_level} threat)")
+                    console.print(f"    → {data['total_errors']} checkout errors")
+                    
+                    if data['most_common_error']:
+                        error_type = data['most_common_error'][0]
+                        error_count = data['most_common_error'][1]
+                        console.print(f"    → Most common: {error_type} ({error_count}x)")
+                
+                
+            # Checkout Performance Timeline
+            if detailed_checkout.get('timeline_analysis'):
+                console.print(f"\n[bold]⏰ Error Timeline (recent hours):[/bold]")
+                timeline_items = list(detailed_checkout['timeline_analysis'].items())
+                timeline_items.sort()
+                recent_hours = timeline_items[-6:] if len(timeline_items) > 6 else timeline_items
+                for hour, count in recent_hours:
+                    if hour:
+                        hour_str = hour.strftime('%H:00')
+                        perf_status = "🔴 CRITICAL" if count > 50 else "🟡 HIGH" if count > 20 else "🔵 NORMAL"
+                        console.print(f"  • [blue]{hour_str}[/blue]: {count} errors [{perf_status}]")
+        else:
+            console.print(f"[green]✅ No checkout errors detected![/green]")
         
         # Recommendations
         try:
             recommendations = analyzer.get_enhanced_recommendations()
             console.print(f"[dim]DEBUG: Recommendations obtained: {len(recommendations) if recommendations else 0}[/dim]")
             if recommendations:
-            console.print(f"\n[bold]💡 Recommendations[/bold]")
-            for rec in recommendations[:5]:  # Top 5
-                priority_color = "red" if rec['priority'] in ['Critical', 'CRITICAL'] else "yellow" if rec['priority'] in ['High', 'HIGH'] else "blue"
-                console.print(f"  [{priority_color}]{rec['priority']}[/{priority_color}] - {rec['category']}")
-                console.print(f"    {rec['recommendation']}")
-                if 'action_items' in rec and rec['action_items']:
-                    console.print(f"    [dim]Actions: {', '.join(rec['action_items'][:2])}[/dim]")
+                console.print(f"\n[bold]💡 Recommendations[/bold]")
+                for rec in recommendations[:5]:  # Top 5
+                    priority_color = "red" if rec['priority'] in ['Critical', 'CRITICAL'] else "yellow" if rec['priority'] in ['High', 'HIGH'] else "blue"
+                    console.print(f"  [{priority_color}]{rec['priority']}[/{priority_color}] - {rec['category']}")
+                    console.print(f"    {rec['recommendation']}")
+                    if 'action_items' in rec and rec['action_items']:
+                        console.print(f"    [dim]Actions: {', '.join(rec['action_items'][:2])}[/dim]")
+        except Exception as e:
+            console.print(f"[red]Error getting recommendations: {e}[/red]")
         
         # Usage hints for flags that filter to show ONLY specific sections
         console.print(f"\n[dim]━━━━━ DETAILED BREAKDOWN ━━━━━[/dim]")
