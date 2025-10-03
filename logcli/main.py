@@ -1938,56 +1938,110 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
             
             # Deep Error Analysis (moved here to group with checkout)
             detailed_checkout = analyzer.get_deep_checkout_analysis()
-            if detailed_checkout and detailed_checkout.get('total_errors', 0) > 0:
+            
+            # Check if there are ANY checkout errors (from stats or detailed analysis)
+            has_errors = (checkout_stats['errors'] > 0) or (detailed_checkout and detailed_checkout.get('total_errors', 0) > 0)
+            
+            if has_errors:
                 console.print(f"\n    [bold]Error Analysis[/bold]")
-                print_data_item("Total checkout errors", format_number(detailed_checkout['total_errors']), Colors.ERROR, console, indent=6)
                 
-                # Critical Issues Analysis
-                if detailed_checkout.get('critical_issues'):
-                    console.print(f"\n  [bold red]Critical Issues:[/bold red]")
-                    for issue in detailed_checkout['critical_issues']:
-                        if issue['type'] == 'RATE_LIMIT_EXCESS':
-                            console.print(f"    • [red]EXCESSIVE RATE LIMITING[/red] from IP: [yellow]{issue['ip']}[/yellow]")
-                            console.print(f"      → {issue['errors']} rate limit errors (possible bot attack or misconfiguration)")
-                        elif issue['type'] == 'APPLICATION_ERRORS':
-                            console.print(f"    • [red]APPLICATION STABILITY ISSUES[/red]: {issue['count']} application errors")
-                            console.print(f"      → {issue['description']}")
-                            if issue.get('recent_examples'):
-                                console.print(f"      Recent examples:")
-                                for example in issue['recent_examples'][:2]:
-                                    console.print(f"        - {example['timestamp']} | IP: {example['ip']} | {example['path']} (HTTP {example['status']})")
-                        elif issue['type'] == 'RATE_LIMITING':
-                            console.print(f"    • [yellow]RATE LIMIT CONFIGURATION[/yellow]: {issue['count']} HTTP 429 errors")
-                            console.print(f"      → {issue['description']}")
-                            if issue.get('recent_examples'):
-                                console.print(f"      Recent examples:")
-                                for example in issue['recent_examples'][:2]:
-                                    console.print(f"        - {example['timestamp']} | IP: {example['ip']} | {example['path']}")
+                # Show detailed checkout analysis if available
+                if detailed_checkout and detailed_checkout.get('total_errors', 0) > 0:
+                    print_data_item("Total checkout errors", format_number(detailed_checkout['total_errors']), Colors.ERROR, console, indent=6)
+                    
+                    # Critical Issues Analysis
+                    if detailed_checkout.get('critical_issues'):
+                        console.print(f"\n  [bold red]Critical Issues:[/bold red]")
+                        for issue in detailed_checkout['critical_issues']:
+                            if issue['type'] == 'RATE_LIMIT_EXCESS':
+                                console.print(f"    • [red]EXCESSIVE RATE LIMITING[/red] from IP: [yellow]{issue['ip']}[/yellow]")
+                                console.print(f"      → {issue['errors']} rate limit errors (possible bot attack or misconfiguration)")
+                            elif issue['type'] == 'APPLICATION_ERRORS':
+                                console.print(f"    • [red]APPLICATION STABILITY ISSUES[/red]: {issue['count']} application errors")
+                                console.print(f"      → {issue['description']}")
+                                if issue.get('recent_examples'):
+                                    console.print(f"      Recent examples:")
+                                    for example in issue['recent_examples'][:2]:
+                                        console.print(f"        - {example['timestamp']} | IP: {example['ip']} | {example['path']} (HTTP {example['status']})")
+                            elif issue['type'] == 'RATE_LIMITING':
+                                console.print(f"    • [yellow]RATE LIMIT CONFIGURATION[/yellow]: {issue['count']} HTTP 429 errors")
+                                console.print(f"      → {issue['description']}")
+                                if issue.get('recent_examples'):
+                                    console.print(f"      Recent examples:")
+                                    for example in issue['recent_examples'][:2]:
+                                        console.print(f"        - {example['timestamp']} | IP: {example['ip']} | {example['path']}")
+                    
+                    # Error Pattern Analysis
+                    console.print(f"\n  [bold]📊 Error Patterns:[/bold]")
+                    error_pattern_descriptions = {
+                        'cart_http_429': '🛒 Cart rate limiting (users blocked from cart actions)',
+                        'checkout_http_429': '💳 Checkout rate limiting (payment page blocked)',
+                        'checkout_server_error': '❌ Application errors during checkout (5xx errors)',
+                        'cart_server_error': '🛒 Cart application errors (server crashes during cart operations)', 
+                        'cart_http_500': '🔄 Cart server crashes (HTTP 500 Internal Server Error)',
+                        'cart_http_499': '🔌 Cart connection closed (HTTP 499 - client closed connection)',
+                        'cart_not_found': '❓ Cart not found errors (invalid cart IDs or expired sessions)',
+                        'payment_http_400': '✏️ Payment validation failures (incorrect payment data)',
+                        'checkout_not_found': '📄 Missing checkout pages (404 errors)',
+                        'checkout_http_403': '🚫 Access denied to checkout (permission errors)'
+                    }
+                    
+                    sorted_patterns = sorted(detailed_checkout['error_patterns'].items(), key=lambda x: x[1], reverse=True)
+                    for pattern, count in sorted_patterns[:3]:  # Top 3 only for overview
+                        description = error_pattern_descriptions.get(pattern, f"❓ Unknown error type: {pattern}")
+                        impact_pct = (count / detailed_checkout['total_errors']) * 100
+                        color = "red" if impact_pct > 25 else "yellow" if impact_pct > 10 else "blue"
+                        console.print(f"    • [{color}]{description}[/{color}]")
+                        console.print(f"      → {count:,} errors ({impact_pct:.1f}% of total)")
                 
-                # Error Pattern Analysis
-                console.print(f"\n  [bold]📊 Error Patterns:[/bold]")
-                error_pattern_descriptions = {
-                    'cart_http_429': '🛒 Cart rate limiting (users blocked from cart actions)',
-                    'checkout_http_429': '💳 Checkout rate limiting (payment page blocked)',
-                    'checkout_server_error': '❌ Application errors during checkout (5xx errors)',
-                    'cart_server_error': '🛒 Cart application errors (server crashes during cart operations)', 
-                    'cart_http_500': '🔄 Cart server crashes (HTTP 500 Internal Server Error)',
-                    'cart_http_499': '🔌 Cart connection closed (HTTP 499 - client closed connection)',
-                    'cart_not_found': '❓ Cart not found errors (invalid cart IDs or expired sessions)',
-                    'payment_http_400': '✏️ Payment validation failures (incorrect payment data)',
-                    'checkout_not_found': '📄 Missing checkout pages (404 errors)',
-                    'checkout_http_403': '🚫 Access denied to checkout (permission errors)'
-                }
-                
-                sorted_patterns = sorted(detailed_checkout['error_patterns'].items(), key=lambda x: x[1], reverse=True)
-                for pattern, count in sorted_patterns[:3]:  # Top 3 only for overview
-                    description = error_pattern_descriptions.get(pattern, f"❓ Unknown error type: {pattern}")
-                    impact_pct = (count / detailed_checkout['total_errors']) * 100
-                    color = "red" if impact_pct > 25 else "yellow" if impact_pct > 10 else "blue"
-                    console.print(f"    • [{color}]{description}[/{color}]")
-                    console.print(f"      → {count:,} errors ({impact_pct:.1f}% of total)")
+                # If we have errors but no detailed analysis, show basic error info
+                elif checkout_stats['errors'] > 0:
+                    console.print(f"  [yellow]⚠️  Checkout errors detected: {checkout_stats['errors']} ({checkout_stats['error_rate']:.1f}%)[/yellow]")
+                    console.print(f"  [dim]Showing error details from checkout requests:[/dim]\n")
+                    
+                    # Get error details from checkout_requests
+                    error_requests = [req for req in analyzer.checkout_requests if req.get('status', 0) >= 400]
+                    
+                    if error_requests:
+                        # Group errors by status code
+                        from collections import Counter
+                        status_counter = Counter(req['status'] for req in error_requests)
+                        
+                        console.print(f"  [bold]Error Status Codes:[/bold]")
+                        for status, count in status_counter.most_common():
+                            percentage = (count / len(error_requests)) * 100
+                            status_description = {
+                                400: "Bad Request",
+                                401: "Unauthorized", 
+                                403: "Forbidden",
+                                404: "Not Found",
+                                429: "Too Many Requests (Rate Limited)",
+                                499: "Client Closed Request",
+                                500: "Internal Server Error",
+                                502: "Bad Gateway",
+                                503: "Service Unavailable",
+                                504: "Gateway Timeout"
+                            }.get(status, "Unknown Error")
+                            
+                            color = "red" if status >= 500 else "yellow"
+                            console.print(f"    • [{color}]HTTP {status}[/{color}] ({status_description}): {count} errors ({percentage:.1f}%)")
+                        
+                        # Show recent error examples
+                        console.print(f"\n  [bold]Recent Error Examples:[/bold]")
+                        recent_errors = sorted(error_requests, key=lambda x: x.get('timestamp') or '', reverse=True)[:5]
+                        for err in recent_errors:
+                            timestamp_str = err.get('timestamp').strftime('%Y-%m-%d %H:%M:%S') if err.get('timestamp') else 'Unknown'
+                            status = err.get('status', 'Unknown')
+                            method = err.get('method', 'GET')
+                            path = err.get('path', 'Unknown')[:80]  # Truncate long paths
+                            response_time = err.get('response_time', 0)
+                            
+                            color = "red" if status >= 500 else "yellow"
+                            console.print(f"    • [{color}]{timestamp_str}[/{color}] | HTTP {status} | {method} {path} | {response_time:.3f}s")
+                    else:
+                        console.print(f"  [dim]No detailed error information available[/dim]")
             else:
-                console.print(f"\n[bold cyan]✅ No checkout errors detected![/bold cyan]")
+                console.print(f"\n[bold green]✅ No checkout errors detected![/bold green]")
             
             # Top IPs & Security (moved here to group with checkout)
             top_ips = analyzer.get_ip_statistics('checkout', limit=5)
@@ -2219,19 +2273,68 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
             
             # Checkout error analysis
             checkout_errors = analyzer.get_checkout_error_analysis()
-            if checkout_errors and checkout_errors.get('total_errors', 0) > 0:
+            
+            # Show error analysis if there are ANY errors (from stats or detailed)
+            if checkout_stats['errors'] > 0:
                 console.print(f"\n  Error Analysis:")
-                console.print(f"    Total errors: [red]{checkout_errors['total_errors']:,}[/red]")
                 
-                if checkout_errors.get('critical_issues'):
-                    console.print(f"\n    Critical Issues:")
-                    for issue in checkout_errors['critical_issues']:
-                        console.print(f"      🚨 {issue['issue']}: {issue['count']} times")
+                # Show detailed error analysis if available
+                if checkout_errors and checkout_errors.get('total_errors', 0) > 0:
+                    console.print(f"    Total errors: [red]{checkout_errors['total_errors']:,}[/red]")
+                    
+                    if checkout_errors.get('critical_issues'):
+                        console.print(f"\n    Critical Issues:")
+                        for issue in checkout_errors['critical_issues']:
+                            console.print(f"      🚨 {issue['issue']}: {issue['count']} times")
+                    
+                    if checkout_errors.get('error_patterns'):
+                        console.print(f"\n    Error Patterns:")
+                        for pattern, count in list(checkout_errors['error_patterns'].items())[:5]:
+                            console.print(f"      • {pattern}: {count}")
                 
-                if checkout_errors.get('error_patterns'):
-                    console.print(f"\n    Error Patterns:")
-                    for pattern, count in list(checkout_errors['error_patterns'].items())[:5]:
-                        console.print(f"      • {pattern}: {count}")
+                # Show basic error info if no detailed analysis available
+                else:
+                    console.print(f"    Total errors: [red]{checkout_stats['errors']:,} ({checkout_stats['error_rate']:.1f}%)[/red]")
+                    
+                    # Get error details from checkout_requests
+                    error_requests = [req for req in analyzer.checkout_requests if req.get('status', 0) >= 400]
+                    
+                    if error_requests:
+                        # Group errors by status code
+                        from collections import Counter
+                        status_counter = Counter(req['status'] for req in error_requests)
+                        
+                        console.print(f"\n    Error Status Codes:")
+                        for status, count in status_counter.most_common():
+                            percentage = (count / len(error_requests)) * 100
+                            status_description = {
+                                400: "Bad Request",
+                                401: "Unauthorized", 
+                                403: "Forbidden",
+                                404: "Not Found",
+                                429: "Too Many Requests",
+                                499: "Client Closed Request",
+                                500: "Internal Server Error",
+                                502: "Bad Gateway",
+                                503: "Service Unavailable",
+                                504: "Gateway Timeout"
+                            }.get(status, "Unknown Error")
+                            
+                            color = "red" if status >= 500 else "yellow"
+                            console.print(f"      [{color}]HTTP {status}[/{color}] ({status_description}): {count} errors ({percentage:.1f}%)")
+                        
+                        # Show top 5 recent errors
+                        console.print(f"\n    Recent Errors (Top 5):")
+                        recent_errors = sorted(error_requests, key=lambda x: x.get('timestamp') or '', reverse=True)[:5]
+                        for err in recent_errors:
+                            timestamp_str = err.get('timestamp').strftime('%Y-%m-%d %H:%M:%S') if err.get('timestamp') else 'Unknown'
+                            status = err.get('status', 'Unknown')
+                            method = err.get('method', 'GET')
+                            path = err.get('path', 'Unknown')[:60]
+                            response_time = err.get('response_time', 0)
+                            
+                            color = "red" if status >= 500 else "yellow"
+                            console.print(f"      [{color}]{timestamp_str} | HTTP {status} | {method} {path} | {response_time:.3f}s[/{color}]")
             
             # Conversion funnel
             funnel = analyzer.get_conversion_funnel()

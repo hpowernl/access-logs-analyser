@@ -321,7 +321,20 @@ class EcommerceAnalyzer:
     
     def analyze_checkout_error(self, path: str, status: int, method: str, log_entry: Dict[str, Any]):
         """Analyze checkout errors for patterns."""
-        if status < 400 or 'checkout' not in path.lower():
+        if status < 400:
+            return
+        
+        # Check if this is a checkout-related path (not just 'checkout' but also 'cart', 'wc-ajax', etc.)
+        path_lower = path.lower()
+        is_checkout_related = (
+            'checkout' in path_lower or 
+            'cart' in path_lower or 
+            'wc-ajax' in path_lower or
+            'payment' in path_lower or
+            'shipping' in path_lower
+        )
+        
+        if not is_checkout_related:
             return
         
         # Categorize error
