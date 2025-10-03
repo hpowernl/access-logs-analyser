@@ -1249,15 +1249,100 @@ def perf(log_files, response_time_analysis, slowest,
     
     process_hypernode_logs_with_callback(analyze_entry, "performance analysis", use_yesterday=yesterday)
     
-    # Generate performance reports
+    # Check if any specific analysis flags were provided
+    has_specific_flags = (response_time_analysis or bandwidth_analysis or 
+                         (cache_analysis and handler) or percentiles)
+    
+    # If no specific flags, show default overview
+    if not has_specific_flags:
+        console.print("\n[bold cyan]⚡ PERFORMANCE OVERVIEW[/bold cyan]")
+        
+        # Basic stats
+        summary = analyzer.get_performance_summary()
+        if summary.get('total_requests', 0) > 0:
+            console.print(f"\n[bold]📊 Summary Statistics[/bold]")
+            console.print(f"  Total requests analyzed: [green]{summary['total_requests']:,}[/green]")
+            console.print(f"  Slow requests (>2s): [yellow]{summary['slow_requests']:,}[/yellow]")
+            console.print(f"  Handlers analyzed: {summary['handlers_analyzed']}")
+            console.print(f"  Unique endpoints: {summary['endpoints_analyzed']}")
+            
+            # Response time stats
+            rt_stats = summary.get('response_time_stats', {})
+            if rt_stats:
+                console.print(f"\n[bold]⏱️  Response Time Statistics[/bold]")
+                console.print(f"  Average: [cyan]{rt_stats['avg']:.3f}s[/cyan]")
+                console.print(f"  Median: {rt_stats['median']:.3f}s")
+                console.print(f"  95th percentile: [yellow]{rt_stats['p95']:.3f}s[/yellow]")
+                console.print(f"  99th percentile: [red]{rt_stats['p99']:.3f}s[/red]")
+                console.print(f"  Max: {rt_stats['max']:.3f}s")
+            
+            # Handler performance
+            handler_perf = analyzer.get_handler_performance()
+            if handler_perf:
+                console.print(f"\n[bold]🔧 Handler Performance[/bold]")
+                for handler_name, stats in sorted(handler_perf.items(), 
+                                                 key=lambda x: x[1]['requests'], 
+                                                 reverse=True)[:5]:
+                    console.print(f"  {handler_name}:")
+                    console.print(f"    Requests: {stats['requests']:,}")
+                    console.print(f"    Avg response: {stats['avg_response_time']:.3f}s")
+                    console.print(f"    P95: {stats['p95_response_time']:.3f}s")
+                    if stats['slow_requests'] > 0:
+                        console.print(f"    Slow (>2s): [yellow]{stats['slow_requests']:,}[/yellow]")
+            
+            # Top slowest endpoints
+            console.print(f"\n[bold]🐌 Top 10 Slowest Endpoints[/bold]")
+            slow_endpoints = analyzer.get_slowest_endpoints(10)
+            if slow_endpoints:
+                for endpoint, avg_time in slow_endpoints:
+                    # Truncate long URLs
+                    display_endpoint = endpoint if len(endpoint) <= 70 else endpoint[:67] + "..."
+                    color = "red" if avg_time > 5 else "yellow" if avg_time > 2 else "white"
+                    console.print(f"  [{color}]{avg_time:.3f}s[/{color}] {display_endpoint}")
+            else:
+                console.print("  No slow endpoints found")
+            
+            # Bandwidth stats
+            bandwidth = summary.get('bandwidth_stats', {})
+            if bandwidth:
+                console.print(f"\n[bold]📈 Bandwidth Usage[/bold]")
+                console.print(f"  Total transferred: [cyan]{bandwidth['total_gb']:.2f} GB[/cyan]")
+                console.print(f"  Average per request: {bandwidth['avg_per_request']/1024:.1f} KB")
+                if bandwidth.get('peak_hour') and bandwidth['peak_hour'] != 'N/A':
+                    console.print(f"  Peak hour: {bandwidth['peak_hour']} ({bandwidth['peak_hour_gb']:.2f} GB)")
+            
+            # Optimization recommendations
+            recommendations = analyzer.get_optimization_recommendations()
+            if recommendations:
+                console.print(f"\n[bold]💡 Optimization Recommendations[/bold]")
+                for rec in recommendations[:3]:  # Show top 3
+                    priority_color = "red" if rec['priority'] == 'High' else "yellow"
+                    console.print(f"  [{priority_color}]{rec['priority']}[/{priority_color}] - {rec['category']}")
+                    console.print(f"    {rec['recommendation']}")
+                
+                if len(recommendations) > 3:
+                    console.print(f"\n  [dim]... and {len(recommendations) - 3} more recommendations[/dim]")
+            
+            # Usage hints
+            console.print(f"\n[dim]💡 Use flags for detailed analysis:[/dim]")
+            console.print(f"[dim]   --response-time-analysis  Detailed response time stats[/dim]")
+            console.print(f"[dim]   --slowest 20              Top 20 slowest endpoints[/dim]")
+            console.print(f"[dim]   --bandwidth-analysis      Bandwidth usage details[/dim]")
+            console.print(f"[dim]   --cache-analysis          Cache effectiveness (requires --handler)[/dim]")
+            console.print(f"[dim]   -o report.json            Export full report[/dim]")
+        else:
+            console.print("\n[yellow]No performance data found. Make sure log files contain valid entries.[/yellow]")
+    
+    # Generate specific analysis reports if flags are provided
     if response_time_analysis:
         console.print("\n[bold blue]⚡ RESPONSE TIME ANALYSIS[/bold blue]")
         rt_stats = analyzer.get_response_time_stats()
-        console.print(f"  Average: {rt_stats['avg']:.3f}s")
-        console.print(f"  Median: {rt_stats['median']:.3f}s")
-        console.print(f"  95th percentile: {rt_stats['p95']:.3f}s")
-        console.print(f"  99th percentile: {rt_stats['p99']:.3f}s")
-        console.print(f"  Max: {rt_stats['max']:.3f}s")
+        if rt_stats:
+            console.print(f"  Average: {rt_stats['avg']:.3f}s")
+            console.print(f"  Median: {rt_stats['median']:.3f}s")
+            console.print(f"  95th percentile: {rt_stats['p95']:.3f}s")
+            console.print(f"  99th percentile: {rt_stats['p99']:.3f}s")
+            console.print(f"  Max: {rt_stats['max']:.3f}s")
     
     if slowest:
         console.print(f"\n[bold yellow]🐌 TOP {slowest} SLOWEST ENDPOINTS[/bold yellow]")
@@ -1268,9 +1353,10 @@ def perf(log_files, response_time_analysis, slowest,
     if bandwidth_analysis:
         console.print("\n[bold green]📊 BANDWIDTH ANALYSIS[/bold green]")
         bandwidth = analyzer.get_bandwidth_stats()
-        console.print(f"  Total data transferred: {bandwidth['total_gb']:.2f} GB")
-        console.print(f"  Average per request: {bandwidth['avg_per_request']:,.0f} bytes")
-        console.print(f"  Peak hour usage: {bandwidth['peak_hour_gb']:.2f} GB")
+        if bandwidth:
+            console.print(f"  Total data transferred: {bandwidth['total_gb']:.2f} GB")
+            console.print(f"  Average per request: {bandwidth['avg_per_request']:,.0f} bytes")
+            console.print(f"  Peak hour usage: {bandwidth['peak_hour_gb']:.2f} GB")
     
     if cache_analysis and handler:
         console.print(f"\n[bold cyan]🗄️  CACHE ANALYSIS ({handler})[/bold cyan]")
@@ -1726,6 +1812,371 @@ def content(log_files, content_type_analysis, file_extension_analysis,
             console.print(f"    Recommendation: {rec['recommendation']}")
             console.print(f"    Impact: {rec['impact']}")
             console.print()
+
+
+# E-commerce Analysis Commands
+@cli.command()
+@click.argument('log_files', nargs=-1, type=click.Path(exists=True))
+@click.option('--platform', type=click.Choice(['magento', 'woocommerce', 'shopware6', 'auto']), 
+              default='auto', help='E-commerce platform (auto-detect by default)')
+@click.option('--checkout-analysis', is_flag=True, help='Analyze checkout flow performance')
+@click.option('--admin-analysis', is_flag=True, help='Analyze admin panel performance')
+@click.option('--api-analysis', is_flag=True, help='Analyze API performance')
+@click.option('--login-security', is_flag=True, help='Analyze login security')
+@click.option('--media-analysis', is_flag=True, help='Analyze media/image performance')
+@click.option('--detailed', is_flag=True, help='Show all detailed analysis sections')
+@click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
+@click.option('--output', '-o', help='Output file for e-commerce report')
+def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analysis,
+             login_security, media_analysis, detailed, yesterday, output):
+    """🛒 E-commerce platform performance analysis.
+    
+    Specialized analysis for Magento 2, WooCommerce, and Shopware 6.
+    Automatically detects your platform and provides targeted insights for:
+    
+    \b
+    • Checkout flow performance and errors
+    • Admin panel response times
+    • REST API and GraphQL performance
+    • Login security and brute force detection
+    • Media/image delivery optimization
+    • Product page performance
+    
+    \b
+    💡 Examples:
+      hlogcli ecommerce                           # Auto-detect and show overview
+      hlogcli ecommerce --platform magento        # Force Magento analysis
+      hlogcli ecommerce --checkout-analysis       # Focus on checkout
+      hlogcli ecommerce --detailed                # Show all sections
+      hlogcli ecommerce -o ecom-report.json       # Export report
+    """
+    from .ecommerce import EcommerceAnalyzer
+    
+    console.print("[blue]Starting e-commerce analysis...[/blue]")
+    
+    # Initialize analyzer
+    analyzer = EcommerceAnalyzer()
+    
+    # Process logs
+    def analyze_entry(log_entry):
+        """Analyze a single log entry for e-commerce patterns."""
+        analyzer.analyze_entry(log_entry)
+    
+    process_hypernode_logs_with_callback(analyze_entry, "e-commerce analysis", use_yesterday=yesterday)
+    
+    # Get platform summary
+    platform_summary = analyzer.get_platform_summary()
+    
+    # Check if any specific analysis flags were provided
+    has_specific_flags = (checkout_analysis or admin_analysis or api_analysis or 
+                         login_security or media_analysis or detailed)
+    
+    # Show platform detection
+    console.print("\n[bold cyan]🛒 E-COMMERCE ANALYSIS[/bold cyan]")
+    
+    if platform_summary['detected_platform']:
+        platform_name = platform_summary['detected_platform'].title()
+        confidence = platform_summary['confidence']
+        console.print(f"\n[bold]🔍 Platform Detection[/bold]")
+        console.print(f"  Detected: [green]{platform_name}[/green] ({confidence:.0f}% confidence)")
+        console.print(f"  Total requests: {platform_summary['total_requests']:,}")
+        console.print(f"  E-commerce requests: [cyan]{platform_summary['ecommerce_requests']:,}[/cyan] ({platform_summary['ecommerce_percentage']:.1f}%)")
+    else:
+        console.print("\n[yellow]⚠️  No e-commerce platform detected in logs[/yellow]")
+        console.print("Make sure you're analyzing logs from a Magento, WooCommerce, or Shopware 6 site.")
+        return
+    
+    # If no specific flags, show default overview
+    if not has_specific_flags:
+        # Checkout performance
+        checkout_stats = analyzer.get_category_stats('checkout')
+        if checkout_stats and checkout_stats['count'] > 0:
+            console.print(f"\n[bold]🛍️  Checkout Performance[/bold]")
+            console.print(f"  Requests: [cyan]{checkout_stats['count']:,}[/cyan]")
+            console.print(f"  Avg response time: {checkout_stats['response_time_avg']:.3f}s")
+            console.print(f"  P95: {checkout_stats['response_time_p95']:.3f}s")
+            if checkout_stats['errors'] > 0:
+                console.print(f"  Errors: [red]{checkout_stats['errors']:,}[/red] ({checkout_stats['error_rate']:.1f}%)")
+            if checkout_stats['slow_count'] > 0:
+                console.print(f"  Slow (>2s): [yellow]{checkout_stats['slow_count']:,}[/yellow]")
+        
+        # Admin performance
+        admin_stats = analyzer.get_category_stats('admin')
+        if admin_stats and admin_stats['count'] > 0:
+            console.print(f"\n[bold]💼 Admin Panel[/bold]")
+            console.print(f"  Requests: [cyan]{admin_stats['count']:,}[/cyan]")
+            console.print(f"  Avg response time: {admin_stats['response_time_avg']:.3f}s")
+            console.print(f"  P95: {admin_stats['response_time_p95']:.3f}s")
+            if admin_stats['slow_count'] > 0:
+                console.print(f"  Slow (>2s): [yellow]{admin_stats['slow_count']:,}[/yellow]")
+        
+        # API performance
+        api_stats = analyzer.get_category_stats('api') or analyzer.get_category_stats('api_rest')
+        if api_stats and api_stats['count'] > 0:
+            console.print(f"\n[bold]🔌 API Performance[/bold]")
+            console.print(f"  Requests: [cyan]{api_stats['count']:,}[/cyan]")
+            console.print(f"  Avg response time: {api_stats['response_time_avg']:.3f}s")
+            if api_stats['errors'] > 0:
+                console.print(f"  Errors: [red]{api_stats['errors']:,}[/red] ({api_stats['error_rate']:.1f}%)")
+        
+        # GraphQL (Magento specific)
+        graphql_stats = analyzer.get_category_stats('api_graphql')
+        if graphql_stats and graphql_stats['count'] > 0:
+            console.print(f"\n[bold]🔷 GraphQL API[/bold]")
+            console.print(f"  Requests: [cyan]{graphql_stats['count']:,}[/cyan]")
+            console.print(f"  Avg response time: {graphql_stats['response_time_avg']:.3f}s")
+        
+        # Login security
+        login_stats = analyzer.get_category_stats('login')
+        if login_stats and login_stats['count'] > 0:
+            console.print(f"\n[bold]🔐 Login/Authentication[/bold]")
+            console.print(f"  Login attempts: [cyan]{login_stats['count']:,}[/cyan]")
+            if login_stats['errors'] > 0:
+                error_color = "red" if login_stats['error_rate'] > 30 else "yellow"
+                console.print(f"  Failed logins: [{error_color}]{login_stats['errors']:,}[/{error_color}] ({login_stats['error_rate']:.1f}%)")
+                if login_stats['error_rate'] > 30:
+                    console.print(f"  [red]⚠️  High failure rate - possible brute force attack![/red]")
+        
+        # Media performance
+        media_stats = analyzer.get_category_stats('media')
+        if media_stats and media_stats['count'] > 0:
+            console.print(f"\n[bold]🖼️  Media/Images[/bold]")
+            console.print(f"  Requests: [cyan]{media_stats['count']:,}[/cyan]")
+            console.print(f"  Total bandwidth: {media_stats['bytes_total']/1024/1024/1024:.2f} GB")
+            console.print(f"  Avg file size: {media_stats['bytes_avg']/1024:.1f} KB")
+            if media_stats['bytes_avg'] > 200 * 1024:  # >200KB
+                console.print(f"  [yellow]⚠️  Large images detected - consider optimization[/yellow]")
+        
+        # Product pages
+        product_stats = analyzer.get_category_stats('product')
+        if product_stats and product_stats['count'] > 0:
+            console.print(f"\n[bold]📦 Product Pages[/bold]")
+            console.print(f"  Requests: [cyan]{product_stats['count']:,}[/cyan]")
+            console.print(f"  Avg response time: {product_stats['response_time_avg']:.3f}s")
+        
+        # Search
+        search_stats = analyzer.get_category_stats('search')
+        if search_stats and search_stats['count'] > 0:
+            console.print(f"\n[bold]🔍 Search[/bold]")
+            console.print(f"  Requests: [cyan]{search_stats['count']:,}[/cyan]")
+            console.print(f"  Avg response time: {search_stats['response_time_avg']:.3f}s")
+        
+        # GraphQL Statistics (Magento specific)
+        graphql_stats = analyzer.get_graphql_statistics()
+        if graphql_stats and graphql_stats.get('total_queries', 0) > 0:
+            console.print(f"\n[bold]🔷 GraphQL API (Magento)[/bold]")
+            console.print(f"  Total queries: [cyan]{graphql_stats['total_queries']:,}[/cyan]")
+            console.print(f"  Unique operations: {graphql_stats['unique_operations']}")
+            if graphql_stats['total_errors'] > 0:
+                error_color = "red" if graphql_stats['error_rate'] > 5 else "yellow"
+                console.print(f"  Errors: [{error_color}]{graphql_stats['total_errors']:,}[/{error_color}] ({graphql_stats['error_rate']:.1f}%)")
+            
+            if graphql_stats['top_operations']:
+                console.print(f"  Top operations:")
+                for operation, count in graphql_stats['top_operations'][:3]:
+                    console.print(f"    • {operation}: {count:,}")
+        
+        # Conversion Funnel
+        funnel = analyzer.get_conversion_funnel()
+        if funnel and funnel.get('funnel'):
+            console.print(f"\n[bold]🎯 Conversion Funnel[/bold]")
+            for step, data in funnel['funnel'].items():
+                if data['visits'] > 0:
+                    drop_off_indicator = ""
+                    if data['drop_off_rate'] > 50:
+                        drop_off_indicator = f" [red](↓ {data['drop_off_rate']:.0f}% drop-off!)[/red]"
+                    elif data['drop_off_rate'] > 30:
+                        drop_off_indicator = f" [yellow](↓ {data['drop_off_rate']:.0f}% drop-off)[/yellow]"
+                    console.print(f"  {step.title()}: {data['visits']:,}{drop_off_indicator}")
+            
+            if funnel.get('cart_abandonment_rate', 0) > 0:
+                console.print(f"  Cart abandonment: [yellow]{funnel['cart_abandonment_rate']:.1f}%[/yellow]")
+        
+        # Checkout Errors
+        checkout_errors = analyzer.get_checkout_error_analysis()
+        if checkout_errors and checkout_errors.get('total_errors', 0) > 0:
+            console.print(f"\n[bold]⚠️  Checkout Errors[/bold]")
+            console.print(f"  Total errors: [red]{checkout_errors['total_errors']:,}[/red]")
+            
+            if checkout_errors.get('critical_issues'):
+                console.print(f"  Critical issues:")
+                for issue in checkout_errors['critical_issues']:
+                    console.print(f"    • [{issue['severity']}]{issue['issue']}: {issue['count']}[/{issue['severity']}]")
+            
+            if checkout_errors.get('error_patterns'):
+                console.print(f"  Top error patterns:")
+                for pattern, count in list(checkout_errors['error_patterns'].items())[:3]:
+                    console.print(f"    • {pattern}: {count}")
+        
+        # Recommendations
+        recommendations = analyzer.get_enhanced_recommendations()
+        if recommendations:
+            console.print(f"\n[bold]💡 Recommendations[/bold]")
+            for rec in recommendations[:5]:  # Top 5
+                priority_color = "red" if rec['priority'] in ['Critical', 'CRITICAL'] else "yellow" if rec['priority'] in ['High', 'HIGH'] else "blue"
+                console.print(f"  [{priority_color}]{rec['priority']}[/{priority_color}] - {rec['category']}")
+                console.print(f"    {rec['recommendation']}")
+                if 'action_items' in rec and rec['action_items']:
+                    console.print(f"    [dim]Actions: {', '.join(rec['action_items'][:2])}[/dim]")
+        
+        # Usage hints
+        console.print(f"\n[dim]💡 Use flags for detailed analysis:[/dim]")
+        console.print(f"[dim]   --checkout-analysis   Detailed checkout metrics[/dim]")
+        console.print(f"[dim]   --admin-analysis      Admin panel deep-dive[/dim]")
+        console.print(f"[dim]   --api-analysis        API endpoint analysis[/dim]")
+        console.print(f"[dim]   --login-security      Login security audit[/dim]")
+        console.print(f"[dim]   --media-analysis      Media optimization tips[/dim]")
+        console.print(f"[dim]   --detailed            Show all sections[/dim]")
+    
+    # Detailed analysis sections
+    if checkout_analysis or detailed:
+        console.print(f"\n[bold blue]🛍️  CHECKOUT ANALYSIS[/bold blue]")
+        checkout_stats = analyzer.get_category_stats('checkout')
+        
+        if checkout_stats and checkout_stats['count'] > 0:
+            console.print(f"  Total checkout requests: {checkout_stats['count']:,}")
+            console.print(f"  Average response time: {checkout_stats['response_time_avg']:.3f}s")
+            console.print(f"  Median response time: {checkout_stats['response_time_median']:.3f}s")
+            console.print(f"  95th percentile: {checkout_stats['response_time_p95']:.3f}s")
+            console.print(f"  Max response time: {checkout_stats['response_time_max']:.3f}s")
+            console.print(f"  Errors: {checkout_stats['errors']:,} ({checkout_stats['error_rate']:.1f}%)")
+            console.print(f"  Slow requests (>2s): {checkout_stats['slow_count']:,}")
+            
+            # Slowest checkout endpoints
+            slowest = analyzer.get_slowest_endpoints('checkout', 5)
+            if slowest:
+                console.print(f"\n  Slowest endpoints:")
+                for endpoint, avg_time in slowest:
+                    display_endpoint = endpoint if len(endpoint) <= 60 else endpoint[:57] + "..."
+                    console.print(f"    {avg_time:.3f}s - {display_endpoint}")
+            
+            # Checkout error analysis
+            checkout_errors = analyzer.get_checkout_error_analysis()
+            if checkout_errors and checkout_errors.get('total_errors', 0) > 0:
+                console.print(f"\n  Error Analysis:")
+                console.print(f"    Total errors: [red]{checkout_errors['total_errors']:,}[/red]")
+                
+                if checkout_errors.get('critical_issues'):
+                    console.print(f"\n    Critical Issues:")
+                    for issue in checkout_errors['critical_issues']:
+                        console.print(f"      🚨 {issue['issue']}: {issue['count']} times")
+                
+                if checkout_errors.get('error_patterns'):
+                    console.print(f"\n    Error Patterns:")
+                    for pattern, count in list(checkout_errors['error_patterns'].items())[:5]:
+                        console.print(f"      • {pattern}: {count}")
+            
+            # Conversion funnel
+            funnel = analyzer.get_conversion_funnel()
+            if funnel and funnel.get('funnel'):
+                console.print(f"\n  Conversion Funnel:")
+                for step, data in funnel['funnel'].items():
+                    if data['visits'] > 0:
+                        drop_text = f" (↓ {data['drop_off_rate']:.0f}%)" if data['drop_off_rate'] > 0 else ""
+                        console.print(f"    {step.title()}: {data['visits']:,}{drop_text}")
+                
+                if funnel.get('cart_abandonment_rate'):
+                    console.print(f"\n    Cart Abandonment Rate: [yellow]{funnel['cart_abandonment_rate']:.1f}%[/yellow]")
+                    console.print(f"    Abandoned carts: {funnel['abandoned_carts']:,}")
+                    console.print(f"    Completed checkouts: {funnel['complete_paths']:,}")
+        else:
+            console.print("  No checkout requests found")
+    
+    if admin_analysis or detailed:
+        console.print(f"\n[bold magenta]💼 ADMIN PANEL ANALYSIS[/bold magenta]")
+        admin_stats = analyzer.get_category_stats('admin')
+        
+        if admin_stats and admin_stats['count'] > 0:
+            console.print(f"  Total admin requests: {admin_stats['count']:,}")
+            console.print(f"  Average response time: {admin_stats['response_time_avg']:.3f}s")
+            console.print(f"  95th percentile: {admin_stats['response_time_p95']:.3f}s")
+            console.print(f"  Slow requests (>2s): {admin_stats['slow_count']:,}")
+            
+            # Slowest admin operations
+            slowest = analyzer.get_slowest_endpoints('admin', 10)
+            if slowest:
+                console.print(f"\n  Slowest operations:")
+                for endpoint, avg_time in slowest:
+                    display_endpoint = endpoint if len(endpoint) <= 60 else endpoint[:57] + "..."
+                    color = "red" if avg_time > 5 else "yellow"
+                    console.print(f"    [{color}]{avg_time:.3f}s[/{color}] - {display_endpoint}")
+        else:
+            console.print("  No admin requests found")
+    
+    if api_analysis or detailed:
+        console.print(f"\n[bold green]🔌 API ANALYSIS[/bold green]")
+        
+        # REST API
+        api_stats = analyzer.get_category_stats('api') or analyzer.get_category_stats('api_rest')
+        if api_stats and api_stats['count'] > 0:
+            console.print(f"  REST API requests: {api_stats['count']:,}")
+            console.print(f"  Average response time: {api_stats['response_time_avg']:.3f}s")
+            console.print(f"  Errors: {api_stats['errors']:,} ({api_stats['error_rate']:.1f}%)")
+        
+        # GraphQL
+        graphql_stats_detailed = analyzer.get_graphql_statistics()
+        if graphql_stats_detailed and graphql_stats_detailed.get('total_queries', 0) > 0:
+            console.print(f"\n  GraphQL API (Magento):")
+            console.print(f"    Total queries: {graphql_stats_detailed['total_queries']:,}")
+            console.print(f"    Unique operations: {graphql_stats_detailed['unique_operations']}")
+            console.print(f"    Error rate: {graphql_stats_detailed['error_rate']:.1f}%")
+            
+            if graphql_stats_detailed.get('top_operations'):
+                console.print(f"\n    Top GraphQL Operations:")
+                for operation, count in graphql_stats_detailed['top_operations'][:10]:
+                    console.print(f"      • {operation}: {count:,}")
+            
+            if graphql_stats_detailed.get('operation_stats'):
+                console.print(f"\n    Performance by Operation:")
+                for op, stats in sorted(graphql_stats_detailed['operation_stats'].items(), 
+                                       key=lambda x: x[1]['avg_response_time'], 
+                                       reverse=True)[:5]:
+                    console.print(f"      {op}:")
+                    console.print(f"        Requests: {stats['count']}, Avg: {stats['avg_response_time']:.3f}s, Errors: {stats['errors']}")
+    
+    if login_security or detailed:
+        console.print(f"\n[bold red]🔐 LOGIN SECURITY ANALYSIS[/bold red]")
+        login_stats = analyzer.get_category_stats('login')
+        
+        if login_stats and login_stats['count'] > 0:
+            console.print(f"  Total login attempts: {login_stats['count']:,}")
+            console.print(f"  Failed logins: {login_stats['errors']:,} ({login_stats['error_rate']:.1f}%)")
+            
+            if login_stats['error_rate'] > 50:
+                console.print(f"  [red]🚨 CRITICAL: Very high failure rate - likely brute force attack![/red]")
+            elif login_stats['error_rate'] > 30:
+                console.print(f"  [yellow]⚠️  WARNING: High failure rate - possible attack[/yellow]")
+            else:
+                console.print(f"  [green]✅ Login failure rate is normal[/green]")
+        else:
+            console.print("  No login activity found")
+    
+    if media_analysis or detailed:
+        console.print(f"\n[bold cyan]🖼️  MEDIA ANALYSIS[/bold cyan]")
+        media_stats = analyzer.get_category_stats('media')
+        
+        if media_stats and media_stats['count'] > 0:
+            console.print(f"  Total media requests: {media_stats['count']:,}")
+            console.print(f"  Total bandwidth: {media_stats['bytes_total']/1024/1024/1024:.2f} GB")
+            console.print(f"  Average file size: {media_stats['bytes_avg']/1024:.1f} KB")
+            console.print(f"  Average response time: {media_stats['response_time_avg']:.3f}s")
+            
+            if media_stats['bytes_avg'] > 500 * 1024:
+                console.print(f"  [red]⚠️  Very large images (avg >500KB) - urgent optimization needed![/red]")
+            elif media_stats['bytes_avg'] > 200 * 1024:
+                console.print(f"  [yellow]⚠️  Large images (avg >200KB) - consider WebP, compression, CDN[/yellow]")
+            else:
+                console.print(f"  [green]✅ Image sizes are reasonable[/green]")
+        else:
+            console.print("  No media requests found")
+    
+    # Export report if requested
+    if output:
+        import json
+        report = analyzer.export_report()
+        with open(output, 'w') as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+        console.print(f"\n[green]E-commerce analysis report exported to: {output}[/green]")
 
 
 # Anomaly Detection Commands

@@ -1,0 +1,874 @@
+"""E-commerce platform analysis module for Magento, WooCommerce, and Shopware."""
+
+import re
+import json
+import statistics
+from collections import defaultdict, Counter
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Tuple, Optional
+from urllib.parse import parse_qs, urlparse
+
+from .parser import LogParser
+from .log_reader import LogTailer
+
+
+# URL Pattern definitions per platform
+MAGENTO_PATTERNS = {
+    'checkout': [
+        r'^/checkout/?',
+        r'/rest/[^/]+/V1/(guest-)?carts',
+        r'/customer/section/load.*section_data_ids.*cart',
+        r'/rest/[^/]+/V1/carts/mine',
+    ],
+    'admin': [
+        r'^/admin(?!/static)',
+        r'^/admin_\w+',
+        r'/rest/[^/]+/V1/(orders|products|customers)',
+    ],
+    'api_rest': [
+        r'/rest/[^/]+/V1/',
+    ],
+    'api_graphql': [
+        r'/graphql',
+    ],
+    'login': [
+        r'/customer/account/login',
+        r'/rest/[^/]+/V1/integration/(customer|admin)/token',
+    ],
+    'product': [
+        r'/catalog/product/view',
+        r'\.html$',
+    ],
+    'media': [
+        r'/media/catalog/product',
+        r'/pub/media/catalog',
+        r'/pub/static',
+    ],
+    'search': [
+        r'/catalogsearch/result',
+        r'/rest/[^/]+/V1/search',
+    ],
+}
+
+WOOCOMMERCE_PATTERNS = {
+    'checkout': [
+        r'^/checkout/?',
+        r'^/cart/?',
+        r'/\?wc-ajax=',
+        r'/wc-ajax=',
+    ],
+    'admin': [
+        r'^/wp-admin(?!/admin-ajax)',
+        r'/wp-admin/post\.php',
+        r'/wp-admin/admin\.php',
+    ],
+    'api': [
+        r'/wp-json/wc/v\d+',
+        r'/wp-json/wp/v2',
+    ],
+    'login': [
+        r'/wp-login\.php',
+        r'/my-account',
+        r'/wp-admin/$',
+    ],
+    'product': [
+        r'^/product/',
+        r'^/product-category/',
+        r'^/shop/?',
+    ],
+    'media': [
+        r'/wp-content/uploads',
+        r'/wp-content/plugins',
+        r'/wp-content/themes',
+    ],
+    'wordpress': [
+        r'/wp-cron\.php',
+        r'/xmlrpc\.php',
+        r'/wp-json/',
+    ],
+}
+
+SHOPWARE6_PATTERNS = {
+    'checkout': [
+        r'^/checkout/',
+        r'/store-api/checkout/',
+    ],
+    'admin': [
+        r'^/admin(?:#|$)',
+        r'/api/_action/',
+        r'/api/[^/]+/(order|product|customer)',
+    ],
+    'api': [
+        r'/store-api/',
+        r'/api/',
+    ],
+    'login': [
+        r'^/account/login',
+        r'/store-api/account/login',
+    ],
+    'product': [
+        r'^/detail/',
+        r'^/navigation/',
+    ],
+    'media': [
+        r'^/media/',
+        r'^/thumbnail/',
+        r'^/bundles/',
+    ],
+    'search': [
+        r'^/suggest',
+        r'/store-api/search',
+    ],
+}
+
+
+class EcommerceAnalyzer:
+    """Analyzes e-commerce specific performance patterns."""
+    
+    def __init__(self):
+        self.parser = LogParser()
+        
+        # Platform detection
+        self.platform_indicators = defaultdict(int)
+        self.detected_platform = None
+        self.platform_confidence = 0
+        
+        # Category-based tracking
+        self.checkout_requests = []
+        self.admin_requests = []
+        self.api_requests = []
+        self.login_requests = []
+        self.product_requests = []
+        self.media_requests = []
+        self.search_requests = []
+        
+        # Performance tracking per category
+        self.category_response_times = defaultdict(list)
+        self.category_errors = defaultdict(int)
+        self.category_request_count = defaultdict(int)
+        self.category_bytes = defaultdict(int)
+        
+        # Detailed tracking
+        self.slow_requests = defaultdict(list)  # >2s per category
+        self.failed_requests = defaultdict(list)  # 5xx errors
+        self.endpoint_stats = defaultdict(lambda: {
+            'count': 0,
+            'response_times': [],
+            'errors': 0,
+            'bytes': 0
+        })
+        
+        # GraphQL tracking (Magento specific)
+        self.graphql_operations = Counter()  # Track query/mutation types
+        self.graphql_queries = []
+        self.graphql_errors = []
+        
+        # Conversion funnel tracking
+        self.funnel_visits = defaultdict(int)  # Track visits per funnel step
+        self.user_sessions = defaultdict(list)  # Track user paths by IP
+        
+        # Time-based tracking
+        self.hourly_category_stats = defaultdict(lambda: defaultdict(lambda: {
+            'requests': 0,
+            'response_times': [],
+            'errors': 0
+        }))
+        
+        # Checkout error patterns
+        self.checkout_error_patterns = Counter()
+        self.checkout_error_details = []
+        
+        # Total stats
+        self.total_requests = 0
+        self.ecommerce_requests = 0
+    
+    def detect_platform(self, path: str) -> Optional[str]:
+        """Detect e-commerce platform from URL patterns."""
+        path_lower = path.lower()
+        
+        # Check Magento patterns
+        magento_score = 0
+        if re.search(r'/rest/[^/]+/V1/', path_lower):
+            magento_score += 5
+        if re.search(r'/customer/section/load', path_lower):
+            magento_score += 5
+        if re.search(r'/catalogsearch/', path_lower):
+            magento_score += 3
+        if path_lower.endswith('.html') and not 'wp-' in path_lower:
+            magento_score += 1
+        
+        # Check WooCommerce patterns  
+        woocommerce_score = 0
+        if 'wp-' in path_lower:
+            woocommerce_score += 5
+        if re.search(r'/wc-ajax=|/\?wc-ajax=', path_lower):
+            woocommerce_score += 5
+        if '/wp-json/wc/' in path_lower:
+            woocommerce_score += 5
+        if '/wp-content/' in path_lower:
+            woocommerce_score += 2
+        
+        # Check Shopware 6 patterns
+        shopware_score = 0
+        if '/store-api/' in path_lower:
+            shopware_score += 5
+        if re.search(r'^/detail/|^/navigation/', path_lower):
+            shopware_score += 3
+        if path_lower.startswith('/api/') and not 'wp-' in path_lower:
+            shopware_score += 2
+        
+        # Update platform indicators
+        if magento_score > 0:
+            self.platform_indicators['magento'] += magento_score
+        if woocommerce_score > 0:
+            self.platform_indicators['woocommerce'] += woocommerce_score
+        if shopware_score > 0:
+            self.platform_indicators['shopware6'] += shopware_score
+        
+        # Return most likely platform
+        if self.platform_indicators:
+            detected = max(self.platform_indicators.items(), key=lambda x: x[1])
+            return detected[0] if detected[1] > 10 else None
+        
+        return None
+    
+    def categorize_request(self, path: str, platform: str) -> Optional[str]:
+        """Categorize a request based on platform and URL patterns."""
+        if not platform:
+            return None
+        
+        patterns = None
+        if platform == 'magento':
+            patterns = MAGENTO_PATTERNS
+        elif platform == 'woocommerce':
+            patterns = WOOCOMMERCE_PATTERNS
+        elif platform == 'shopware6':
+            patterns = SHOPWARE6_PATTERNS
+        else:
+            return None
+        
+        # Check each category
+        for category, pattern_list in patterns.items():
+            for pattern in pattern_list:
+                if re.search(pattern, path, re.IGNORECASE):
+                    return category
+        
+        return None
+    
+    def parse_graphql_operation(self, path: str, method: str) -> Optional[str]:
+        """Extract GraphQL operation type from request."""
+        if '/graphql' not in path.lower() or method != 'POST':
+            return None
+        
+        # Try to extract operation from query params
+        parsed = urlparse(path)
+        if parsed.query:
+            params = parse_qs(parsed.query)
+            if 'query' in params:
+                query = params['query'][0]
+                # Extract operation name
+                if 'mutation' in query.lower():
+                    match = re.search(r'mutation\s+(\w+)', query, re.IGNORECASE)
+                    if match:
+                        return f"mutation:{match.group(1)}"
+                    return "mutation:unknown"
+                elif 'query' in query.lower():
+                    match = re.search(r'query\s+(\w+)', query, re.IGNORECASE)
+                    if match:
+                        return f"query:{match.group(1)}"
+                    return "query:unknown"
+        
+        return "graphql:unknown"
+    
+    def track_funnel_step(self, path: str, ip: str, timestamp: datetime):
+        """Track user through conversion funnel."""
+        if not ip or not timestamp:
+            return
+        
+        # Determine funnel step
+        path_lower = path.lower()
+        step = None
+        
+        if re.search(r'/(home|index|^/$)', path_lower):
+            step = 'homepage'
+        elif re.search(r'/(catalog|category|shop)', path_lower):
+            step = 'category'
+        elif re.search(r'/(product|detail|\.html$)', path_lower):
+            step = 'product'
+        elif re.search(r'/(cart|basket)', path_lower):
+            step = 'cart'
+        elif re.search(r'/checkout', path_lower):
+            step = 'checkout'
+        
+        if step:
+            self.funnel_visits[step] += 1
+            self.user_sessions[ip].append({
+                'step': step,
+                'timestamp': timestamp,
+                'path': path
+            })
+    
+    def analyze_checkout_error(self, path: str, status: int, method: str):
+        """Analyze checkout errors for patterns."""
+        if status < 400 or 'checkout' not in path.lower():
+            return
+        
+        # Categorize error
+        error_type = None
+        
+        if status == 400:
+            error_type = "bad_request"
+        elif status == 401:
+            error_type = "unauthorized"
+        elif status == 403:
+            error_type = "forbidden"
+        elif status == 404:
+            error_type = "not_found"
+        elif status == 500:
+            error_type = "server_error"
+        elif status == 502:
+            error_type = "bad_gateway"
+        elif status == 503:
+            error_type = "service_unavailable"
+        elif status == 504:
+            error_type = "timeout"
+        else:
+            error_type = f"http_{status}"
+        
+        # Track specific checkout endpoint errors
+        if 'cart' in path.lower():
+            self.checkout_error_patterns[f"cart_{error_type}"] += 1
+        elif 'payment' in path.lower():
+            self.checkout_error_patterns[f"payment_{error_type}"] += 1
+        elif 'shipping' in path.lower():
+            self.checkout_error_patterns[f"shipping_{error_type}"] += 1
+        else:
+            self.checkout_error_patterns[f"checkout_{error_type}"] += 1
+        
+        self.checkout_error_details.append({
+            'path': path,
+            'status': status,
+            'method': method,
+            'error_type': error_type
+        })
+    
+    def analyze_entry(self, log_entry: Dict[str, Any]):
+        """Analyze a single log entry for e-commerce patterns."""
+        self.total_requests += 1
+        
+        path = log_entry.get('path', '/')
+        method = log_entry.get('method', 'GET')
+        status = log_entry.get('status', 0)
+        response_time = log_entry.get('response_time', 0)
+        bytes_sent = log_entry.get('bytes_sent', 0)
+        timestamp = log_entry.get('timestamp')
+        
+        # Detect platform
+        detected = self.detect_platform(path)
+        
+        # Use most confident platform
+        if self.platform_indicators:
+            platform_data = max(self.platform_indicators.items(), key=lambda x: x[1])
+            self.detected_platform = platform_data[0]
+            total_score = sum(self.platform_indicators.values())
+            self.platform_confidence = (platform_data[1] / total_score * 100) if total_score > 0 else 0
+        
+        # Categorize request
+        category = self.categorize_request(path, self.detected_platform)
+        
+        # Track conversion funnel (for all requests, not just categorized ones)
+        ip = log_entry.get('ip')
+        if ip:
+            self.track_funnel_step(path, str(ip), timestamp)
+        
+        # Parse GraphQL operations
+        if category == 'api_graphql':
+            operation = self.parse_graphql_operation(path, method)
+            if operation:
+                self.graphql_operations[operation] += 1
+                self.graphql_queries.append({
+                    'operation': operation,
+                    'timestamp': timestamp,
+                    'response_time': response_time,
+                    'status': status
+                })
+                if status >= 400:
+                    self.graphql_errors.append({
+                        'operation': operation,
+                        'status': status,
+                        'timestamp': timestamp
+                    })
+        
+        # Analyze checkout errors
+        if category == 'checkout' and status >= 400:
+            self.analyze_checkout_error(path, status, method)
+        
+        if category:
+            self.ecommerce_requests += 1
+            
+            # Track by category
+            self.category_request_count[category] += 1
+            if response_time > 0:
+                self.category_response_times[category].append(response_time)
+            self.category_bytes[category] += bytes_sent
+            
+            # Time-based tracking
+            if timestamp:
+                hour_key = timestamp.replace(minute=0, second=0, microsecond=0)
+                self.hourly_category_stats[hour_key][category]['requests'] += 1
+                if response_time > 0:
+                    self.hourly_category_stats[hour_key][category]['response_times'].append(response_time)
+                if status >= 400:
+                    self.hourly_category_stats[hour_key][category]['errors'] += 1
+            
+            # Track errors
+            if status >= 400:
+                self.category_errors[category] += 1
+                
+                if status >= 500:
+                    self.failed_requests[category].append({
+                        'timestamp': timestamp,
+                        'path': path,
+                        'method': method,
+                        'status': status,
+                        'response_time': response_time
+                    })
+            
+            # Track slow requests
+            if response_time > 2.0:
+                self.slow_requests[category].append({
+                    'timestamp': timestamp,
+                    'path': path,
+                    'method': method,
+                    'status': status,
+                    'response_time': response_time,
+                    'bytes_sent': bytes_sent
+                })
+            
+            # Store in category list
+            request_data = {
+                'timestamp': timestamp,
+                'path': path,
+                'method': method,
+                'status': status,
+                'response_time': response_time,
+                'bytes_sent': bytes_sent
+            }
+            
+            if category == 'checkout':
+                self.checkout_requests.append(request_data)
+            elif category == 'admin':
+                self.admin_requests.append(request_data)
+            elif category in ['api', 'api_rest', 'api_graphql']:
+                self.api_requests.append(request_data)
+            elif category == 'login':
+                self.login_requests.append(request_data)
+            elif category == 'product':
+                self.product_requests.append(request_data)
+            elif category == 'media':
+                self.media_requests.append(request_data)
+            elif category == 'search':
+                self.search_requests.append(request_data)
+            
+            # Track endpoint-level stats
+            endpoint = f"{method} {path}"
+            self.endpoint_stats[endpoint]['count'] += 1
+            if response_time > 0:
+                self.endpoint_stats[endpoint]['response_times'].append(response_time)
+            if status >= 400:
+                self.endpoint_stats[endpoint]['errors'] += 1
+            self.endpoint_stats[endpoint]['bytes'] += bytes_sent
+    
+    def get_category_stats(self, category: str) -> Dict[str, Any]:
+        """Get statistics for a specific category."""
+        count = self.category_request_count[category]
+        if count == 0:
+            return {}
+        
+        response_times = self.category_response_times[category]
+        errors = self.category_errors[category]
+        bytes_total = self.category_bytes[category]
+        
+        stats = {
+            'count': count,
+            'errors': errors,
+            'error_rate': (errors / count * 100) if count > 0 else 0,
+            'bytes_total': bytes_total,
+            'bytes_avg': bytes_total / count if count > 0 else 0,
+        }
+        
+        if response_times:
+            stats['response_time_avg'] = statistics.mean(response_times)
+            stats['response_time_median'] = statistics.median(response_times)
+            stats['response_time_p95'] = (
+                statistics.quantiles(response_times, n=20)[18] 
+                if len(response_times) > 19 
+                else max(response_times)
+            )
+            stats['response_time_max'] = max(response_times)
+            stats['slow_count'] = len([t for t in response_times if t > 2.0])
+        else:
+            stats['response_time_avg'] = 0
+            stats['response_time_median'] = 0
+            stats['response_time_p95'] = 0
+            stats['response_time_max'] = 0
+            stats['slow_count'] = 0
+        
+        return stats
+    
+    def get_platform_summary(self) -> Dict[str, Any]:
+        """Get overall platform detection and summary."""
+        return {
+            'detected_platform': self.detected_platform,
+            'confidence': self.platform_confidence,
+            'total_requests': self.total_requests,
+            'ecommerce_requests': self.ecommerce_requests,
+            'ecommerce_percentage': (
+                self.ecommerce_requests / self.total_requests * 100 
+                if self.total_requests > 0 else 0
+            ),
+            'platform_scores': dict(self.platform_indicators)
+        }
+    
+    def get_slowest_endpoints(self, category: str, limit: int = 10) -> List[Tuple[str, float]]:
+        """Get slowest endpoints for a specific category."""
+        category_endpoints = []
+        
+        for endpoint, stats in self.endpoint_stats.items():
+            if stats['response_times'] and stats['count'] >= 5:
+                # Check if endpoint belongs to category
+                method, path = endpoint.split(' ', 1)
+                if self.categorize_request(path, self.detected_platform) == category:
+                    avg_time = statistics.mean(stats['response_times'])
+                    category_endpoints.append((endpoint, avg_time))
+        
+        return sorted(category_endpoints, key=lambda x: x[1], reverse=True)[:limit]
+    
+    def get_recommendations(self) -> List[Dict[str, Any]]:
+        """Generate e-commerce specific recommendations."""
+        recommendations = []
+        
+        # Check checkout performance
+        checkout_stats = self.get_category_stats('checkout')
+        if checkout_stats and checkout_stats['count'] > 10:
+            if checkout_stats['error_rate'] > 1:
+                recommendations.append({
+                    'category': 'Checkout',
+                    'priority': 'Critical',
+                    'issue': f"High error rate: {checkout_stats['error_rate']:.1f}%",
+                    'recommendation': 'Investigate checkout errors immediately - lost revenue!',
+                    'impact': 'Direct revenue impact'
+                })
+            
+            if checkout_stats['response_time_p95'] > 3:
+                recommendations.append({
+                    'category': 'Checkout',
+                    'priority': 'High',
+                    'issue': f"Slow checkout: P95 = {checkout_stats['response_time_p95']:.2f}s",
+                    'recommendation': 'Optimize checkout flow, cache cart data, reduce external calls',
+                    'impact': 'Affects conversion rate'
+                })
+        
+        # Check admin performance
+        admin_stats = self.get_category_stats('admin')
+        if admin_stats and admin_stats['count'] > 50:
+            if admin_stats['response_time_avg'] > 2:
+                recommendations.append({
+                    'category': 'Admin',
+                    'priority': 'Medium',
+                    'issue': f"Slow admin panel: avg {admin_stats['response_time_avg']:.2f}s",
+                    'recommendation': 'Enable admin caching, optimize queries, consider full-page cache',
+                    'impact': 'Staff productivity'
+                })
+        
+        # Check API performance
+        api_stats = self.get_category_stats('api') or self.get_category_stats('api_rest')
+        if api_stats and api_stats['count'] > 100:
+            if api_stats['error_rate'] > 5:
+                recommendations.append({
+                    'category': 'API',
+                    'priority': 'High',
+                    'issue': f"High API error rate: {api_stats['error_rate']:.1f}%",
+                    'recommendation': 'Review API error logs, implement rate limiting, add monitoring',
+                    'impact': 'Third-party integrations'
+                })
+        
+        # Check media performance
+        media_stats = self.get_category_stats('media')
+        if media_stats and media_stats['count'] > 1000:
+            if media_stats['bytes_avg'] > 200 * 1024:  # >200KB avg
+                recommendations.append({
+                    'category': 'Media',
+                    'priority': 'Medium',
+                    'issue': f"Large images: avg {media_stats['bytes_avg']/1024:.0f}KB",
+                    'recommendation': 'Implement WebP, add CDN, enable lazy loading, optimize images',
+                    'impact': 'Page load speed & bandwidth costs'
+                })
+        
+        # Check login security
+        login_stats = self.get_category_stats('login')
+        if login_stats and login_stats['count'] > 0:
+            if login_stats['error_rate'] > 30:
+                recommendations.append({
+                    'category': 'Security',
+                    'priority': 'High',
+                    'issue': f"High login failure rate: {login_stats['error_rate']:.1f}%",
+                    'recommendation': 'Possible brute force attack - enable rate limiting & 2FA',
+                    'impact': 'Security risk'
+                })
+        
+        return recommendations
+    
+    def get_graphql_statistics(self) -> Dict[str, Any]:
+        """Get GraphQL query statistics (Magento specific)."""
+        if not self.graphql_queries:
+            return {}
+        
+        # Top operations
+        top_operations = self.graphql_operations.most_common(10)
+        
+        # Performance by operation
+        operation_perf = defaultdict(list)
+        for query in self.graphql_queries:
+            operation_perf[query['operation']].append(query['response_time'])
+        
+        operation_stats = {}
+        for op, times in operation_perf.items():
+            if times:
+                operation_stats[op] = {
+                    'count': len(times),
+                    'avg_response_time': statistics.mean(times),
+                    'max_response_time': max(times),
+                    'errors': len([q for q in self.graphql_queries 
+                                 if q['operation'] == op and q['status'] >= 400])
+                }
+        
+        return {
+            'total_queries': len(self.graphql_queries),
+            'total_errors': len(self.graphql_errors),
+            'error_rate': (len(self.graphql_errors) / len(self.graphql_queries) * 100) 
+                         if self.graphql_queries else 0,
+            'top_operations': top_operations,
+            'operation_stats': operation_stats,
+            'unique_operations': len(self.graphql_operations)
+        }
+    
+    def get_conversion_funnel(self) -> Dict[str, Any]:
+        """Get conversion funnel statistics."""
+        if not self.funnel_visits:
+            return {}
+        
+        # Calculate drop-off rates
+        steps = ['homepage', 'category', 'product', 'cart', 'checkout']
+        funnel_data = {}
+        
+        prev_count = None
+        for step in steps:
+            count = self.funnel_visits.get(step, 0)
+            drop_off = 0
+            
+            if prev_count and prev_count > 0:
+                drop_off = ((prev_count - count) / prev_count * 100)
+            
+            funnel_data[step] = {
+                'visits': count,
+                'drop_off_rate': drop_off if prev_count else 0
+            }
+            
+            prev_count = count if count > 0 else prev_count
+        
+        # Calculate conversion rate (homepage to checkout)
+        homepage_visits = self.funnel_visits.get('homepage', 0)
+        checkout_visits = self.funnel_visits.get('checkout', 0)
+        conversion_rate = (checkout_visits / homepage_visits * 100) if homepage_visits > 0 else 0
+        
+        # Analyze user paths
+        complete_paths = 0
+        abandoned_carts = 0
+        
+        for ip, sessions in self.user_sessions.items():
+            steps_visited = set(s['step'] for s in sessions)
+            if 'checkout' in steps_visited:
+                complete_paths += 1
+            if 'cart' in steps_visited and 'checkout' not in steps_visited:
+                abandoned_carts += 1
+        
+        return {
+            'funnel': funnel_data,
+            'conversion_rate': conversion_rate,
+            'complete_paths': complete_paths,
+            'abandoned_carts': abandoned_carts,
+            'cart_abandonment_rate': (abandoned_carts / (abandoned_carts + complete_paths) * 100) 
+                                     if (abandoned_carts + complete_paths) > 0 else 0
+        }
+    
+    def get_checkout_error_analysis(self) -> Dict[str, Any]:
+        """Get detailed checkout error analysis."""
+        if not self.checkout_error_details:
+            return {}
+        
+        # Most common error patterns
+        top_patterns = self.checkout_error_patterns.most_common(10)
+        
+        # Group errors by type
+        errors_by_type = defaultdict(int)
+        for detail in self.checkout_error_details:
+            errors_by_type[detail['error_type']] += 1
+        
+        # Identify critical issues
+        critical_issues = []
+        if self.checkout_error_patterns.get('payment_server_error', 0) > 5:
+            critical_issues.append({
+                'issue': 'Payment gateway errors',
+                'count': self.checkout_error_patterns['payment_server_error'],
+                'severity': 'CRITICAL'
+            })
+        
+        if self.checkout_error_patterns.get('cart_server_error', 0) > 10:
+            critical_issues.append({
+                'issue': 'Cart system errors',
+                'count': self.checkout_error_patterns['cart_server_error'],
+                'severity': 'HIGH'
+            })
+        
+        return {
+            'total_errors': len(self.checkout_error_details),
+            'error_patterns': dict(top_patterns),
+            'errors_by_type': dict(errors_by_type),
+            'critical_issues': critical_issues
+        }
+    
+    def get_time_based_analysis(self, category: str) -> Dict[str, Any]:
+        """Get time-based performance analysis for a category."""
+        if not self.hourly_category_stats:
+            return {}
+        
+        hourly_data = []
+        for hour, categories in sorted(self.hourly_category_stats.items()):
+            if category in categories:
+                stats = categories[category]
+                if stats['requests'] > 0:
+                    avg_rt = (statistics.mean(stats['response_times']) 
+                             if stats['response_times'] else 0)
+                    error_rate = (stats['errors'] / stats['requests'] * 100)
+                    
+                    hourly_data.append({
+                        'hour': hour.strftime('%Y-%m-%d %H:00'),
+                        'requests': stats['requests'],
+                        'avg_response_time': avg_rt,
+                        'error_rate': error_rate,
+                        'errors': stats['errors']
+                    })
+        
+        if not hourly_data:
+            return {}
+        
+        # Find peak hour
+        peak_hour = max(hourly_data, key=lambda x: x['requests'])
+        
+        # Find worst performance hour
+        worst_hour = max(hourly_data, key=lambda x: x['avg_response_time'])
+        
+        return {
+            'hourly_breakdown': hourly_data,
+            'peak_hour': peak_hour,
+            'worst_performance_hour': worst_hour,
+            'hours_analyzed': len(hourly_data)
+        }
+    
+    def get_enhanced_recommendations(self) -> List[Dict[str, Any]]:
+        """Get enhanced recommendations with specific action items."""
+        recommendations = self.get_recommendations()
+        
+        # Add GraphQL-specific recommendations
+        graphql_stats = self.get_graphql_statistics()
+        if graphql_stats and graphql_stats.get('total_queries', 0) > 100:
+            if graphql_stats['error_rate'] > 5:
+                recommendations.append({
+                    'category': 'GraphQL API',
+                    'priority': 'High',
+                    'issue': f"GraphQL error rate: {graphql_stats['error_rate']:.1f}%",
+                    'recommendation': 'Review failing GraphQL operations, add query complexity limits',
+                    'impact': 'API reliability',
+                    'action_items': [
+                        'Check top failing GraphQL operations',
+                        'Implement query depth limiting',
+                        'Add better error handling',
+                        'Monitor query complexity'
+                    ]
+                })
+        
+        # Add funnel-specific recommendations
+        funnel = self.get_conversion_funnel()
+        if funnel and funnel.get('cart_abandonment_rate', 0) > 50:
+            recommendations.append({
+                'category': 'Conversion Funnel',
+                'priority': 'Critical',
+                'issue': f"Cart abandonment rate: {funnel['cart_abandonment_rate']:.1f}%",
+                'recommendation': 'Optimize checkout flow, reduce friction, investigate cart errors',
+                'impact': 'Direct revenue loss',
+                'action_items': [
+                    'Simplify checkout steps',
+                    'Add guest checkout option',
+                    'Optimize payment flow',
+                    'Review shipping calculations',
+                    'Check for checkout errors'
+                ]
+            })
+        
+        # Add checkout error recommendations
+        checkout_errors = self.get_checkout_error_analysis()
+        if checkout_errors and checkout_errors.get('critical_issues'):
+            for issue in checkout_errors['critical_issues']:
+                recommendations.append({
+                    'category': 'Checkout Errors',
+                    'priority': issue['severity'],
+                    'issue': f"{issue['issue']}: {issue['count']} occurrences",
+                    'recommendation': 'Immediate investigation required - affecting customer purchases',
+                    'impact': 'Revenue loss & customer frustration',
+                    'action_items': [
+                        'Check application logs for error details',
+                        'Verify third-party service status',
+                        'Test checkout flow manually',
+                        'Enable detailed error logging'
+                    ]
+                })
+        
+        # Sort by priority
+        priority_order = {'CRITICAL': 0, 'Critical': 1, 'HIGH': 2, 'High': 3, 'Medium': 4, 'Low': 5}
+        recommendations.sort(key=lambda x: priority_order.get(x['priority'], 10))
+        
+        return recommendations
+    
+    def export_report(self) -> Dict[str, Any]:
+        """Export comprehensive e-commerce analysis report."""
+        platform_summary = self.get_platform_summary()
+        
+        report = {
+            'timestamp': datetime.now().isoformat(),
+            'platform': platform_summary,
+            'categories': {
+                'checkout': self.get_category_stats('checkout'),
+                'admin': self.get_category_stats('admin'),
+                'api': self.get_category_stats('api') or self.get_category_stats('api_rest'),
+                'login': self.get_category_stats('login'),
+                'product': self.get_category_stats('product'),
+                'media': self.get_category_stats('media'),
+                'search': self.get_category_stats('search'),
+            },
+            'slow_requests_by_category': {
+                category: len(requests)
+                for category, requests in self.slow_requests.items()
+            },
+            'failed_requests_by_category': {
+                category: len(requests)
+                for category, requests in self.failed_requests.items()
+            },
+            'graphql_statistics': self.get_graphql_statistics(),
+            'conversion_funnel': self.get_conversion_funnel(),
+            'checkout_errors': self.get_checkout_error_analysis(),
+            'recommendations': self.get_enhanced_recommendations()
+        }
+        
+        return report
+

@@ -44,11 +44,23 @@ A **comprehensive command-line log analysis platform** specifically designed for
 - **Technical Deep-dives**: Detailed analysis for technical teams
 
 ### 🆕 **Advanced Analytics**
+- **E-commerce Analysis**: Platform-specific insights for Magento, WooCommerce, Shopware 6
 - **API Analysis**: REST and GraphQL endpoint performance and security
 - **Content Analysis**: File types, resource optimization, SEO insights
 - **Geographic Analysis**: Country-based traffic distribution and insights
 - **Timeline Analysis**: Traffic patterns over time with trend detection
 - **Anomaly Detection**: ML-based detection of unusual traffic patterns
+
+### 🛒 **E-commerce Platform Support (Phase 2 Enhanced!)**
+- **Magento 2**: Checkout flow, GraphQL query parsing, customer sections, admin API
+- **WooCommerce**: AJAX cart, WP-Admin, WordPress REST API
+- **Shopware 6**: Store API, headless commerce, admin operations
+- **Auto-detection**: Automatically identifies your platform
+- **Performance Insights**: Checkout errors, admin slow operations, API bottlenecks
+- **Security Analysis**: Login brute force, admin security, API abuse
+- **Conversion Funnel**: Full funnel tracking with drop-off analysis
+- **GraphQL Analysis**: Operation-level performance tracking (Magento)
+- **Smart Recommendations**: Action items with specific implementation steps
 
 ## 🚀 Installation
 
@@ -107,6 +119,7 @@ chmod +x hlogcli
 - `analyze`: Comprehensive log analysis with traffic insights
 - `security`: Security threat detection and analysis
 - `perf`: Performance analysis and optimization insights
+- `ecommerce`: E-commerce platform analysis (Magento, WooCommerce, Shopware 6)
 - `bots`: Bot classification and behavior analysis
 - `api`: API endpoint analysis and performance
 - `content`: Content type and resource analysis
@@ -135,6 +148,9 @@ chmod +x hlogcli
 ### ⚡ Performance Analysis
 
 ```bash
+# Default performance overview (NEW: now shows output without flags!)
+./hlogcli perf
+
 # Complete performance analysis
 ./hlogcli perf --response-time-analysis --slowest 10
 
@@ -150,6 +166,57 @@ chmod +x hlogcli
 # Show performance percentiles
 ./hlogcli perf --percentiles --handler phpfpm
 ```
+
+### 🛒 E-commerce Platform Analysis
+
+**NEW: Specialized analysis for Magento 2, WooCommerce, and Shopware 6!**
+
+```bash
+# Auto-detect platform and show overview
+./hlogcli ecommerce
+
+# Force specific platform analysis
+./hlogcli ecommerce --platform magento
+./hlogcli ecommerce --platform woocommerce
+./hlogcli ecommerce --platform shopware6
+
+# Detailed analysis sections
+./hlogcli ecommerce --checkout-analysis      # Checkout flow performance
+./hlogcli ecommerce --admin-analysis         # Admin panel performance
+./hlogcli ecommerce --api-analysis           # REST/GraphQL API performance
+./hlogcli ecommerce --login-security         # Login security & brute force
+./hlogcli ecommerce --media-analysis         # Image/media optimization
+
+# Show all sections
+./hlogcli ecommerce --detailed
+
+# Export e-commerce report
+./hlogcli ecommerce -o ecommerce_report.json
+```
+
+**What it analyzes:**
+- 🛍️ **Checkout Performance**: Response times, errors, conversion blockers
+- 💼 **Admin Panel**: Backend performance, slow operations
+- 🔌 **API Calls**: REST API & GraphQL endpoint performance
+- 🔐 **Login Security**: Brute force detection, failed login patterns
+- 🖼️ **Media Delivery**: Image sizes, bandwidth usage, optimization opportunities
+- 📦 **Product Pages**: Category and product page performance
+- 🔍 **Search**: Search functionality performance
+- 🎯 **Conversion Funnel**: Track user journey from homepage to checkout
+- ⚠️ **Checkout Errors**: Detailed error pattern analysis
+
+**Advanced Features (Phase 2):**
+- 🔷 **GraphQL Query Analysis**: Operation tracking, performance per query type (Magento)
+- 🎯 **Conversion Funnel Tracking**: Homepage → Category → Product → Cart → Checkout
+- 📊 **Cart Abandonment Rate**: Track and analyze abandoned carts
+- 🚨 **Critical Issue Detection**: Automatic detection of payment/cart system errors
+- 📈 **Enhanced Recommendations**: Action items with specific steps to take
+- ⏰ **Time-based Analysis**: Performance trends per category by hour
+
+**Platform-specific features:**
+- **Magento 2**: GraphQL operation parsing, query performance, customer sections, Varnish cache
+- **WooCommerce**: WP-Admin performance, AJAX cart operations, WordPress REST API
+- **Shopware 6**: Store API analysis, headless commerce metrics, admin API
 
 ### 🤖 Bot Analysis
 
@@ -375,7 +442,8 @@ This tool is optimized for Hypernode's Nginx JSON logs with the following format
 ### **CLI Commands**
 - `./hlogcli analyze`     # Basic traffic analysis
 - `./hlogcli security`    # Security threat analysis
-- `./hlogcli perf`        # Performance analysis  
+- `./hlogcli perf`        # Performance analysis (now with default overview!)
+- `./hlogcli ecommerce`   # E-commerce platform analysis (NEW!)
 - `./hlogcli bots`        # Bot classification and analysis
 - `./hlogcli api`         # API endpoint analysis
 - `./hlogcli content`     # Content and resource analysis
@@ -389,6 +457,7 @@ logcli/
 ├── hypernode_command.py     # Hypernode command integration
 ├── security.py             # Security analysis engine
 ├── performance.py          # Performance analysis engine  
+├── ecommerce.py            # E-commerce platform analysis (NEW!)
 ├── bots.py                 # Bot classification engine
 ├── api_analysis.py         # API endpoint analysis
 ├── content_analysis.py     # Content type analysis
