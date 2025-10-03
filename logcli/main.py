@@ -1819,12 +1819,12 @@ def content(log_files, content_type_analysis, file_extension_analysis,
 @click.argument('log_files', nargs=-1, type=click.Path(exists=True))
 @click.option('--platform', type=click.Choice(['magento', 'woocommerce', 'shopware6', 'auto']), 
               default='auto', help='E-commerce platform (auto-detect by default)')
-@click.option('--checkout-analysis', is_flag=True, help='Analyze checkout flow performance')
-@click.option('--admin-analysis', is_flag=True, help='Analyze admin panel performance')
-@click.option('--api-analysis', is_flag=True, help='Analyze API performance')
-@click.option('--login-security', is_flag=True, help='Analyze login security')
-@click.option('--media-analysis', is_flag=True, help='Analyze media/image performance')
-@click.option('--detailed', is_flag=True, help='Show all detailed analysis sections')
+@click.option('--checkout-analysis', is_flag=True, help='Show ONLY checkout analysis')
+@click.option('--admin-analysis', is_flag=True, help='Show ONLY admin analysis')
+@click.option('--api-analysis', is_flag=True, help='Show ONLY API analysis')
+@click.option('--login-security', is_flag=True, help='Show ONLY login security')
+@click.option('--media-analysis', is_flag=True, help='Show ONLY media analysis')
+@click.option('--detailed', is_flag=True, help='[DEPRECATED] Same as default now')
 @click.option('--yesterday', is_flag=True, help='Analyze yesterday\'s logs instead of today\'s')
 @click.option('--output', '-o', help='Output file for e-commerce report')
 def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analysis,
@@ -1832,23 +1832,34 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
     """🛒 E-commerce platform performance analysis.
     
     Specialized analysis for Magento 2, WooCommerce, and Shopware 6.
-    Automatically detects your platform and provides targeted insights for:
+    Automatically detects your platform and shows COMPLETE analysis by default!
     
     \b
-    • Checkout flow performance and errors
-    • Admin panel response times
-    • REST API and GraphQL performance
-    • Login security and brute force detection
-    • Media/image delivery optimization
-    • Product page performance
+    📊 Default Analysis (no flags needed):
+    • Platform detection with confidence score
+    • Complete overview of all categories (checkout, admin, API, login, media)
+    • IP address tracking per category
+    • GraphQL operations (Magento)
+    • Conversion funnel with drop-off rates
+    • Checkout error patterns
+    • Smart recommendations with action items
+    • Full detailed breakdown of ALL sections
+    
+    \b
+    🎯 Individual Flags:
+    Use flags to show ONLY specific sections (hides others):
+    • --checkout-analysis: Only checkout details
+    • --admin-analysis: Only admin panel details
+    • --api-analysis: Only API/GraphQL details
+    • --login-security: Only login security details
+    • --media-analysis: Only media/image details
     
     \b
     💡 Examples:
-      hlogcli ecommerce                           # Auto-detect and show overview
-      hlogcli ecommerce --platform magento        # Force Magento analysis
-      hlogcli ecommerce --checkout-analysis       # Focus on checkout
-      hlogcli ecommerce --detailed                # Show all sections
-      hlogcli ecommerce -o ecom-report.json       # Export report
+      hlogcli ecommerce                           # Full analysis (ALL sections!)
+      hlogcli ecommerce --platform magento        # Force Magento + full analysis
+      hlogcli ecommerce --checkout-analysis       # ONLY checkout section
+      hlogcli ecommerce -o ecom-report.json       # Full analysis + export
     """
     from .ecommerce import EcommerceAnalyzer
     
@@ -2054,17 +2065,14 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
                 if 'action_items' in rec and rec['action_items']:
                     console.print(f"    [dim]Actions: {', '.join(rec['action_items'][:2])}[/dim]")
         
-        # Usage hints for even MORE detail
-        console.print(f"\n[dim]💡 Use flags for even MORE detailed analysis:[/dim]")
-        console.print(f"[dim]   --checkout-analysis   Full checkout breakdown with funnel & error patterns[/dim]")
-        console.print(f"[dim]   --admin-analysis      All admin operations with slowest paths[/dim]")
-        console.print(f"[dim]   --api-analysis        GraphQL query breakdown & operation stats[/dim]")
-        console.print(f"[dim]   --login-security      Complete security audit with all IPs[/dim]")
-        console.print(f"[dim]   --media-analysis      Image optimization with size analysis[/dim]")
-        console.print(f"[dim]   --detailed            ALL sections with maximum detail[/dim]")
     
-    # Detailed analysis sections
-    if checkout_analysis or detailed:
+    # Show ALL detailed analysis sections by default (no flags needed!)
+    # Flags can be used to show ONLY specific sections
+    show_all = not (checkout_analysis or admin_analysis or api_analysis or 
+                    login_security or media_analysis)
+    
+    # Detailed analysis sections (always shown unless user picks specific ones)
+    if checkout_analysis or show_all:
         console.print(f"\n[bold blue]🛍️  CHECKOUT ANALYSIS[/bold blue]")
         checkout_stats = analyzer.get_category_stats('checkout')
         
@@ -2117,7 +2125,7 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
         else:
             console.print("  No checkout requests found")
     
-    if admin_analysis or detailed:
+    if admin_analysis or show_all:
         console.print(f"\n[bold magenta]💼 ADMIN PANEL ANALYSIS[/bold magenta]")
         admin_stats = analyzer.get_category_stats('admin')
         
@@ -2138,7 +2146,7 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
         else:
             console.print("  No admin requests found")
     
-    if api_analysis or detailed:
+    if api_analysis or show_all:
         console.print(f"\n[bold green]🔌 API ANALYSIS[/bold green]")
         
         # REST API
@@ -2169,7 +2177,7 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
                     console.print(f"      {op}:")
                     console.print(f"        Requests: {stats['count']}, Avg: {stats['avg_response_time']:.3f}s, Errors: {stats['errors']}")
     
-    if login_security or detailed:
+    if login_security or show_all:
         console.print(f"\n[bold red]🔐 LOGIN SECURITY ANALYSIS[/bold red]")
         login_stats = analyzer.get_category_stats('login')
         
@@ -2186,7 +2194,7 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
         else:
             console.print("  No login activity found")
     
-    if media_analysis or detailed:
+    if media_analysis or show_all:
         console.print(f"\n[bold cyan]🖼️  MEDIA ANALYSIS[/bold cyan]")
         media_stats = analyzer.get_category_stats('media')
         

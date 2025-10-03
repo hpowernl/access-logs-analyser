@@ -172,27 +172,35 @@ chmod +x hlogcli
 **NEW: Specialized analysis for Magento 2, WooCommerce, and Shopware 6!**
 
 ```bash
-# Auto-detect platform and show comprehensive analysis (now shows everything!)
+# Auto-detect platform and show FULL analysis (default shows EVERYTHING!)
 ./hlogcli ecommerce
 
-# Force specific platform analysis
+# Force specific platform (still shows everything)
 ./hlogcli ecommerce --platform magento
 ./hlogcli ecommerce --platform woocommerce
 ./hlogcli ecommerce --platform shopware6
 
-# Detailed analysis sections
-./hlogcli ecommerce --checkout-analysis      # Checkout flow performance
-./hlogcli ecommerce --admin-analysis         # Admin panel performance
-./hlogcli ecommerce --api-analysis           # REST/GraphQL API performance
-./hlogcli ecommerce --login-security         # Login security & brute force
-./hlogcli ecommerce --media-analysis         # Image/media optimization
+# Show ONLY specific sections (use flags to filter)
+./hlogcli ecommerce --checkout-analysis      # ONLY checkout details
+./hlogcli ecommerce --admin-analysis         # ONLY admin panel
+./hlogcli ecommerce --api-analysis           # ONLY API/GraphQL
+./hlogcli ecommerce --login-security         # ONLY login security
+./hlogcli ecommerce --media-analysis         # ONLY media/images
 
-# Show all sections
-./hlogcli ecommerce --detailed
-
-# Export e-commerce report
+# Export full report to JSON
 ./hlogcli ecommerce -o ecommerce_report.json
 ```
+
+**Default behavior (no flags):**
+Shows complete analysis including:
+- Platform detection & overview
+- Checkout performance + error patterns + conversion funnel
+- Admin panel access + top admin IPs
+- API/GraphQL performance + operation breakdown
+- Login security + suspicious IPs
+- Media delivery + image sizes
+- Product pages & search
+- Enhanced recommendations with action items
 
 **What it analyzes:**
 - 🛍️ **Checkout Performance**: Response times, errors, conversion blockers
