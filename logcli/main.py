@@ -1876,7 +1876,14 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
     process_hypernode_logs_with_callback(analyze_entry, "e-commerce analysis", use_yesterday=yesterday)
     
     # Get platform summary
-    platform_summary = analyzer.get_platform_summary()
+    try:
+        platform_summary = analyzer.get_platform_summary()
+        console.print(f"[dim]DEBUG: Platform summary obtained[/dim]")
+    except Exception as e:
+        console.print(f"[red]Error getting platform summary: {e}[/red]")
+        import traceback
+        console.print(f"[red]{traceback.format_exc()}[/red]")
+        return
     
     # Check if any specific analysis flags were provided
     has_specific_flags = (checkout_analysis or admin_analysis or api_analysis or 
@@ -2008,8 +2015,10 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
             console.print(f"  Avg response time: {search_stats['response_time_avg']:.3f}s")
         
         # GraphQL Statistics (Magento specific)
-        graphql_stats = analyzer.get_graphql_statistics()
-        if graphql_stats and graphql_stats.get('total_queries', 0) > 0:
+        try:
+            graphql_stats = analyzer.get_graphql_statistics()
+            console.print(f"[dim]DEBUG: GraphQL stats obtained: {bool(graphql_stats)}[/dim]")
+            if graphql_stats and graphql_stats.get('total_queries', 0) > 0:
             console.print(f"\n[bold]🔷 GraphQL API (Magento)[/bold]")
             console.print(f"  Total queries: [cyan]{graphql_stats['total_queries']:,}[/cyan]")
             console.print(f"  Unique operations: {graphql_stats['unique_operations']}")
@@ -2023,8 +2032,10 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
                     console.print(f"    • {operation}: {count:,}")
         
         # Conversion Funnel
-        funnel = analyzer.get_conversion_funnel()
-        if funnel and funnel.get('funnel'):
+        try:
+            funnel = analyzer.get_conversion_funnel()
+            console.print(f"[dim]DEBUG: Funnel obtained: {bool(funnel)}[/dim]")
+            if funnel and funnel.get('funnel'):
             console.print(f"\n[bold]🎯 Conversion Funnel[/bold]")
             for step, data in funnel['funnel'].items():
                 if data['visits'] > 0:
@@ -2055,8 +2066,10 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
                     console.print(f"    • {pattern}: {count}")
         
         # Recommendations
-        recommendations = analyzer.get_enhanced_recommendations()
-        if recommendations:
+        try:
+            recommendations = analyzer.get_enhanced_recommendations()
+            console.print(f"[dim]DEBUG: Recommendations obtained: {len(recommendations) if recommendations else 0}[/dim]")
+            if recommendations:
             console.print(f"\n[bold]💡 Recommendations[/bold]")
             for rec in recommendations[:5]:  # Top 5
                 priority_color = "red" if rec['priority'] in ['Critical', 'CRITICAL'] else "yellow" if rec['priority'] in ['High', 'HIGH'] else "blue"
@@ -2065,11 +2078,22 @@ def ecommerce(log_files, platform, checkout_analysis, admin_analysis, api_analys
                 if 'action_items' in rec and rec['action_items']:
                     console.print(f"    [dim]Actions: {', '.join(rec['action_items'][:2])}[/dim]")
         
+        # Usage hints for flags that filter to show ONLY specific sections
+        console.print(f"\n[dim]━━━━━ DETAILED BREAKDOWN ━━━━━[/dim]")
+        console.print(f"[dim]💡 Use flags to show ONLY specific sections (filters output):[/dim]")
+        console.print(f"[dim]   --checkout-analysis   ONLY checkout details (hides all else)[/dim]")
+        console.print(f"[dim]   --admin-analysis      ONLY admin panel details[/dim]")
+        console.print(f"[dim]   --api-analysis        ONLY API/GraphQL details[/dim]")
+        console.print(f"[dim]   --login-security      ONLY login security details[/dim]")
+        console.print(f"[dim]   --media-analysis      ONLY media/image details[/dim]")
     
     # Show ALL detailed analysis sections by default (no flags needed!)
     # Flags can be used to show ONLY specific sections
     show_all = not (checkout_analysis or admin_analysis or api_analysis or 
                     login_security or media_analysis)
+    
+    # Debug: Show what flags are set
+    console.print(f"\n[dim]🔧 DEBUG: Flags - checkout:{checkout_analysis}, admin:{admin_analysis}, api:{api_analysis}, login:{login_security}, media:{media_analysis}, show_all:{show_all}[/dim]")
     
     # Detailed analysis sections (always shown unless user picks specific ones)
     if checkout_analysis or show_all:

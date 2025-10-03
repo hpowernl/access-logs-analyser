@@ -356,8 +356,80 @@ class EcommerceAnalyzer:
             'path': path,
             'status': status,
             'method': method,
-            'error_type': error_type
+            'error_type': error_type,
+            'timestamp': self.current_timestamp,
+            'ip': self.current_ip
         })
+        
+        # Track errors by IP for deeper analysis
+        if self.current_ip:
+            self.checkout_errors_by_ip[self.current_ip]['errors'] += 1
+            self.checkout_errors_by_ip[self.current_ip]['error_types'].append(error_type)
+    
+    def get_deep_checkout_analysis(self) -> Dict[str, Any]:
+        """Get comprehensive checkout error analysis."""
+        if not self.checkout_error_details:
+            return None
+            
+        analysis = {
+            'total_errors': len(self.checkout_error_details),
+            'error_patterns': dict(self.checkout_error_patterns),
+            'error_details': [],
+            'ip_analysis': {},
+            'timeline_analysis': {},
+            'critical_issues': []
+        }
+        
+        # Analyze by IP - find suspicious patterns
+        for ip, data in self.checkout_errors_by_ip.items():
+            if data['errors'] >= 5:  # Threshold for suspicious activity
+                error_type_counter = Counter(data['error_types'])
+                analysis['ip_analysis'][ip] = {
+                    'total_errors': data['errors'],
+                    'most_common_error': error_type_counter.most_common(1)[0] if error_type_counter else None,
+                    'error_types': dict(error_type_counter)
+                }
+                
+                # Flag potential bot attacks or misconfigurations
+                if error_type_counter.most_common(1)[0][0] == 'http_429' and data['errors'] > 10:
+                    analysis['critical_issues'].append({
+                        'type': 'RATE_LIMIT_EXCESS',
+                        'ip': ip,
+                        'errors': data['errors'],
+                        'description': 'Excessive rate limiting on checkout - potential bot or misconfigured integration'
+                    })
+        
+        # Timeline analysis - find patterns over time
+        hourly_errors = defaultdict(int)
+        for error in self.checkout_error_details:
+            if error.get('timestamp'):
+                hour_key = error['timestamp'].replace(minute=0, second=0, microsecond=0)
+                hourly_errors[hour_key] += 1
+        
+        analysis['timeline_analysis'] = dict(hourly_errors)
+        
+        # Critical error analysis
+        server_errors = [e for e in self.checkout_error_details if e['status'] >= 500]
+        if server_errors:
+            analysis['critical_issues'].append({
+                'type': 'SERVER_ERRORS',
+                'count': len(server_errors),
+                'description': f'Server errors (5xx) detected - investigate server stability'
+            })
+        
+        # Rate limit analysis
+        rate_limit_errors = [e for e in self.checkout_error_details if e['status'] == 429]
+        if rate_limit_errors:
+            analysis['critical_issues'].append({
+                'type': 'RATE_LIMITING',
+                'count': len(rate_limit_errors),
+                'description': 'HTTP 429 errors indicate aggressive rate limiting - check rate limit configuration'
+            })
+        
+        # Detailed error examples for troubleshooting
+        analysis['error_details'] = self.checkout_error_details[-50:]  # Last 50 errors
+        
+        return analysis
     
     def analyze_entry(self, log_entry: Dict[str, Any]):
         """Analyze a single log entry for e-commerce patterns."""
