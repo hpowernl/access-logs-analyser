@@ -78,15 +78,15 @@ func (h *HypernodeCommand) Execute(ctx context.Context, args []string, daysAgo i
 		buf := make([]byte, 0, 64*1024)
 		scanner.Buffer(buf, 1024*1024)
 
-		for scanner.Scan() {
-			select {
-			case <-ctx.Done():
-				cmd.Process.Kill()
-				return
-			default:
-				lineChan <- scanner.Text()
-			}
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			_ = cmd.Process.Kill()
+			return
+		default:
+			lineChan <- scanner.Text()
 		}
+	}
 
 		if err := scanner.Err(); err != nil {
 			errorChan <- fmt.Errorf("error reading command output: %w", err)
@@ -181,17 +181,17 @@ func (h *HypernodeCommand) parseTSVLine(line string) (*models.LogEntry, error) {
 
 	// Parse status
 	if len(parts) > 4 {
-		fmt.Sscanf(parts[4], "%d", &entry.Status)
+		_, _ = fmt.Sscanf(parts[4], "%d", &entry.Status)
 	}
 
 	// Parse bytes
 	if len(parts) > 5 {
-		fmt.Sscanf(parts[5], "%d", &entry.BytesSent)
+		_, _ = fmt.Sscanf(parts[5], "%d", &entry.BytesSent)
 	}
 
 	// Parse response time
 	if len(parts) > 6 {
-		fmt.Sscanf(parts[6], "%f", &entry.ResponseTime)
+		_, _ = fmt.Sscanf(parts[6], "%f", &entry.ResponseTime)
 	}
 
 	// Parse user agent

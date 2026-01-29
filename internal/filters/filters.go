@@ -226,7 +226,7 @@ func NoBots() *LogFilter {
 // APIOnly creates a filter for API endpoints
 func APIOnly() *LogFilter {
 	filter := NewLogFilter()
-	filter.AddPathPattern(`(?i)/(api|graphql|rest|wp-json)`)
+	_ = filter.AddPathPattern(`(?i)/(api|graphql|rest|wp-json)`)
 	return filter
 }
 

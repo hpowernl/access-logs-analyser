@@ -109,7 +109,7 @@ func (b *BotAnalyzer) isAIBot(userAgent string) bool {
 
 // calculateLegitimacyScore calculates a legitimacy score for a bot (0-100)
 func (b *BotAnalyzer) calculateLegitimacyScore(userAgent, category string) float64 {
-	score := 50.0 // Base score
+	var score float64
 
 	// Known legitimate bots get higher scores
 	switch category {

@@ -73,7 +73,7 @@ func (p *LogParser) NormalizeLog(raw map[string]interface{}) *models.LogEntry {
 
 	// Parse status code
 	if status, ok := raw["status"].(string); ok {
-		fmt.Sscanf(status, "%d", &entry.Status)
+		_, _ = fmt.Sscanf(status, "%d", &entry.Status)
 	} else if statusFloat, ok := raw["status"].(float64); ok {
 		entry.Status = int(statusFloat)
 	}
@@ -85,14 +85,14 @@ func (p *LogParser) NormalizeLog(raw map[string]interface{}) *models.LogEntry {
 
 	// Parse response time
 	if reqTime, ok := raw["request_time"].(string); ok {
-		fmt.Sscanf(reqTime, "%f", &entry.ResponseTime)
+		_, _ = fmt.Sscanf(reqTime, "%f", &entry.ResponseTime)
 	} else if reqTimeFloat, ok := raw["request_time"].(float64); ok {
 		entry.ResponseTime = reqTimeFloat
 	}
 
 	// Parse bytes sent
 	if bytes, ok := raw["body_bytes_sent"].(string); ok {
-		fmt.Sscanf(bytes, "%d", &entry.BytesSent)
+		_, _ = fmt.Sscanf(bytes, "%d", &entry.BytesSent)
 	} else if bytesFloat, ok := raw["body_bytes_sent"].(float64); ok {
 		entry.BytesSent = int64(bytesFloat)
 	}
