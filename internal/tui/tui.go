@@ -117,11 +117,6 @@ var (
 			BorderForeground(lipgloss.Color("8")).
 			Padding(1, 2)
 
-	activePanelStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("6")).
-				Padding(1, 2)
-
 	headerStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("6")).
 			Foreground(lipgloss.Color("0")).
@@ -141,9 +136,6 @@ var (
 
 	keyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("6"))
-
-	valueStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("15"))
 
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8")).

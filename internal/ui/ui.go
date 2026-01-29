@@ -81,42 +81,6 @@ func (u *ConsoleUI) renderPanelBottom(width int) string {
 	return boxBottomLeft + strings.Repeat(boxHorizontal, width-2) + boxBottomRight
 }
 
-// renderPanelLine renders a line within a panel
-func (u *ConsoleUI) renderPanelLine(content string, width int) string {
-	contentLen := len(stripANSI(content))
-	padding := width - contentLen - 4
-	if padding < 0 {
-		padding = 0
-	}
-	return boxVertical + " " + content + strings.Repeat(" ", padding) + " " + boxVertical
-}
-
-// stripANSI removes ANSI color codes for length calculation
-func stripANSI(s string) string {
-	// Simple ANSI stripper for length calculation
-	// This is a basic implementation that removes common ANSI sequences
-	inEscape := false
-	result := []rune{}
-	runes := []rune(s)
-
-	for i := 0; i < len(runes); i++ {
-		if runes[i] == '\x1b' && i+1 < len(runes) && runes[i+1] == '[' {
-			inEscape = true
-			i++ // skip '['
-			continue
-		}
-		if inEscape {
-			if (runes[i] >= 'A' && runes[i] <= 'Z') || (runes[i] >= 'a' && runes[i] <= 'z') {
-				inEscape = false
-			}
-			continue
-		}
-		result = append(result, runes[i])
-	}
-
-	return string(result)
-}
-
 // DisplayComprehensiveSummary displays a comprehensive analysis summary
 func (u *ConsoleUI) DisplayComprehensiveSummary(data *ComprehensiveData) {
 	stats := data.Statistics
