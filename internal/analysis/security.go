@@ -53,16 +53,27 @@ type SecurityAnalyzer struct {
 	ipLoginAttempts map[string]map[string]bool // IP -> set of usernames
 }
 
+// coreAttackPatterns are the only patterns checked by checkAttackPatterns.
+// Extended patterns are handled only by their dedicated check functions to avoid double-counting.
+var coreAttackPatterns = map[string]bool{
+	"sql_injection":       true,
+	"xss":                 true,
+	"directory_traversal": true,
+	"command_injection":   true,
+	"file_inclusion":      true,
+}
+
 type ipThreatData struct {
-	ip           string
-	country      string
-	threats      []string
-	requestCount int64
-	errorCount   int64
-	attackTypes  map[string]int
-	firstSeen    time.Time
-	lastSeen     time.Time
-	threatScore  float64
+	ip              string
+	country         string
+	threats         []string
+	requestCount    int64
+	apiRequestCount int64 // API requests only (e.g. /api/, /rest/, /graphql)
+	errorCount      int64
+	attackTypes     map[string]int
+	firstSeen       time.Time
+	lastSeen        time.Time
+	threatScore     float64
 }
 
 // NewSecurityAnalyzer creates a new security analyzer
@@ -114,7 +125,13 @@ func (s *SecurityAnalyzer) AnalyzeEntry(entry *models.LogEntry) {
 		ipData.errorCount++
 	}
 
-	// Check for attack patterns
+	// Track API request count for API abuse detection
+	pathLower := strings.ToLower(entry.Path)
+	if strings.Contains(pathLower, "/api/") || strings.Contains(pathLower, "/rest/") || strings.Contains(pathLower, "/graphql") {
+		ipData.apiRequestCount++
+	}
+
+	// Check for attack patterns (core patterns only; extended patterns are handled by dedicated checks)
 	threats := s.checkAttackPatterns(ipStr, entry.Path, entry.UserAgent)
 	if len(threats) > 0 {
 		s.totalThreats++
@@ -265,12 +282,16 @@ func (s *SecurityAnalyzer) AnalyzeEntry(entry *models.LogEntry) {
 	ipData.threatScore = s.calculateThreatScore(ipData)
 }
 
-// checkAttackPatterns checks for various attack patterns
+// checkAttackPatterns checks only core attack patterns (sql_injection, xss, directory_traversal, command_injection, file_inclusion).
+// Extended patterns are handled by dedicated check functions to avoid double-counting.
 func (s *SecurityAnalyzer) checkAttackPatterns(ip, path, userAgent string) []string {
 	threats := make([]string, 0)
 	combined := path + " " + userAgent
 
 	for attackType, pattern := range s.attackPatterns {
+		if !coreAttackPatterns[attackType] {
+			continue // Skip extended patterns; they are handled by dedicated functions
+		}
 		if pattern.MatchString(combined) {
 			threats = append(threats, attackType)
 
@@ -284,6 +305,9 @@ func (s *SecurityAnalyzer) checkAttackPatterns(ip, path, userAgent string) []str
 				s.dirTraversalCount++
 			case "command_injection":
 				s.cmdInjectionCount++
+			case "file_inclusion":
+				// file_inclusion is in core set but has no dedicated counter in switch; no global counter, only ipData
+				// (no s.fileInclusionCount in the switch - checking existing code)
 			}
 		}
 	}
@@ -987,14 +1011,14 @@ func (s *SecurityAnalyzer) checkAPIAbuse(ipData *ipThreatData, entry *models.Log
 		return true
 	}
 
-	// Check for API enumeration (many requests to different API endpoints)
-	if strings.Contains(path, "/api/") || strings.Contains(path, "/rest/") {
-		// High request rate to API endpoints
-		if ipData.requestCount > 100 {
+	// Check for API enumeration (many API requests from this IP, not total requests)
+	if strings.Contains(path, "/api/") || strings.Contains(path, "/rest/") || strings.Contains(path, "/graphql") {
+		// High API request count and rate
+		if ipData.apiRequestCount > 100 {
 			duration := ipData.lastSeen.Sub(ipData.firstSeen).Seconds()
 			if duration > 0 {
-				requestsPerSecond := float64(ipData.requestCount) / duration
-				if requestsPerSecond > 5 {
+				apiRequestsPerSecond := float64(ipData.apiRequestCount) / duration
+				if apiRequestsPerSecond > 5 {
 					return true
 				}
 			}
