@@ -206,6 +206,19 @@ var AttackPatterns = map[string]string{
 	"directory_traversal": `\.\./|\.\.\%2[fF]|\.\.\\`,
 	"command_injection":   `(?i)(;|\||&&|\$\(|` + "`" + `)`,
 	"file_inclusion":      `(?i)(file://|php://|expect://|data:)`,
+
+	// Extended attack patterns
+	"sensitive_files":         `(?i)(\.(git|svn|hg)/|\.env|wp-config\.php|configuration\.php|config\.yml|\.htaccess|\.htpasswd|id_rsa|authorized_keys|backup\.sql|dump\.sql|\.bak|\.old|\.backup|composer\.json|package\.json|requirements\.txt|phpinfo\.php|info\.php)`,
+	"web_shell":               `(?i)(c99|r57|wso|b374k|p0wny|eval\(|base64_decode\(|system\(|passthru\(|shell_exec\(|exec\()`,
+	"log4shell":               `(?i)\$\{jndi:(ldap|rmi|dns|ldaps|iiop|corba|nds|nis):`,
+	"ssrf":                    `(?i)(127\.0\.0\.1|localhost|0\.0\.0\.0|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.169\.254|file://|dict://|gopher://)`,
+	"open_redirect":           `(?i)[\?&](url|redirect|next|return|continue|dest|destination|redir|redirect_uri)=https?://`,
+	"xxe":                     `(?i)(<!ENTITY|<!DOCTYPE|SYSTEM\s+["']|PUBLIC\s+["'])`,
+	"crlf_injection":          `(%0d%0a|%0D%0A|\\r\\n|%00)`,
+	"template_injection":      `(\{\{|\{%|<%|\$\{|#set\(|\[#assign)`,
+	"nosql_injection":         `(?i)(\[\$ne\]|\[\$gt\]|\[\$regex\]|\[\$where\]|\$where:)`,
+	"prototype_pollution":     `(?i)(__proto__|constructor\.prototype|prototype\.)`,
+	"path_traversal_extended": `(%2e%2e/|%252e%252e/|\.\.%c0%af|\.\.%c1%9c|\\u002e\\u002e/|\.\.\\|%5c\.\.%5c)`,
 }
 
 // Security threat severity levels
@@ -233,4 +246,17 @@ var AdminPaths = []string{
 // HTTP methods
 var HTTPMethods = []string{
 	"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE", "CONNECT",
+}
+
+// Malicious user agents - known attack tools and scanners
+var MaliciousUserAgents = []string{
+	"sqlmap", "nikto", "nmap", "masscan", "dirbuster", "gobuster",
+	"nuclei", "metasploit", "havij", "acunetix", "nessus", "openvas",
+	"w3af", "skipfish", "arachni", "zap", "burp", "paros",
+	"hydra", "medusa", "netsparker", "appscan", "webinspect",
+}
+
+// Suspicious HTTP methods that may indicate attack attempts
+var SuspiciousHTTPMethods = []string{
+	"TRACE", "TRACK", "DEBUG", "CONNECT",
 }
