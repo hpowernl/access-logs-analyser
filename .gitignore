@@ -395,5 +395,52 @@ test_*.py
 *.md.tmp
 *.md.bak
 
+# Go specific
+# ===========
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+!bin/.gitkeep
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace file
+go.work
+
+# Go build cache
+.go/
+
+# Dependency directories (remove the comment below to include it)
+vendor/
+
+# Go modules download cache
+go.sum.bak
+
+# Air live reload
+tmp/
+.air.toml
+
+# Delve debugger
+__debug_bin
+
+# Built binaries
+hlogcli
+hlogcli-*
+cache-warmer-*
+
+# Checksums
+checksums.txt
+
 .*/
 !.*/
