@@ -4,13 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/hpowernl/hlogcli/internal/aggregators"
 	"github.com/hpowernl/hlogcli/internal/analysis"
 	"github.com/hpowernl/hlogcli/internal/dns"
-	"github.com/hpowernl/hlogcli/internal/export"
 	"github.com/hpowernl/hlogcli/internal/hypernode"
 	"github.com/hpowernl/hlogcli/internal/logreader"
+	"github.com/hpowernl/hlogcli/internal/tui"
 	"github.com/hpowernl/hlogcli/internal/ui"
 	"github.com/hpowernl/hlogcli/pkg/models"
 	"github.com/spf13/cobra"
@@ -150,103 +152,116 @@ func init() {
 // Command implementations
 func runAnalyze(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	entriesChan, err := getLogEntries(ctx)
-	if err != nil {
-		return err
-	}
 
-	// Collect entries into a slice for processing by multiple analyzers
-	var entries []*models.LogEntry
-	for entry := range entriesChan {
-		entries = append(entries, entry)
-	}
+	// Start TUI
+	m := tui.NewModel()
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	// Initialize analyzers
-	agg := aggregators.NewStatisticsAggregator()
-	secAnalyzer := analysis.NewSecurityAnalyzer()
-	botAnalyzer := analysis.NewBotAnalyzer()
-
-	// Process entries through all analyzers
-	for _, entry := range entries {
-		agg.AddEntry(entry)
-		secAnalyzer.AnalyzeEntry(entry)
-		botAnalyzer.AnalyzeEntry(entry)
-	}
-
-	// Get aggregated statistics
-	stats := agg.GetSummary()
-	secSummary := secAnalyzer.GetSecuritySummary()
-	botSummary := botAnalyzer.GetBotSummary()
-
-	// Get browser and OS statistics
-	browserStats := agg.GetTopBrowsers(10)
-	osStats := agg.GetTopOS(10)
-
-	// Convert aggregator browser/OS stats to UI types
-	uiBrowserStats := make([]ui.BrowserStat, len(browserStats))
-	for i, bs := range browserStats {
-		uiBrowserStats[i] = ui.BrowserStat{Browser: bs.Browser, Count: bs.Count}
-	}
-	uiOSStats := make([]ui.OSStat, len(osStats))
-	for i, os := range osStats {
-		uiOSStats[i] = ui.OSStat{OS: os.OS, Count: os.Count}
-	}
-
-	// Get path handlers for top paths
-	pathHandlers := make(map[string]string)
-	for _, path := range stats.TopPaths {
-		handler := agg.GetPathHandler(path.Path)
-		if handler != "" {
-			pathHandlers[path.Path] = handler
+	// Load data in background
+	go func() {
+		entriesChan, err := getLogEntries(ctx)
+		if err != nil {
+			p.Send(tui.ErrorMsg{Err: err})
+			return
 		}
-	}
 
-	// Perform reverse DNS lookups for top IPs
-	reverseDNS := make(map[string]string)
-	if len(stats.TopIPs) > 0 {
-		dnsLookup := dns.NewDNSLookup()
-		topIPs := stats.TopIPs
-		if len(topIPs) > 15 {
-			topIPs = topIPs[:15]
+		// Add loader if using hypernode command
+		if logFile == "" {
+			entriesChan = withLoader(ctx, entriesChan)
 		}
-		ipList := make([]string, len(topIPs))
-		for i, ip := range topIPs {
-			ipList[i] = ip.IP
+
+		// Collect entries into a slice for processing by multiple analyzers
+		var entries []*models.LogEntry
+		for entry := range entriesChan {
+			entries = append(entries, entry)
 		}
-		reverseDNS = dnsLookup.BulkReverseLookup(ipList)
-	}
 
-	// Get max response time
-	rtStats := agg.GetResponseTimeStats()
-	maxResponseTime := rtStats.Max
+		// Initialize analyzers
+		agg := aggregators.NewStatisticsAggregator()
+		secAnalyzer := analysis.NewSecurityAnalyzer()
+		botAnalyzer := analysis.NewBotAnalyzer()
+		perfAnalyzer := analysis.NewPerformanceAnalyzer(1.0)
 
-	// Create comprehensive data
-	compData := &ui.ComprehensiveData{
-		Statistics:      stats,
-		SecuritySummary: secSummary,
-		BotSummary:      botSummary,
-		BrowserStats:    uiBrowserStats,
-		OSStats:         uiOSStats,
-		PathHandlers:    pathHandlers,
-		ReverseDNS:      reverseDNS,
-		MaxResponseTime: maxResponseTime,
-	}
-
-	// Display results
-	consoleUI := ui.NewConsoleUI(!noColor)
-	consoleUI.DisplayComprehensiveSummary(compData)
-
-	// Export if requested
-	if exportFormat != "" && exportFile != "" {
-		exporter := export.NewDataExporter()
-		switch exportFormat {
-		case "csv":
-			return exporter.ExportToCSV(stats, exportFile)
-		case "json":
-			return exporter.ExportToJSON(stats, exportFile)
-		case "text":
-			return export.CreateReportSummary(stats, exportFile)
+		// Process entries through all analyzers
+		for _, entry := range entries {
+			agg.AddEntry(entry)
+			secAnalyzer.AnalyzeEntry(entry)
+			botAnalyzer.AnalyzeEntry(entry)
+			perfAnalyzer.AnalyzeEntry(entry)
 		}
+
+		// Get aggregated statistics
+		stats := agg.GetSummary()
+		secSummary := secAnalyzer.GetSecuritySummary()
+		botSummary := botAnalyzer.GetBotSummary()
+		perfReport := perfAnalyzer.GetPerformanceReport()
+
+		// Get browser and OS statistics
+		browserStats := agg.GetTopBrowsers(10)
+		osStats := agg.GetTopOS(10)
+
+		// Convert aggregator browser/OS stats to UI types
+		uiBrowserStats := make([]ui.BrowserStat, len(browserStats))
+		for i, bs := range browserStats {
+			uiBrowserStats[i] = ui.BrowserStat{Browser: bs.Browser, Count: bs.Count}
+		}
+		uiOSStats := make([]ui.OSStat, len(osStats))
+		for i, os := range osStats {
+			uiOSStats[i] = ui.OSStat{OS: os.OS, Count: os.Count}
+		}
+
+		// Get path handlers for top paths
+		pathHandlers := make(map[string]string)
+		for _, path := range stats.TopPaths {
+			handler := agg.GetPathHandler(path.Path)
+			if handler != "" {
+				pathHandlers[path.Path] = handler
+			}
+		}
+
+		// Perform reverse DNS lookups for top IPs
+		reverseDNS := make(map[string]string)
+		if len(stats.TopIPs) > 0 {
+			dnsLookup := dns.NewDNSLookup()
+			topIPs := stats.TopIPs
+			if len(topIPs) > 15 {
+				topIPs = topIPs[:15]
+			}
+			ipList := make([]string, len(topIPs))
+			for i, ip := range topIPs {
+				ipList[i] = ip.IP
+			}
+			reverseDNS = dnsLookup.BulkReverseLookup(ipList)
+		}
+
+		// Get max response time
+		rtStats := agg.GetResponseTimeStats()
+		maxResponseTime := rtStats.Max
+
+		// Create comprehensive data
+		compData := &ui.ComprehensiveData{
+			Statistics:      stats,
+			SecuritySummary: secSummary,
+			BotSummary:      botSummary,
+			BrowserStats:    uiBrowserStats,
+			OSStats:         uiOSStats,
+			PathHandlers:    pathHandlers,
+			ReverseDNS:      reverseDNS,
+			MaxResponseTime: maxResponseTime,
+		}
+
+		// Send data to TUI
+		p.Send(tui.DataLoadedMsg{
+			Data:         compData,
+			SecurityData: secSummary,
+			PerfData:     perfReport,
+			BotData:      botSummary,
+		})
+	}()
+
+	// Run TUI
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("error running TUI: %w", err)
 	}
 
 	return nil
@@ -254,52 +269,130 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 
 func runSecurity(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	entriesChan, err := getLogEntries(ctx)
-	if err != nil {
-		return err
-	}
 
-	// Collect entries into a slice for processing by multiple analyzers
-	var entries []*models.LogEntry
-	for entry := range entriesChan {
-		entries = append(entries, entry)
-	}
+	// Start TUI with security view
+	m := tui.NewModel()
+	m.SetCurrentView(tui.ViewSecurity)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	// Initialize analyzers
-	agg := aggregators.NewStatisticsAggregator()
-	secAnalyzer := analysis.NewSecurityAnalyzer()
-
-	// Process entries through both analyzers
-	for _, entry := range entries {
-		agg.AddEntry(entry)
-		secAnalyzer.AnalyzeEntry(entry)
-	}
-
-	// Get aggregated statistics
-	stats := agg.GetSummary()
-	report := secAnalyzer.GetSecuritySummary()
-
-	// Enhance report with aggregator stats
-	report.TotalRequests = stats.TotalRequests
-	report.UniqueIPs = stats.UniqueIPs
-
-	// Calculate total errors from status codes
-	totalErrors := int64(0)
-	for status, count := range stats.StatusCounts {
-		if status >= 400 {
-			totalErrors += count
+	// Load data in background
+	go func() {
+		entriesChan, err := getLogEntries(ctx)
+		if err != nil {
+			p.Send(tui.ErrorMsg{Err: err})
+			return
 		}
-	}
-	report.TotalErrors = totalErrors
 
-	// Display results
-	consoleUI := ui.NewConsoleUI(!noColor)
-	consoleUI.DisplaySecurityReport(report)
+		// Add loader if using hypernode command
+		if logFile == "" {
+			entriesChan = withLoader(ctx, entriesChan)
+		}
 
-	// Export if requested
-	if exportFormat == "json" && exportFile != "" {
-		exporter := export.NewDataExporter()
-		return exporter.ExportSecurityReport(report, exportFile)
+		// Collect entries into a slice for processing by multiple analyzers
+		var entries []*models.LogEntry
+		for entry := range entriesChan {
+			entries = append(entries, entry)
+		}
+
+		// Initialize analyzers
+		agg := aggregators.NewStatisticsAggregator()
+		secAnalyzer := analysis.NewSecurityAnalyzer()
+		botAnalyzer := analysis.NewBotAnalyzer()
+		perfAnalyzer := analysis.NewPerformanceAnalyzer(1.0)
+
+		// Process entries through all analyzers
+		for _, entry := range entries {
+			agg.AddEntry(entry)
+			secAnalyzer.AnalyzeEntry(entry)
+			botAnalyzer.AnalyzeEntry(entry)
+			perfAnalyzer.AnalyzeEntry(entry)
+		}
+
+		// Get aggregated statistics
+		stats := agg.GetSummary()
+		secSummary := secAnalyzer.GetSecuritySummary()
+		botSummary := botAnalyzer.GetBotSummary()
+		perfReport := perfAnalyzer.GetPerformanceReport()
+
+		// Enhance security report with aggregator stats
+		secSummary.TotalRequests = stats.TotalRequests
+		secSummary.UniqueIPs = stats.UniqueIPs
+
+		// Calculate total errors from status codes
+		totalErrors := int64(0)
+		for status, count := range stats.StatusCounts {
+			if status >= 400 {
+				totalErrors += count
+			}
+		}
+		secSummary.TotalErrors = totalErrors
+
+		// Get browser and OS statistics
+		browserStats := agg.GetTopBrowsers(10)
+		osStats := agg.GetTopOS(10)
+
+		// Convert aggregator browser/OS stats to UI types
+		uiBrowserStats := make([]ui.BrowserStat, len(browserStats))
+		for i, bs := range browserStats {
+			uiBrowserStats[i] = ui.BrowserStat{Browser: bs.Browser, Count: bs.Count}
+		}
+		uiOSStats := make([]ui.OSStat, len(osStats))
+		for i, os := range osStats {
+			uiOSStats[i] = ui.OSStat{OS: os.OS, Count: os.Count}
+		}
+
+		// Get path handlers for top paths
+		pathHandlers := make(map[string]string)
+		for _, path := range stats.TopPaths {
+			handler := agg.GetPathHandler(path.Path)
+			if handler != "" {
+				pathHandlers[path.Path] = handler
+			}
+		}
+
+		// Perform reverse DNS lookups for top IPs
+		reverseDNS := make(map[string]string)
+		if len(stats.TopIPs) > 0 {
+			dnsLookup := dns.NewDNSLookup()
+			topIPs := stats.TopIPs
+			if len(topIPs) > 15 {
+				topIPs = topIPs[:15]
+			}
+			ipList := make([]string, len(topIPs))
+			for i, ip := range topIPs {
+				ipList[i] = ip.IP
+			}
+			reverseDNS = dnsLookup.BulkReverseLookup(ipList)
+		}
+
+		// Get max response time
+		rtStats := agg.GetResponseTimeStats()
+		maxResponseTime := rtStats.Max
+
+		// Create comprehensive data
+		compData := &ui.ComprehensiveData{
+			Statistics:      stats,
+			SecuritySummary: secSummary,
+			BotSummary:      botSummary,
+			BrowserStats:    uiBrowserStats,
+			OSStats:         uiOSStats,
+			PathHandlers:    pathHandlers,
+			ReverseDNS:      reverseDNS,
+			MaxResponseTime: maxResponseTime,
+		}
+
+		// Send data to TUI
+		p.Send(tui.DataLoadedMsg{
+			Data:         compData,
+			SecurityData: secSummary,
+			PerfData:     perfReport,
+			BotData:      botSummary,
+		})
+	}()
+
+	// Run TUI
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("error running TUI: %w", err)
 	}
 
 	return nil
@@ -310,6 +403,11 @@ func runNginx(cmd *cobra.Command, args []string) error {
 	entriesChan, err := getLogEntries(ctx)
 	if err != nil {
 		return err
+	}
+
+	// Add loader if using hypernode command
+	if logFile == "" {
+		entriesChan = withLoader(ctx, entriesChan)
 	}
 
 	// Collect entries into a slice
@@ -393,27 +491,93 @@ func runNginx(cmd *cobra.Command, args []string) error {
 
 func runPerformance(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	entries, err := getLogEntries(ctx)
-	if err != nil {
-		return err
-	}
 
-	// Performance analysis
-	perfAnalyzer := analysis.NewPerformanceAnalyzer(1.0)
-	for entry := range entries {
-		perfAnalyzer.AnalyzeEntry(entry)
-	}
+	// Start TUI with performance view
+	m := tui.NewModel()
+	m.SetCurrentView(tui.ViewPerformance)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	report := perfAnalyzer.GetPerformanceReport()
+	// Load data in background
+	go func() {
+		entriesChan, err := getLogEntries(ctx)
+		if err != nil {
+			p.Send(tui.ErrorMsg{Err: err})
+			return
+		}
 
-	// Display results
-	consoleUI := ui.NewConsoleUI(!noColor)
-	consoleUI.DisplayPerformanceReport(report)
+		// Add loader if using hypernode command
+		if logFile == "" {
+			entriesChan = withLoader(ctx, entriesChan)
+		}
 
-	// Export if requested
-	if exportFormat == "json" && exportFile != "" {
-		exporter := export.NewDataExporter()
-		return exporter.ExportPerformanceReport(report, exportFile)
+		// Collect entries
+		var entries []*models.LogEntry
+		for entry := range entriesChan {
+			entries = append(entries, entry)
+		}
+
+		// Initialize analyzers
+		agg := aggregators.NewStatisticsAggregator()
+		secAnalyzer := analysis.NewSecurityAnalyzer()
+		botAnalyzer := analysis.NewBotAnalyzer()
+		perfAnalyzer := analysis.NewPerformanceAnalyzer(1.0)
+
+		// Process entries
+		for _, entry := range entries {
+			agg.AddEntry(entry)
+			secAnalyzer.AnalyzeEntry(entry)
+			botAnalyzer.AnalyzeEntry(entry)
+			perfAnalyzer.AnalyzeEntry(entry)
+		}
+
+		// Get all data
+		stats := agg.GetSummary()
+		secSummary := secAnalyzer.GetSecuritySummary()
+		botSummary := botAnalyzer.GetBotSummary()
+		perfReport := perfAnalyzer.GetPerformanceReport()
+
+		// Build comprehensive data
+		browserStats := agg.GetTopBrowsers(10)
+		osStats := agg.GetTopOS(10)
+		uiBrowserStats := make([]ui.BrowserStat, len(browserStats))
+		for i, bs := range browserStats {
+			uiBrowserStats[i] = ui.BrowserStat{Browser: bs.Browser, Count: bs.Count}
+		}
+		uiOSStats := make([]ui.OSStat, len(osStats))
+		for i, os := range osStats {
+			uiOSStats[i] = ui.OSStat{OS: os.OS, Count: os.Count}
+		}
+		pathHandlers := make(map[string]string)
+		for _, path := range stats.TopPaths {
+			handler := agg.GetPathHandler(path.Path)
+			if handler != "" {
+				pathHandlers[path.Path] = handler
+			}
+		}
+		reverseDNS := make(map[string]string)
+		rtStats := agg.GetResponseTimeStats()
+
+		compData := &ui.ComprehensiveData{
+			Statistics:      stats,
+			SecuritySummary: secSummary,
+			BotSummary:      botSummary,
+			BrowserStats:    uiBrowserStats,
+			OSStats:         uiOSStats,
+			PathHandlers:    pathHandlers,
+			ReverseDNS:      reverseDNS,
+			MaxResponseTime: rtStats.Max,
+		}
+
+		p.Send(tui.DataLoadedMsg{
+			Data:         compData,
+			SecurityData: secSummary,
+			PerfData:     perfReport,
+			BotData:      botSummary,
+		})
+	}()
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("error running TUI: %w", err)
 	}
 
 	return nil
@@ -424,6 +588,11 @@ func runEcommerce(cmd *cobra.Command, args []string) error {
 	entries, err := getLogEntries(ctx)
 	if err != nil {
 		return err
+	}
+
+	// Add loader if using hypernode command
+	if logFile == "" {
+		entries = withLoader(ctx, entries)
 	}
 
 	// E-commerce analysis
@@ -449,27 +618,87 @@ func runEcommerce(cmd *cobra.Command, args []string) error {
 
 func runBots(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	entries, err := getLogEntries(ctx)
-	if err != nil {
-		return err
-	}
 
-	// Bot analysis
-	botAnalyzer := analysis.NewBotAnalyzer()
-	for entry := range entries {
-		botAnalyzer.AnalyzeEntry(entry)
-	}
+	// Start TUI with bots view
+	m := tui.NewModel()
+	m.SetCurrentView(tui.ViewBots)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	report := botAnalyzer.GetBotSummary()
+	// Load data in background
+	go func() {
+		entriesChan, err := getLogEntries(ctx)
+		if err != nil {
+			p.Send(tui.ErrorMsg{Err: err})
+			return
+		}
 
-	// Display results
-	consoleUI := ui.NewConsoleUI(!noColor)
-	consoleUI.DisplayBotReport(report)
+		// Add loader if using hypernode command
+		if logFile == "" {
+			entriesChan = withLoader(ctx, entriesChan)
+		}
 
-	// Export if requested
-	if exportFormat == "json" && exportFile != "" {
-		exporter := export.NewDataExporter()
-		return exporter.ExportBotReport(report, exportFile)
+		// Collect entries
+		var entries []*models.LogEntry
+		for entry := range entriesChan {
+			entries = append(entries, entry)
+		}
+
+		// Initialize analyzers
+		agg := aggregators.NewStatisticsAggregator()
+		secAnalyzer := analysis.NewSecurityAnalyzer()
+		botAnalyzer := analysis.NewBotAnalyzer()
+		perfAnalyzer := analysis.NewPerformanceAnalyzer(1.0)
+
+		// Process entries
+		for _, entry := range entries {
+			agg.AddEntry(entry)
+			secAnalyzer.AnalyzeEntry(entry)
+			botAnalyzer.AnalyzeEntry(entry)
+			perfAnalyzer.AnalyzeEntry(entry)
+		}
+
+		// Get all data
+		stats := agg.GetSummary()
+		secSummary := secAnalyzer.GetSecuritySummary()
+		botSummary := botAnalyzer.GetBotSummary()
+		perfReport := perfAnalyzer.GetPerformanceReport()
+
+		// Build comprehensive data
+		browserStats := agg.GetTopBrowsers(10)
+		osStats := agg.GetTopOS(10)
+		uiBrowserStats := make([]ui.BrowserStat, len(browserStats))
+		for i, bs := range browserStats {
+			uiBrowserStats[i] = ui.BrowserStat{Browser: bs.Browser, Count: bs.Count}
+		}
+		uiOSStats := make([]ui.OSStat, len(osStats))
+		for i, os := range osStats {
+			uiOSStats[i] = ui.OSStat{OS: os.OS, Count: os.Count}
+		}
+		pathHandlers := make(map[string]string)
+		reverseDNS := make(map[string]string)
+		rtStats := agg.GetResponseTimeStats()
+
+		compData := &ui.ComprehensiveData{
+			Statistics:      stats,
+			SecuritySummary: secSummary,
+			BotSummary:      botSummary,
+			BrowserStats:    uiBrowserStats,
+			OSStats:         uiOSStats,
+			PathHandlers:    pathHandlers,
+			ReverseDNS:      reverseDNS,
+			MaxResponseTime: rtStats.Max,
+		}
+
+		p.Send(tui.DataLoadedMsg{
+			Data:         compData,
+			SecurityData: secSummary,
+			PerfData:     perfReport,
+			BotData:      botSummary,
+		})
+	}()
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("error running TUI: %w", err)
 	}
 
 	return nil
@@ -480,6 +709,11 @@ func runAPI(cmd *cobra.Command, args []string) error {
 	entries, err := getLogEntries(ctx)
 	if err != nil {
 		return err
+	}
+
+	// Add loader if using hypernode command
+	if logFile == "" {
+		entries = withLoader(ctx, entries)
 	}
 
 	// API analysis
@@ -504,6 +738,11 @@ func runContent(cmd *cobra.Command, args []string) error {
 	entries, err := getLogEntries(ctx)
 	if err != nil {
 		return err
+	}
+
+	// Add loader if using hypernode command
+	if logFile == "" {
+		entries = withLoader(ctx, entries)
 	}
 
 	// Content analysis
@@ -554,6 +793,11 @@ func runAnomalies(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Add loader if using hypernode command
+	if logFile == "" {
+		entries = withLoader(ctx, entries)
+	}
+
 	currentData := make([]*models.LogEntry, 0)
 	for entry := range entries {
 		currentData = append(currentData, entry)
@@ -574,6 +818,60 @@ func runAnomalies(cmd *cobra.Command, args []string) error {
 
 func runSearch(cmd *cobra.Command, args []string) error {
 	return fmt.Errorf("search command not yet implemented")
+}
+
+// withLoader wraps an entry channel and displays a spinner until the first entry arrives
+func withLoader(ctx context.Context, entries <-chan *models.LogEntry) <-chan *models.LogEntry {
+	out := make(chan *models.LogEntry, 100)
+
+	go func() {
+		defer close(out)
+
+		spinnerChars := []string{"|", "/", "-", "\\"}
+		spinnerIdx := 0
+		spinnerTicker := time.NewTicker(100 * time.Millisecond)
+		defer spinnerTicker.Stop()
+
+		spinnerActive := true
+		spinnerDone := make(chan struct{})
+
+		// Spinner goroutine
+		go func() {
+			for {
+				select {
+				case <-spinnerDone:
+					// Clear the spinner line
+					fmt.Fprintf(os.Stderr, "\r%s\r", "                                                  ")
+					return
+				case <-spinnerTicker.C:
+					if spinnerActive {
+						fmt.Fprintf(os.Stderr, "\r%s Loading logs from hypernode-parse-nginx-log...", spinnerChars[spinnerIdx])
+						spinnerIdx = (spinnerIdx + 1) % len(spinnerChars)
+					}
+				}
+			}
+		}()
+
+		// Forward entries
+		first := true
+		for entry := range entries {
+			if first {
+				// Stop spinner on first entry
+				spinnerActive = false
+				close(spinnerDone)
+				first = false
+			}
+			out <- entry
+		}
+
+		// If we never received any entries, still stop the spinner
+		if first {
+			spinnerActive = false
+			close(spinnerDone)
+		}
+	}()
+
+	return out
 }
 
 // Helper function to get log entries

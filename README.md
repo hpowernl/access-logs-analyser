@@ -1,41 +1,26 @@
 # Hypernode Log Analyzer
 
-Krachtige command-line tool voor het analyseren van Hypernode access logs. Geschreven in Go voor optimale performance.
+Command-line tool for analyzing Hypernode access logs. Written in Go for optimal performance. Intended for the Hypernode platform (Linux x86_64).
 
 ## Features
 
-- **Snel**: 100x sneller dan de Python versie
-- **Single Binary**: Geen dependencies nodig
-- **Cross-Platform**: Linux, macOS, en Windows
-- **Complete Analyse**: Security, performance, bots, e-commerce, API's en meer
+- Fast: significantly faster than the Python version
+- Single binary: no runtime dependencies
+- Full analysis: security, performance, bots, e-commerce, APIs and more
 
-## Installatie
+## Installation
 
-### Optie 1: Pre-built Binary (Aanbevolen)
+### Pre-built binary (recommended)
 
-Download de nieuwste release voor jouw platform:
+Linux x86_64 (AMD64): `hlogcli`
 
-**Linux:**
 ```bash
-wget https://github.com/hpowernl/access-logs-analyser/releases/latest/download/hlogcli-linux-amd64
-chmod +x hlogcli-linux-amd64
-sudo mv hlogcli-linux-amd64 /usr/local/bin/hlogcli
+wget https://github.com/hpowernl/access-logs-analyser/releases/latest/download/hlogcli
+chmod +x hlogcli
+./hlogcli --help
 ```
 
-**macOS:**
-```bash
-# Intel Mac
-wget https://github.com/hpowernl/access-logs-analyser/releases/latest/download/hlogcli-darwin-amd64
-chmod +x hlogcli-darwin-amd64
-sudo mv hlogcli-darwin-amd64 /usr/local/bin/hlogcli
-
-# Apple Silicon (M1/M2/M3)
-wget https://github.com/hpowernl/access-logs-analyser/releases/latest/download/hlogcli-darwin-arm64
-chmod +x hlogcli-darwin-arm64
-sudo mv hlogcli-darwin-arm64 /usr/local/bin/hlogcli
-```
-
-### Optie 2: Vanaf Source Builden
+### Build from source
 
 ```bash
 git clone https://github.com/hpowernl/access-logs-analyser.git
@@ -93,65 +78,55 @@ hlogcli analyze --export json --output report.json
 hlogcli analyze --export csv --output report.csv
 ```
 
-## Beschikbare Commands
+## Available commands
 
-| Command | Beschrijving |
-|---------|--------------|
-| `analyze` | Algemene log analyse met verkeer statistieken |
+| Command | Description |
+|---------|-------------|
+| `analyze` | General log analysis with traffic statistics |
 | `security` | Security threats: SQL injection, XSS, brute force |
-| `nginx` | Genereer Nginx deny rules voor verdachte IP's |
-| `perf` | Performance analyse en optimalisatie tips |
-| `ecommerce` | E-commerce analyse (Magento, WooCommerce, Shopware) |
-| `bots` | Bot classificatie en AI/LLM bot detectie |
-| `api` | API endpoint analyse en GraphQL tracking |
-| `content` | Content analyse met SEO issue detectie |
-| `anomalies` | Anomalie detectie met statistiek |
+| `nginx` | Generate Nginx deny rules for suspicious IPs |
+| `perf` | Performance analysis and optimization tips |
+| `ecommerce` | E-commerce analysis (Magento, WooCommerce, Shopware) |
+| `bots` | Bot classification and AI/LLM bot detection |
+| `api` | API endpoint analysis and GraphQL tracking |
+| `content` | Content analysis with SEO issue detection |
+| `anomalies` | Anomaly detection with statistics |
 
-## Belangrijke Flags
+## Important flags
 
-| Flag | Beschrijving |
-|------|--------------|
-| `--days-ago <n>` | Analyseer logs van N dagen geleden |
-| `--yesterday` | Analyseer gisteren's logs |
-| `--file <path>` | Analyseer specifiek log bestand |
-| `--export <format>` | Export naar csv, json of text |
-| `--output <path>` | Output bestand voor export |
-| `--no-color` | Schakel kleuren uit |
+| Flag | Description |
+|------|-------------|
+| `--days-ago <n>` | Analyze logs from N days ago |
+| `--yesterday` | Analyze yesterday's logs |
+| `--file <path>` | Analyze specific log file |
+| `--export <format>` | Export to csv, json or text |
+| `--output <path>` | Output file for export |
+| `--no-color` | Disable colors |
 
-## Release Maken
+## Creating a release
 
-Nieuwe release maken met geautomatiseerde builds voor alle platforms:
+New release with automated build (Linux AMD64):
 
 ```bash
-# Maak een nieuwe tag
 git tag -a v1.0.0 -m "Release v1.0.0"
-
-# Push de tag naar GitHub
 git push origin v1.0.0
 ```
 
-Dit triggert automatisch:
-- ✅ Builds voor Linux (AMD64, ARM64)
-- ✅ Builds voor macOS (Intel, Apple Silicon)
-- ✅ Builds voor Windows (AMD64)
-- ✅ GitHub Release met downloadbare binaries
-- ✅ Checksums voor verificatie
-
-De binaries zijn binnen 5 minuten beschikbaar op: `https://github.com/hpowernl/access-logs-analyser/releases`
+This triggers a build for Linux x86_64 (AMD64) and a GitHub Release with the binary and checksums. Available within a few minutes at: https://github.com/hpowernl/access-logs-analyser/releases
 
 ## Development
 
 ```bash
-# Testen
+# Run tests
 make test
 
-# Code formatteren
+# Format code
 make fmt
 
-# Linter draaien
+# Run linter
 make lint
 
-# Build voor alle platforms
+# Build Linux AMD64 binary
 make build-all
 ```
 
@@ -184,7 +159,7 @@ hlogcli/
 └── pkg/models/            # Shared data structures
 ```
 
-## Performance Comparison
+## Performance comparison
 
 | Metric | Python | Go | Improvement |
 |--------|--------|-----|-------------|
@@ -208,5 +183,3 @@ MIT License
 
 ## Credits
 
-Go implementation by the Hypernode team.
-Original Python version: https://github.com/hpowernl/access-logs-analyser

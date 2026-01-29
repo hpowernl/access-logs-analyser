@@ -50,14 +50,82 @@ func NewConsoleUI(enableColors bool) *ConsoleUI {
 	}
 }
 
+// Box drawing characters
+const (
+	boxTopLeft     = "┌"
+	boxTopRight    = "┐"
+	boxBottomLeft  = "└"
+	boxBottomRight = "┘"
+	boxHorizontal  = "─"
+	boxVertical    = "│"
+	boxTeeRight    = "├"
+	boxTeeLeft     = "┤"
+)
+
+// renderPanelTop renders the top border of a panel with title
+func (u *ConsoleUI) renderPanelTop(title string, width int) string {
+	titleLen := len(title)
+	if titleLen+4 > width {
+		width = titleLen + 4
+	}
+	remaining := width - titleLen - 4
+	leftPad := remaining / 2
+	rightPad := remaining - leftPad
+
+	line := boxTopLeft + strings.Repeat(boxHorizontal, 1) + " " + title + " " + strings.Repeat(boxHorizontal, rightPad+1) + boxTopRight
+	return line
+}
+
+// renderPanelBottom renders the bottom border of a panel
+func (u *ConsoleUI) renderPanelBottom(width int) string {
+	return boxBottomLeft + strings.Repeat(boxHorizontal, width-2) + boxBottomRight
+}
+
+// renderPanelLine renders a line within a panel
+func (u *ConsoleUI) renderPanelLine(content string, width int) string {
+	contentLen := len(stripANSI(content))
+	padding := width - contentLen - 4
+	if padding < 0 {
+		padding = 0
+	}
+	return boxVertical + " " + content + strings.Repeat(" ", padding) + " " + boxVertical
+}
+
+// stripANSI removes ANSI color codes for length calculation
+func stripANSI(s string) string {
+	// Simple ANSI stripper for length calculation
+	// This is a basic implementation that removes common ANSI sequences
+	inEscape := false
+	result := []rune{}
+	runes := []rune(s)
+
+	for i := 0; i < len(runes); i++ {
+		if runes[i] == '\x1b' && i+1 < len(runes) && runes[i+1] == '[' {
+			inEscape = true
+			i++ // skip '['
+			continue
+		}
+		if inEscape {
+			if (runes[i] >= 'A' && runes[i] <= 'Z') || (runes[i] >= 'a' && runes[i] <= 'z') {
+				inEscape = false
+			}
+			continue
+		}
+		result = append(result, runes[i])
+	}
+
+	return string(result)
+}
+
 // DisplayComprehensiveSummary displays a comprehensive analysis summary
 func (u *ConsoleUI) DisplayComprehensiveSummary(data *ComprehensiveData) {
 	stats := data.Statistics
 
-	// Header
-	fmt.Fprintf(u.writer, "\n%s\n", strings.Repeat("═", 63))
-	fmt.Fprintf(u.writer, "📊 ANALYSIS SUMMARY\n")
-	fmt.Fprintf(u.writer, "%s\n\n", strings.Repeat("═", 63))
+	// Header - modern box drawing style
+	width := 80
+	fmt.Fprintf(u.writer, "\n%s\n", u.renderPanelTop("NGINX LOG ANALYSIS", width))
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(width))
+	fmt.Fprintf(u.writer, "\n")
 
 	// Time Range
 	if stats.TimeRange != nil {
@@ -67,6 +135,7 @@ func (u *ConsoleUI) DisplayComprehensiveSummary(data *ComprehensiveData) {
 		u.printKeyValueIndent("From", stats.TimeRange.Start.Format("2006-01-02 15:04:05"))
 		u.printKeyValueIndent("To", stats.TimeRange.End.Format("2006-01-02 15:04:05"))
 		u.printKeyValueIndent("Duration", fmt.Sprintf("%.1f hours", hours))
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Traffic Statistics
@@ -89,12 +158,14 @@ func (u *ConsoleUI) DisplayComprehensiveSummary(data *ComprehensiveData) {
 		botPct := float64(stats.BotTraffic) / float64(stats.TotalRequests) * 100
 		u.printKeyValueIndent("Bot Traffic", fmt.Sprintf("%.1f%%", botPct))
 	}
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 
 	// Performance Metrics
 	u.printSectionTitle("Performance Metrics")
 	u.printKeyValueIndent("Average", fmt.Sprintf("%.3fs", stats.AvgResponseTime))
 	u.printKeyValueIndent("Maximum", fmt.Sprintf("%.3fs", data.MaxResponseTime))
 	u.printKeyValueIndent("95th Percentile", fmt.Sprintf("%.3fs", stats.P95ResponseTime))
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 
 	// Bandwidth Usage
 	u.printSectionTitle("Bandwidth Usage")
@@ -103,35 +174,41 @@ func (u *ConsoleUI) DisplayComprehensiveSummary(data *ComprehensiveData) {
 		avgBytes := float64(stats.TotalBytes) / float64(stats.TotalRequests)
 		u.printKeyValueIndent("Avg/Request", fmt.Sprintf("%s bytes", formatNumber(int64(avgBytes))))
 	}
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 
 	// Top Countries
 	if len(stats.TopCountries) > 0 {
 		u.printTableTitle("Top Countries")
 		u.printCountriesPercentageTable(stats.TopCountries[:min(10, len(stats.TopCountries))], stats.TotalRequests)
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Status Codes
 	if len(stats.StatusCounts) > 0 {
 		u.printTableTitle("Status Codes")
 		u.printStatusCodesTable(stats.StatusCounts, stats.TotalRequests)
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Top User Agents
 	if len(stats.TopUserAgents) > 0 {
 		u.printTableTitle("Top User Agents")
 		u.printUserAgentsTable(stats.TopUserAgents[:min(15, len(stats.TopUserAgents))])
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Top IP Addresses
 	if len(stats.TopIPs) > 0 {
 		u.printTableTitle("Top IP Addresses")
 		u.printIPsWithDNSTable(stats.TopIPs[:min(15, len(stats.TopIPs))], data.ReverseDNS, stats.TotalRequests)
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Top Requested Paths
 	if len(stats.TopPaths) > 0 {
 		u.printTableTitle("Top Requested Paths")
 		u.printPathsWithHandlerTable(stats.TopPaths[:min(15, len(stats.TopPaths))], data.PathHandlers, stats.TotalRequests)
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Top IP Addresses by Country (for top 10 countries)
@@ -144,18 +221,21 @@ func (u *ConsoleUI) DisplayComprehensiveSummary(data *ComprehensiveData) {
 	if data.BotSummary != nil && len(data.BotSummary.BotsByCategory) > 0 {
 		u.printTableTitle("Bot Analysis")
 		u.printBotAnalysisTable(data.BotSummary)
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Top Browsers
 	if len(data.BrowserStats) > 0 {
 		u.printTableTitle("Top Browsers")
 		u.printBrowsersTable(data.BrowserStats[:min(10, len(data.BrowserStats))], stats.TotalRequests)
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Top Operating Systems
 	if len(data.OSStats) > 0 {
 		u.printTableTitle("Top Operating Systems")
 		u.printOSTable(data.OSStats[:min(10, len(data.OSStats))], stats.TotalRequests)
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Security Analysis
@@ -166,7 +246,7 @@ func (u *ConsoleUI) DisplayComprehensiveSummary(data *ComprehensiveData) {
 
 // DisplaySummary displays a statistics summary (kept for backwards compatibility)
 func (u *ConsoleUI) DisplaySummary(stats *models.Statistics) {
-	u.printHeader("📊 LOG ANALYSIS SUMMARY")
+	u.printHeader("LOG ANALYSIS SUMMARY")
 
 	// Overall Statistics
 	u.printSection("Overall Statistics")
@@ -181,6 +261,7 @@ func (u *ConsoleUI) DisplaySummary(stats *models.Statistics) {
 		u.printKeyValue("Bot Traffic", fmt.Sprintf("%d (%.1f%%)", stats.BotTraffic, botPct))
 		u.printKeyValue("Human Traffic", fmt.Sprintf("%d (%.1f%%)", stats.HumanTraffic, humanPct))
 	}
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 
 	// Performance Metrics
 	u.printSection("Performance Metrics")
@@ -189,58 +270,59 @@ func (u *ConsoleUI) DisplaySummary(stats *models.Statistics) {
 	u.printKeyValue("P95 Response Time", fmt.Sprintf("%.3fs", stats.P95ResponseTime))
 	u.printKeyValue("P99 Response Time", fmt.Sprintf("%.3fs", stats.P99ResponseTime))
 	u.printKeyValue("Error Rate", fmt.Sprintf("%.2f%%", stats.ErrorRate*100))
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 
 	// Top Paths
 	if len(stats.TopPaths) > 0 {
 		u.printSection("Top Paths")
 		u.printPathsTable(stats.TopPaths[:min(10, len(stats.TopPaths))])
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Top Countries
 	if len(stats.TopCountries) > 0 {
 		u.printSection("Top Countries")
 		u.printCountriesTable(stats.TopCountries[:min(10, len(stats.TopCountries))])
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 }
 
 // DisplaySecurityReport displays a security analysis report
 func (u *ConsoleUI) DisplaySecurityReport(report *models.SecuritySummary) {
-	// Header (no emoji)
-	fmt.Fprintf(u.writer, "\nSECURITY ANALYSIS SUMMARY\n")
-	fmt.Fprintf(u.writer, "=========================\n\n")
+	// Header
+	u.printHeader("SECURITY ANALYSIS")
 
 	// Section 1: Overall Statistics
-	fmt.Fprintf(u.writer, "Overall Statistics\n")
-	fmt.Fprintf(u.writer, "------------------\n")
+	u.printSection("Overall Statistics")
 	if report.TotalRequests > 0 {
 		errorPct := float64(report.TotalErrors) / float64(report.TotalRequests) * 100
-		fmt.Fprintf(u.writer, "  Total Requests:        %s\n", formatNumber(report.TotalRequests))
-		fmt.Fprintf(u.writer, "  Total Errors:          %s (%.1f%%)\n", formatNumber(report.TotalErrors), errorPct)
+		u.printKeyValue("Total Requests", formatNumber(report.TotalRequests))
+		u.printKeyValue("Total Errors", fmt.Sprintf("%s (%.1f%%)", formatNumber(report.TotalErrors), errorPct))
 	} else {
-		fmt.Fprintf(u.writer, "  Total Requests:        N/A\n")
-		fmt.Fprintf(u.writer, "  Total Errors:          N/A\n")
+		u.printKeyValue("Total Requests", "N/A")
+		u.printKeyValue("Total Errors", "N/A")
 	}
-	fmt.Fprintf(u.writer, "  Unique IPs:            %s\n", formatNumber(int64(report.UniqueIPs)))
-	fmt.Fprintf(u.writer, "  Attack Attempts:       %s\n", formatNumber(report.AttackAttempts))
-	fmt.Fprintf(u.writer, "  Unique Attack Types:   %d\n", report.UniqueAttackTypes)
+	u.printKeyValue("Unique IPs", formatNumber(int64(report.UniqueIPs)))
+	u.printKeyValue("Attack Attempts", formatNumber(report.AttackAttempts))
+	u.printKeyValue("Unique Attack Types", fmt.Sprintf("%d", report.UniqueAttackTypes))
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 
 	// Section 2: Threat Analysis
-	fmt.Fprintf(u.writer, "\nThreat Analysis\n")
-	fmt.Fprintf(u.writer, "---------------\n")
+	u.printSection("Threat Analysis")
 	if report.UniqueIPs > 0 {
 		suspiciousPct := float64(report.SuspiciousIPsCount) / float64(report.UniqueIPs) * 100
-		fmt.Fprintf(u.writer, "  Suspicious IPs:        %d (%.1f%% of total)\n", report.SuspiciousIPsCount, suspiciousPct)
+		u.printKeyValue("Suspicious IPs", fmt.Sprintf("%d (%.1f%% of total)", report.SuspiciousIPsCount, suspiciousPct))
 	} else {
-		fmt.Fprintf(u.writer, "  Suspicious IPs:        %d\n", report.SuspiciousIPsCount)
+		u.printKeyValue("Suspicious IPs", fmt.Sprintf("%d", report.SuspiciousIPsCount))
 	}
-	fmt.Fprintf(u.writer, "  Potential DDoS IPs:    %d\n", report.PotentialDDoSIPs)
-	fmt.Fprintf(u.writer, "  Scanning IPs:          %d\n", report.ScanningIPsCount)
-	fmt.Fprintf(u.writer, "  Admin Access Attempts: %d\n", report.AdminAccessIPs)
+	u.printKeyValue("Potential DDoS IPs", fmt.Sprintf("%d", report.PotentialDDoSIPs))
+	u.printKeyValue("Scanning IPs", fmt.Sprintf("%d", report.ScanningIPsCount))
+	u.printKeyValue("Admin Access Attempts", fmt.Sprintf("%d", report.AdminAccessIPs))
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 
 	// Section 3: Attack Categories
 	if len(report.AttackCategoriesIPCount) > 0 {
-		fmt.Fprintf(u.writer, "\nAttack Categories\n")
-		fmt.Fprintf(u.writer, "-----------------\n")
+		u.printSection("Attack Categories")
 
 		table := tablewriter.NewWriter(u.writer)
 		table.SetHeader([]string{"Category", "Unique IPs", "Attempts"})
@@ -284,19 +366,20 @@ func (u *ConsoleUI) DisplaySecurityReport(report *models.SecuritySummary) {
 		}
 
 		table.Render()
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Section 4: Top Attack Types
 	if len(report.TopAttackTypes) > 0 {
-		fmt.Fprintf(u.writer, "\nTop Attack Types\n")
-		fmt.Fprintf(u.writer, "----------------\n")
+		u.printSection("Top Attack Types")
 
 		for i, attackType := range report.TopAttackTypes {
 			if i >= 10 {
 				break
 			}
-			fmt.Fprintf(u.writer, "%d. %s: %s attempts\n", i+1, attackType.AttackType, formatNumber(attackType.Attempts))
+			fmt.Fprintf(u.writer, "  %s %d. %s: %s attempts\n", boxVertical, i+1, attackType.AttackType, formatNumber(attackType.Attempts))
 		}
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Section 5: Top Threat IPs (threat score >= 10.0)
@@ -310,8 +393,7 @@ func (u *ConsoleUI) DisplaySecurityReport(report *models.SecuritySummary) {
 		}
 
 		if len(threatIPs) > 0 {
-			fmt.Fprintf(u.writer, "\nTop Threat IPs (threat score >= 10.0)\n")
-			fmt.Fprintf(u.writer, "--------------------------------------\n")
+			u.printSection("Top Threat IPs (threat score >= 10.0)")
 
 			table := tablewriter.NewWriter(u.writer)
 			table.SetHeader([]string{"IP Address", "Score", "Requests", "Error Rate", "Failed Logins", "Attacks"})
@@ -349,6 +431,7 @@ func (u *ConsoleUI) DisplaySecurityReport(report *models.SecuritySummary) {
 			}
 
 			table.Render()
+			fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 		}
 	}
 
@@ -360,8 +443,7 @@ func (u *ConsoleUI) DisplaySecurityReport(report *models.SecuritySummary) {
 		report.NoSQLInjectionCount > 0 || report.PrototypePollutionCount > 0 || report.HTTPMethodAnomalyCount > 0
 
 	if hasExtendedThreats {
-		fmt.Fprintf(u.writer, "\nExtended Attack Categories\n")
-		fmt.Fprintf(u.writer, "--------------------------\n")
+		u.printSection("Extended Attack Categories")
 
 		table := tablewriter.NewWriter(u.writer)
 		table.SetHeader([]string{"Category", "Attempts", "Severity"})
@@ -418,12 +500,12 @@ func (u *ConsoleUI) DisplaySecurityReport(report *models.SecuritySummary) {
 		}
 
 		table.Render()
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Section 7: Detailed Breakdowns
 	if len(report.SensitiveFilesAccessed) > 0 {
-		fmt.Fprintf(u.writer, "\nMost Accessed Sensitive Files\n")
-		fmt.Fprintf(u.writer, "------------------------------\n")
+		u.printSection("Most Accessed Sensitive Files")
 
 		table := tablewriter.NewWriter(u.writer)
 		table.SetHeader([]string{"File Type", "Attempts"})
@@ -455,11 +537,11 @@ func (u *ConsoleUI) DisplaySecurityReport(report *models.SecuritySummary) {
 		}
 
 		table.Render()
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	if len(report.WebShellsDetected) > 0 {
-		fmt.Fprintf(u.writer, "\nDetected Web Shells\n")
-		fmt.Fprintf(u.writer, "-------------------\n")
+		u.printSection("Detected Web Shells")
 
 		table := tablewriter.NewWriter(u.writer)
 		table.SetHeader([]string{"Shell Type", "Detections"})
@@ -470,11 +552,11 @@ func (u *ConsoleUI) DisplaySecurityReport(report *models.SecuritySummary) {
 		}
 
 		table.Render()
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	if len(report.AnomalousHTTPMethods) > 0 {
-		fmt.Fprintf(u.writer, "\nAnomalous HTTP Methods\n")
-		fmt.Fprintf(u.writer, "----------------------\n")
+		u.printSection("Anomalous HTTP Methods")
 
 		table := tablewriter.NewWriter(u.writer)
 		table.SetHeader([]string{"Method", "Attempts"})
@@ -485,23 +567,23 @@ func (u *ConsoleUI) DisplaySecurityReport(report *models.SecuritySummary) {
 		}
 
 		table.Render()
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// User Agent Analysis
 	if report.MaliciousUserAgentCount > 0 || report.EmptyUserAgentCount > 0 {
-		fmt.Fprintf(u.writer, "\nUser Agent Analysis\n")
-		fmt.Fprintf(u.writer, "-------------------\n")
+		u.printSection("User Agent Analysis")
 		if report.MaliciousUserAgentCount > 0 {
-			fmt.Fprintf(u.writer, "  Malicious User Agents:  %s\n", formatNumber(report.MaliciousUserAgentCount))
+			u.printKeyValue("Malicious User Agents", formatNumber(report.MaliciousUserAgentCount))
 		}
 		if report.EmptyUserAgentCount > 0 {
-			fmt.Fprintf(u.writer, "  Empty User Agents:      %s\n", formatNumber(report.EmptyUserAgentCount))
+			u.printKeyValue("Empty User Agents", formatNumber(report.EmptyUserAgentCount))
 		}
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	// Section 8: Recommendations
-	fmt.Fprintf(u.writer, "\nRecommendations\n")
-	fmt.Fprintf(u.writer, "---------------\n")
+	u.printSection("Recommendations")
 
 	hasHighThreatIPs := false
 	hasDDoSIPs := false
@@ -527,27 +609,26 @@ func (u *ConsoleUI) DisplaySecurityReport(report *models.SecuritySummary) {
 	}
 
 	if hasDDoSIPs {
-		fmt.Fprintf(u.writer, "  - Consider implementing rate limiting for IPs with high request rates\n")
+		fmt.Fprintf(u.writer, "  %s Consider implementing rate limiting for IPs with high request rates\n", boxVertical)
 	}
 	if hasHighThreatIPs {
-		fmt.Fprintf(u.writer, "  - Review and consider blocking suspicious IPs with threat scores >= 70\n")
+		fmt.Fprintf(u.writer, "  %s Review and consider blocking suspicious IPs with threat scores >= 70\n", boxVertical)
 	}
 	if hasBruteForce {
-		fmt.Fprintf(u.writer, "  - Implement account lockout policies after failed login attempts\n")
+		fmt.Fprintf(u.writer, "  %s Implement account lockout policies after failed login attempts\n", boxVertical)
 	}
 	if hasScanning {
-		fmt.Fprintf(u.writer, "  - Monitor scanning behavior from IPs with high error rates\n")
+		fmt.Fprintf(u.writer, "  %s Monitor scanning behavior from IPs with high error rates\n", boxVertical)
 	}
 	if !hasDDoSIPs && !hasHighThreatIPs && !hasBruteForce && !hasScanning {
-		fmt.Fprintf(u.writer, "  - Continue monitoring for suspicious activity\n")
+		fmt.Fprintf(u.writer, "  %s Continue monitoring for suspicious activity\n", boxVertical)
 	}
-
-	fmt.Fprintf(u.writer, "\n")
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 }
 
 // DisplayPerformanceReport displays a performance analysis report
 func (u *ConsoleUI) DisplayPerformanceReport(report *models.PerformanceReport) {
-	u.printHeader("⚡ PERFORMANCE ANALYSIS REPORT")
+	u.printHeader("PERFORMANCE ANALYSIS REPORT")
 
 	if report.ResponseTimeStats != nil {
 		u.printSection("Response Time Statistics")
@@ -557,75 +638,76 @@ func (u *ConsoleUI) DisplayPerformanceReport(report *models.PerformanceReport) {
 		u.printKeyValue("Max", fmt.Sprintf("%.3fs", report.ResponseTimeStats.Max))
 		u.printKeyValue("P95", fmt.Sprintf("%.3fs", report.ResponseTimeStats.P95))
 		u.printKeyValue("P99", fmt.Sprintf("%.3fs", report.ResponseTimeStats.P99))
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	if len(report.SlowestEndpoints) > 0 {
 		u.printSection("Slowest Endpoints")
 		u.printEndpointsTable(report.SlowestEndpoints[:min(10, len(report.SlowestEndpoints))])
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	if len(report.Recommendations) > 0 {
 		u.printSection("Recommendations")
 		for i, rec := range report.Recommendations {
 			priority := u.colorize(rec.Priority, u.getPriorityColor(rec.Priority))
-			fmt.Fprintf(u.writer, "%d. [%s] %s\n", i+1, priority, rec.Description)
-			fmt.Fprintf(u.writer, "   Action: %s\n\n", rec.Action)
+			fmt.Fprintf(u.writer, "  %s %d. [%s] %s\n", boxVertical, i+1, priority, rec.Description)
+			fmt.Fprintf(u.writer, "  %s    Action: %s\n", boxVertical, rec.Action)
 		}
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 }
 
 // DisplayBotReport displays a bot analysis report
 func (u *ConsoleUI) DisplayBotReport(report *models.BotSummary) {
-	u.printHeader("🤖 BOT ANALYSIS REPORT")
+	u.printHeader("BOT ANALYSIS REPORT")
 
 	u.printSection("Bot Summary")
 	u.printKeyValue("Total Bot Requests", fmt.Sprintf("%d", report.TotalBotRequests))
 	u.printKeyValue("Unique Bots", fmt.Sprintf("%d", report.UniqueBots))
 	u.printKeyValue("Bot Traffic %", fmt.Sprintf("%.1f%%", report.BotTrafficPct))
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 
 	if len(report.BotsByCategory) > 0 {
 		u.printSection("Bots by Category")
 		for category, count := range report.BotsByCategory {
 			u.printKeyValue(category, fmt.Sprintf("%d", count))
 		}
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	if len(report.TopBots) > 0 {
 		u.printSection("Top Bots")
 		u.printBotsTable(report.TopBots[:min(10, len(report.TopBots))])
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 
 	if len(report.AIBots) > 0 {
 		u.printSection("AI/LLM Bots")
 		u.printBotsTable(report.AIBots)
+		fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 	}
 }
 
 // Print helper methods
 func (u *ConsoleUI) printHeader(title string) {
-	if u.colors {
-		color.New(color.FgCyan, color.Bold).Fprintf(u.writer, "\n%s\n", title)
-		color.New(color.FgCyan).Fprintf(u.writer, "%s\n\n", strings.Repeat("═", len(title)))
-	} else {
-		fmt.Fprintf(u.writer, "\n%s\n%s\n\n", title, strings.Repeat("=", len(title)))
-	}
+	width := 80
+	fmt.Fprintf(u.writer, "\n%s\n", u.renderPanelTop(title, width))
+	fmt.Fprintf(u.writer, "%s\n\n", u.renderPanelBottom(width))
 }
 
 func (u *ConsoleUI) printSection(title string) {
-	if u.colors {
-		color.New(color.FgYellow, color.Bold).Fprintf(u.writer, "\n%s\n", title)
-		color.New(color.FgYellow).Fprintf(u.writer, "%s\n", strings.Repeat("─", len(title)))
-	} else {
-		fmt.Fprintf(u.writer, "\n%s\n%s\n", title, strings.Repeat("-", len(title)))
-	}
+	width := 78
+	fmt.Fprintf(u.writer, "\n%s\n", u.renderPanelTop(title, width))
 }
 
 func (u *ConsoleUI) printKeyValue(key, value string) {
 	if u.colors {
-		color.New(color.FgWhite, color.Bold).Fprintf(u.writer, "%-25s", key+":")
-		color.New(color.FgGreen).Fprintf(u.writer, "%s\n", value)
+		keyColored := color.New(color.FgCyan).Sprint(key)
+		valueColored := color.New(color.FgWhite).Sprint(value)
+		fmt.Fprintf(u.writer, "  %s %-23s %s\n", boxVertical, keyColored+":", valueColored)
 	} else {
-		fmt.Fprintf(u.writer, "%-25s %s\n", key+":", value)
+		fmt.Fprintf(u.writer, "  %s %-23s %s\n", boxVertical, key+":", value)
 	}
 }
 
@@ -696,15 +778,23 @@ func (u *ConsoleUI) printBotsTable(bots []models.BotStat) {
 
 // Helper methods for comprehensive display
 func (u *ConsoleUI) printSectionTitle(title string) {
-	fmt.Fprintf(u.writer, "\n  %s\n", title)
+	width := 78
+	fmt.Fprintf(u.writer, "\n%s\n", u.renderPanelTop(title, width))
 }
 
 func (u *ConsoleUI) printTableTitle(title string) {
-	fmt.Fprintf(u.writer, "\n%s%s\n", strings.Repeat(" ", (63-len(title))/2), title)
+	width := 78
+	fmt.Fprintf(u.writer, "\n%s\n", u.renderPanelTop(title, width))
 }
 
 func (u *ConsoleUI) printKeyValueIndent(key, value string) {
-	fmt.Fprintf(u.writer, "    • %s: %s\n", key, value)
+	if u.colors {
+		keyColored := color.New(color.FgCyan).Sprint(key)
+		valueColored := color.New(color.FgWhite).Sprint(value)
+		fmt.Fprintf(u.writer, "  %s %s: %s\n", boxVertical, keyColored, valueColored)
+	} else {
+		fmt.Fprintf(u.writer, "  %s %s: %s\n", boxVertical, key, value)
+	}
 }
 
 func (u *ConsoleUI) printCountriesPercentageTable(countries []models.CountryStat, totalRequests int64) {
@@ -842,7 +932,8 @@ func (u *ConsoleUI) printCountryIPsTable(country models.CountryStat, data *Compr
 		return countryIPs[i].Count > countryIPs[j].Count
 	})
 
-	fmt.Fprintf(u.writer, "\n%sTop IP Addresses - %s\n", strings.Repeat(" ", (63-len(fmt.Sprintf("Top IP Addresses - %s", country.Country)))/2), country.Country)
+	title := fmt.Sprintf("Top IP Addresses - %s", country.Country)
+	fmt.Fprintf(u.writer, "\n%s\n", u.renderPanelTop(title, 78))
 
 	table := tablewriter.NewWriter(u.writer)
 	table.SetHeader([]string{"IP Address", "Hits", "Percentage"})
@@ -861,6 +952,7 @@ func (u *ConsoleUI) printCountryIPsTable(country models.CountryStat, data *Compr
 	}
 
 	table.Render()
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 }
 
 func (u *ConsoleUI) printBotAnalysisTable(botSummary *models.BotSummary) {
@@ -928,10 +1020,11 @@ func (u *ConsoleUI) printOSTable(oses []OSStat, totalRequests int64) {
 }
 
 func (u *ConsoleUI) printSecurityAnalysis(security *models.SecuritySummary) {
-	fmt.Fprintf(u.writer, "\n🛡️  SECURITY ANALYSIS - PATTERNS & THREATS\n\n")
+	width := 78
+	fmt.Fprintf(u.writer, "\n%s\n", u.renderPanelTop("SECURITY ANALYSIS - PATTERNS & THREATS", width))
 
 	// Attack patterns
-	fmt.Fprintf(u.writer, "🔍 Attack Patterns Detected:\n")
+	fmt.Fprintf(u.writer, "\nAttack Patterns Detected:\n")
 	table := tablewriter.NewWriter(u.writer)
 	table.SetHeader([]string{"Attack Type", "Attempts"})
 	table.SetAlignment(tablewriter.ALIGN_LEFT)
@@ -972,7 +1065,7 @@ func (u *ConsoleUI) printSecurityAnalysis(security *models.SecuritySummary) {
 			}
 		}
 
-		fmt.Fprintf(u.writer, "\n⚠️  Top 15 Most Abusive IP Addresses (sorted by requests):\n")
+		fmt.Fprintf(u.writer, "\nTop 15 Most Abusive IP Addresses (sorted by requests):\n")
 		table := tablewriter.NewWriter(u.writer)
 		table.SetHeader([]string{"IP Address", "Threat Score", "Requests", "Error Rate", "Attack Types", "Failed Logins"})
 		table.SetAlignment(tablewriter.ALIGN_LEFT)
@@ -1009,12 +1102,15 @@ func (u *ConsoleUI) printSecurityAnalysis(security *models.SecuritySummary) {
 
 		table.Render()
 	}
+
+	fmt.Fprintf(u.writer, "\n%s\n", u.renderPanelBottom(78))
 }
 
 // DisplayNginxBlockConfig displays Nginx block configurations for suspicious IPs
 func (u *ConsoleUI) DisplayNginxBlockConfig(security *models.SecuritySummary, option string) {
 	if len(security.SuspiciousIPs) == 0 {
-		fmt.Fprintf(u.writer, "\nNo suspicious IPs found. Nothing to block.\n\n")
+		u.printHeader("NGINX BLOCK CONFIGURATION")
+		fmt.Fprintf(u.writer, "No suspicious IPs found. Nothing to block.\n\n")
 		return
 	}
 
@@ -1032,10 +1128,7 @@ func (u *ConsoleUI) DisplayNginxBlockConfig(security *models.SecuritySummary, op
 	}
 
 	// Header
-	fmt.Fprintf(u.writer, "\n")
-	fmt.Fprintf(u.writer, "========================================\n")
-	fmt.Fprintf(u.writer, "NGINX BLOCK CONFIGURATION\n")
-	fmt.Fprintf(u.writer, "========================================\n\n")
+	u.printHeader("NGINX BLOCK CONFIGURATION")
 
 	// Display based on selected option
 	switch option {
@@ -1051,29 +1144,27 @@ func (u *ConsoleUI) DisplayNginxBlockConfig(security *models.SecuritySummary, op
 	}
 
 	// Usage instructions
-	fmt.Fprintf(u.writer, "\n")
-	fmt.Fprintf(u.writer, "========================================\n")
-	fmt.Fprintf(u.writer, "IMPLEMENTATION GUIDE\n")
-	fmt.Fprintf(u.writer, "========================================\n\n")
-	fmt.Fprintf(u.writer, "Method 1 - Server Blacklist (Recommended):\n")
-	fmt.Fprintf(u.writer, "  1. Copy the deny rules above\n")
-	fmt.Fprintf(u.writer, "  2. Edit: /data/web/nginx/server.blacklist\n")
-	fmt.Fprintf(u.writer, "  3. Paste the rules\n")
-	fmt.Fprintf(u.writer, "  4. On Hypernode it will reload automatically\n\n")
-	fmt.Fprintf(u.writer, "Method 2 - Direct in Site Config:\n")
-	fmt.Fprintf(u.writer, "  1. Copy the deny rules above\n")
-	fmt.Fprintf(u.writer, "  2. Edit your site's nginx config\n")
-	fmt.Fprintf(u.writer, "  3. Add deny rules in the server {} block\n")
-	fmt.Fprintf(u.writer, "  4. Test config: nginx -t\n")
-	fmt.Fprintf(u.writer, "  5. Reload: nginx -s reload\n")
-	fmt.Fprintf(u.writer, "\n")
+	u.printSection("Implementation Guide")
+	fmt.Fprintf(u.writer, "\n  %s Method 1 - Server Blacklist (Recommended):\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s   1. Copy the deny rules above\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s   2. Edit: /data/web/nginx/server.blacklist\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s   3. Paste the rules\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s   4. On Hypernode it will reload automatically\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s Method 2 - Direct in Site Config:\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s   1. Copy the deny rules above\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s   2. Edit your site's nginx config\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s   3. Add deny rules in the server {} block\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s   4. Test config: nginx -t\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s   5. Reload: nginx -s reload\n", boxVertical)
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 }
 
 func (u *ConsoleUI) displayCriticalThreatsConfig(sortedIPs []models.SuspiciousIP) {
-	fmt.Fprintf(u.writer, "Option: Critical Threats Only (Threat Score >= 70)\n")
-	fmt.Fprintf(u.writer, "---------------------------------------------------\n")
-	fmt.Fprintf(u.writer, "Description: Most conservative, only blocks severe threats\n")
-	fmt.Fprintf(u.writer, "Recommended for: Production environments\n\n")
+	u.printSection("Critical Threats Only (Threat Score >= 70)")
+	fmt.Fprintf(u.writer, "  %s Description: Most conservative, only blocks severe threats\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s Recommended for: Production environments\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s\n", boxVertical)
 
 	criticalIPs := 0
 	for _, ip := range sortedIPs {
@@ -1095,21 +1186,23 @@ func (u *ConsoleUI) displayCriticalThreatsConfig(sortedIPs []models.SuspiciousIP
 					attackInfo = strings.Join(ip.Threats, ", ")
 				}
 
-				fmt.Fprintf(u.writer, "deny %s;  # Score: %.1f, Requests: %s, Error: %.0f%%, Attacks: %s\n",
-					ip.IP, ip.ThreatScore, formatNumber(ip.RequestCount), errorRate, truncate(attackInfo, 40))
+				fmt.Fprintf(u.writer, "  %s deny %s;  # Score: %.1f, Requests: %s, Error: %.0f%%, Attacks: %s\n",
+					boxVertical, ip.IP, ip.ThreatScore, formatNumber(ip.RequestCount), errorRate, truncate(attackInfo, 40))
 			}
 		}
-		fmt.Fprintf(u.writer, "\nTotal IPs to block: %d\n", criticalIPs)
+		fmt.Fprintf(u.writer, "  %s\n", boxVertical)
+		fmt.Fprintf(u.writer, "  %s Total IPs to block: %d\n", boxVertical, criticalIPs)
 	} else {
-		fmt.Fprintf(u.writer, "No IPs with threat score >= 70 found.\n")
+		fmt.Fprintf(u.writer, "  %s No IPs with threat score >= 70 found.\n", boxVertical)
 	}
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 }
 
 func (u *ConsoleUI) displayAllSuspiciousConfig(sortedIPs []models.SuspiciousIP) {
-	fmt.Fprintf(u.writer, "Option: All Suspicious IPs (Complete Block List)\n")
-	fmt.Fprintf(u.writer, "-------------------------------------------------\n")
-	fmt.Fprintf(u.writer, "Description: Most aggressive, blocks all detected threats\n")
-	fmt.Fprintf(u.writer, "Warning: May include false positives\n\n")
+	u.printSection("All Suspicious IPs (Complete Block List)")
+	fmt.Fprintf(u.writer, "  %s Description: Most aggressive, blocks all detected threats\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s Warning: May include false positives\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s\n", boxVertical)
 
 	allSuspiciousCount := len(sortedIPs)
 	if allSuspiciousCount > 0 {
@@ -1126,20 +1219,22 @@ func (u *ConsoleUI) displayAllSuspiciousConfig(sortedIPs []models.SuspiciousIP) 
 				attackInfo = "High error rate"
 			}
 
-			fmt.Fprintf(u.writer, "deny %s;  # Score: %.1f, Requests: %s, Error: %.0f%%, %s\n",
-				ip.IP, ip.ThreatScore, formatNumber(ip.RequestCount), errorRate, truncate(attackInfo, 40))
+			fmt.Fprintf(u.writer, "  %s deny %s;  # Score: %.1f, Requests: %s, Error: %.0f%%, %s\n",
+				boxVertical, ip.IP, ip.ThreatScore, formatNumber(ip.RequestCount), errorRate, truncate(attackInfo, 40))
 		}
-		fmt.Fprintf(u.writer, "\nTotal IPs to block: %d\n", allSuspiciousCount)
+		fmt.Fprintf(u.writer, "  %s\n", boxVertical)
+		fmt.Fprintf(u.writer, "  %s Total IPs to block: %d\n", boxVertical, allSuspiciousCount)
 	} else {
-		fmt.Fprintf(u.writer, "No suspicious IPs found.\n")
+		fmt.Fprintf(u.writer, "  %s No suspicious IPs found.\n", boxVertical)
 	}
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 }
 
 func (u *ConsoleUI) displayError100Config(sortedIPs []models.SuspiciousIP) {
-	fmt.Fprintf(u.writer, "Option: 100%% Error Rate Only (Zero Success)\n")
-	fmt.Fprintf(u.writer, "---------------------------------------------\n")
-	fmt.Fprintf(u.writer, "Description: Safest option, only blocks IPs with no successful requests\n")
-	fmt.Fprintf(u.writer, "Recommended for: Good balance between security and safety\n\n")
+	u.printSection("100% Error Rate Only (Zero Success)")
+	fmt.Fprintf(u.writer, "  %s Description: Safest option, only blocks IPs with no successful requests\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s Recommended for: Good balance between security and safety\n", boxVertical)
+	fmt.Fprintf(u.writer, "  %s\n", boxVertical)
 
 	errorRateIPs := 0
 	for _, ip := range sortedIPs {
@@ -1161,15 +1256,17 @@ func (u *ConsoleUI) displayError100Config(sortedIPs []models.SuspiciousIP) {
 						attackInfo = strings.Join(ip.Threats, ", ")
 					}
 
-					fmt.Fprintf(u.writer, "deny %s;  # Requests: %s, Score: %.1f, %s\n",
-						ip.IP, formatNumber(ip.RequestCount), ip.ThreatScore, truncate(attackInfo, 40))
+					fmt.Fprintf(u.writer, "  %s deny %s;  # Requests: %s, Score: %.1f, %s\n",
+						boxVertical, ip.IP, formatNumber(ip.RequestCount), ip.ThreatScore, truncate(attackInfo, 40))
 				}
 			}
 		}
-		fmt.Fprintf(u.writer, "\nTotal IPs to block: %d\n", errorRateIPs)
+		fmt.Fprintf(u.writer, "  %s\n", boxVertical)
+		fmt.Fprintf(u.writer, "  %s Total IPs to block: %d\n", boxVertical, errorRateIPs)
 	} else {
-		fmt.Fprintf(u.writer, "No IPs with 100%% error rate found.\n")
+		fmt.Fprintf(u.writer, "  %s No IPs with 100%% error rate found.\n", boxVertical)
 	}
+	fmt.Fprintf(u.writer, "%s\n", u.renderPanelBottom(78))
 }
 
 func (u *ConsoleUI) colorize(text string, colorAttr color.Attribute) string {
