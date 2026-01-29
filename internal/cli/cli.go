@@ -7,6 +7,7 @@ import (
 
 	"github.com/hpowernl/hlogcli/internal/aggregators"
 	"github.com/hpowernl/hlogcli/internal/analysis"
+	"github.com/hpowernl/hlogcli/internal/dns"
 	"github.com/hpowernl/hlogcli/internal/export"
 	"github.com/hpowernl/hlogcli/internal/hypernode"
 	"github.com/hpowernl/hlogcli/internal/logreader"
@@ -133,22 +134,91 @@ var searchCmd = &cobra.Command{
 // Command implementations
 func runAnalyze(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	entries, err := getLogEntries(ctx)
+	entriesChan, err := getLogEntries(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Aggregate statistics
-	agg := aggregators.NewStatisticsAggregator()
-	for entry := range entries {
-		agg.AddEntry(entry)
+	// Collect entries into a slice for processing by multiple analyzers
+	var entries []*models.LogEntry
+	for entry := range entriesChan {
+		entries = append(entries, entry)
 	}
 
+	// Initialize analyzers
+	agg := aggregators.NewStatisticsAggregator()
+	secAnalyzer := analysis.NewSecurityAnalyzer()
+	botAnalyzer := analysis.NewBotAnalyzer()
+
+	// Process entries through all analyzers
+	for _, entry := range entries {
+		agg.AddEntry(entry)
+		secAnalyzer.AnalyzeEntry(entry)
+		botAnalyzer.AnalyzeEntry(entry)
+	}
+
+	// Get aggregated statistics
 	stats := agg.GetSummary()
+	secSummary := secAnalyzer.GetSecuritySummary()
+	botSummary := botAnalyzer.GetBotSummary()
+
+	// Get browser and OS statistics
+	browserStats := agg.GetTopBrowsers(10)
+	osStats := agg.GetTopOS(10)
+
+	// Convert aggregator browser/OS stats to UI types
+	uiBrowserStats := make([]ui.BrowserStat, len(browserStats))
+	for i, bs := range browserStats {
+		uiBrowserStats[i] = ui.BrowserStat{Browser: bs.Browser, Count: bs.Count}
+	}
+	uiOSStats := make([]ui.OSStat, len(osStats))
+	for i, os := range osStats {
+		uiOSStats[i] = ui.OSStat{OS: os.OS, Count: os.Count}
+	}
+
+	// Get path handlers for top paths
+	pathHandlers := make(map[string]string)
+	for _, path := range stats.TopPaths {
+		handler := agg.GetPathHandler(path.Path)
+		if handler != "" {
+			pathHandlers[path.Path] = handler
+		}
+	}
+
+	// Perform reverse DNS lookups for top IPs
+	reverseDNS := make(map[string]string)
+	if len(stats.TopIPs) > 0 {
+		dnsLookup := dns.NewDNSLookup()
+		topIPs := stats.TopIPs
+		if len(topIPs) > 15 {
+			topIPs = topIPs[:15]
+		}
+		ipList := make([]string, len(topIPs))
+		for i, ip := range topIPs {
+			ipList[i] = ip.IP
+		}
+		reverseDNS = dnsLookup.BulkReverseLookup(ipList)
+	}
+
+	// Get max response time
+	rtStats := agg.GetResponseTimeStats()
+	maxResponseTime := rtStats.Max
+
+	// Create comprehensive data
+	compData := &ui.ComprehensiveData{
+		Statistics:      stats,
+		SecuritySummary: secSummary,
+		BotSummary:      botSummary,
+		BrowserStats:    uiBrowserStats,
+		OSStats:         uiOSStats,
+		PathHandlers:    pathHandlers,
+		ReverseDNS:      reverseDNS,
+		MaxResponseTime: maxResponseTime,
+	}
 
 	// Display results
 	consoleUI := ui.NewConsoleUI(!noColor)
-	consoleUI.DisplaySummary(stats)
+	consoleUI.DisplayComprehensiveSummary(compData)
 
 	// Export if requested
 	if exportFormat != "" && exportFile != "" {

@@ -19,6 +19,8 @@ type StatisticsAggregator struct {
 	ipStats       map[string]*ipStats
 	countryCounts map[string]*countryStats
 	uaStats       map[string]*uaStats
+	browserStats  map[string]int64
+	osStats       map[string]int64
 	responseTimes []float64
 	totalBytes    int64
 	botRequests   int64
@@ -34,6 +36,7 @@ type pathStats struct {
 	responseTimes []float64
 	errorCount    int64
 	statusCounts  map[int]int64
+	handlers      map[string]int64
 }
 
 type ipStats struct {
@@ -71,6 +74,8 @@ func NewStatisticsAggregator() *StatisticsAggregator {
 		ipStats:       make(map[string]*ipStats),
 		countryCounts: make(map[string]*countryStats),
 		uaStats:       make(map[string]*uaStats),
+		browserStats:  make(map[string]int64),
+		osStats:       make(map[string]int64),
 		responseTimes: make([]float64, 0),
 	}
 }
@@ -111,6 +116,7 @@ func (a *StatisticsAggregator) AddEntry(entry *models.LogEntry) {
 		a.pathStats[entry.Path] = &pathStats{
 			responseTimes: make([]float64, 0),
 			statusCounts:  make(map[int]int64),
+			handlers:      make(map[string]int64),
 		}
 	}
 	ps := a.pathStats[entry.Path]
@@ -118,6 +124,9 @@ func (a *StatisticsAggregator) AddEntry(entry *models.LogEntry) {
 	ps.bytes += entry.BytesSent
 	ps.responseTimes = append(ps.responseTimes, entry.ResponseTime)
 	ps.statusCounts[entry.Status]++
+	if entry.Handler != "" {
+		ps.handlers[entry.Handler]++
+	}
 	if entry.Status >= 400 {
 		ps.errorCount++
 	}
@@ -166,6 +175,16 @@ func (a *StatisticsAggregator) AddEntry(entry *models.LogEntry) {
 			}
 		}
 		a.uaStats[entry.UserAgent].count++
+	}
+
+	// Browser and OS statistics
+	if entry.ParsedUA != nil {
+		if entry.ParsedUA.Browser != "" {
+			a.browserStats[entry.ParsedUA.Browser]++
+		}
+		if entry.ParsedUA.OS != "" {
+			a.osStats[entry.ParsedUA.OS]++
+		}
 	}
 }
 
@@ -271,6 +290,23 @@ func (a *StatisticsAggregator) getTopPaths(n int) []models.PathStat {
 		return paths[:n]
 	}
 	return paths
+}
+
+// getMostCommonHandler returns the most common handler for a path
+func getMostCommonHandler(handlers map[string]int64) string {
+	if len(handlers) == 0 {
+		return ""
+	}
+
+	var maxHandler string
+	var maxCount int64
+	for handler, count := range handlers {
+		if count > maxCount {
+			maxCount = count
+			maxHandler = handler
+		}
+	}
+	return maxHandler
 }
 
 // GetTopIPs returns top N IPs by request count
@@ -554,4 +590,107 @@ func (r *RealTimeAggregator) GetCurrentStats() *models.Statistics {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.aggregator.GetSummary()
+}
+
+// BrowserStat represents browser statistics
+type BrowserStat struct {
+	Browser string
+	Count   int64
+}
+
+// OSStat represents operating system statistics
+type OSStat struct {
+	OS    string
+	Count int64
+}
+
+// GetTopBrowsers returns top N browsers by request count
+func (a *StatisticsAggregator) GetTopBrowsers(n int) []BrowserStat {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	browsers := make([]BrowserStat, 0, len(a.browserStats))
+	for browser, count := range a.browserStats {
+		browsers = append(browsers, BrowserStat{
+			Browser: browser,
+			Count:   count,
+		})
+	}
+
+	// Sort by count
+	sort.Slice(browsers, func(i, j int) bool {
+		return browsers[i].Count > browsers[j].Count
+	})
+
+	if n < len(browsers) {
+		return browsers[:n]
+	}
+	return browsers
+}
+
+// GetTopOS returns top N operating systems by request count
+func (a *StatisticsAggregator) GetTopOS(n int) []OSStat {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	oses := make([]OSStat, 0, len(a.osStats))
+	for os, count := range a.osStats {
+		oses = append(oses, OSStat{
+			OS:    os,
+			Count: count,
+		})
+	}
+
+	// Sort by count
+	sort.Slice(oses, func(i, j int) bool {
+		return oses[i].Count > oses[j].Count
+	})
+
+	if n < len(oses) {
+		return oses[:n]
+	}
+	return oses
+}
+
+// GetIPsByCountry returns IPs grouped by country
+func (a *StatisticsAggregator) GetIPsByCountry(country string, n int) []models.IPStat {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	ips := make([]models.IPStat, 0)
+	for ip, is := range a.ipStats {
+		if is.country == country {
+			ipStat := models.IPStat{
+				IP:         ip,
+				Country:    is.country,
+				Count:      is.count,
+				Bytes:      is.bytes,
+				ErrorCount: is.errorCount,
+				IsBot:      is.isBot,
+				UniqueURLs: len(is.paths),
+			}
+			ips = append(ips, ipStat)
+		}
+	}
+
+	// Sort by count
+	sort.Slice(ips, func(i, j int) bool {
+		return ips[i].Count > ips[j].Count
+	})
+
+	if n < len(ips) {
+		return ips[:n]
+	}
+	return ips
+}
+
+// GetPathHandler returns the most common handler for a path
+func (a *StatisticsAggregator) GetPathHandler(path string) string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if ps, exists := a.pathStats[path]; exists {
+		return getMostCommonHandler(ps.handlers)
+	}
+	return ""
 }
