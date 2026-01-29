@@ -56,6 +56,10 @@ func (h *HypernodeCommand) Execute(ctx context.Context, args []string, daysAgo i
 		// Add days ago flag
 		if daysAgo > 0 {
 			cmdArgs = append(cmdArgs, fmt.Sprintf("--days-ago=%d", daysAgo))
+		} else {
+			// For today's data, explicitly use --today flag
+			// hypernode-parse-nginx-log requires --today to get current day's logs
+			cmdArgs = append(cmdArgs, "--today")
 		}
 
 		// Add additional args
@@ -156,7 +160,10 @@ func (h *HypernodeCommand) parseLine(line string) (*models.LogEntry, error) {
 func (h *HypernodeCommand) parseTSVLine(line string) (*models.LogEntry, error) {
 	parts := strings.Split(line, "\t")
 	if len(parts) < 10 {
-		return nil, fmt.Errorf("invalid TSV line format")
+		// Try parsing as default space-separated format from hypernode-parse-nginx-log
+		// Format: "status response_time country ip request"
+		// Example: "403  0.000 US 184.105.139.69  GET / HTTP/1.1"
+		return h.parseDefaultFormat(line)
 	}
 
 	entry := &models.LogEntry{}
@@ -210,6 +217,43 @@ func (h *HypernodeCommand) parseTSVLine(line string) (*models.LogEntry, error) {
 	// Parse handler
 	if len(parts) > 9 {
 		entry.Handler = parts[9]
+	}
+
+	return entry, nil
+}
+
+// parseDefaultFormat parses the default space-separated format from hypernode-parse-nginx-log
+// Format: "status response_time country ip request"
+// Example: "403  0.000 US 184.105.139.69  GET / HTTP/1.1"
+func (h *HypernodeCommand) parseDefaultFormat(line string) (*models.LogEntry, error) {
+	// Split by whitespace (handles multiple spaces)
+	fields := strings.Fields(line)
+	if len(fields) < 5 {
+		return nil, fmt.Errorf("invalid line format: not enough fields")
+	}
+
+	entry := &models.LogEntry{
+		Timestamp: time.Now(), // Default to current time since not provided
+	}
+
+	// Field 0: status code
+	_, _ = fmt.Sscanf(fields[0], "%d", &entry.Status)
+
+	// Field 1: response time
+	_, _ = fmt.Sscanf(fields[1], "%f", &entry.ResponseTime)
+
+	// Field 2: country code
+	entry.Country = fields[2]
+
+	// Field 3: IP address
+	entry.IP = net.ParseIP(fields[3])
+
+	// Fields 4+: request (method path protocol)
+	if len(fields) >= 5 {
+		entry.Method = fields[4]
+	}
+	if len(fields) >= 6 {
+		entry.Path = fields[5]
 	}
 
 	return entry, nil
