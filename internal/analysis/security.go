@@ -203,10 +203,14 @@ func (s *SecurityAnalyzer) AnalyzeEntry(entry *models.LogEntry) {
 		ipData.attackTypes["path_traversal_ext"]++
 	}
 
+	// Check credential stuffing (only count once per IP)
 	if s.checkCredentialStuffing(ipData, entry) {
-		s.credentialStuffingCount++
-		s.totalThreats++
-		ipData.attackTypes["credential_stuffing"]++
+		// Only increment if we haven't already detected credential stuffing for this IP
+		if _, alreadyDetected := ipData.attackTypes["credential_stuffing"]; !alreadyDetected {
+			s.credentialStuffingCount++
+			s.totalThreats++
+			ipData.attackTypes["credential_stuffing"] = 1
+		}
 	}
 
 	// Phase 3: Medium Impact Security Checks
@@ -228,10 +232,14 @@ func (s *SecurityAnalyzer) AnalyzeEntry(entry *models.LogEntry) {
 		ipData.attackTypes["crlf_injection"]++
 	}
 
+	// Check API abuse (only count once per IP)
 	if s.checkAPIAbuse(ipData, entry) {
-		s.apiAbuseCount++
-		s.totalThreats++
-		ipData.attackTypes["api_abuse"]++
+		// Only increment if we haven't already detected API abuse for this IP
+		if _, alreadyDetected := ipData.attackTypes["api_abuse"]; !alreadyDetected {
+			s.apiAbuseCount++
+			s.totalThreats++
+			ipData.attackTypes["api_abuse"] = 1
+		}
 	}
 
 	// Phase 4: Additional Coverage Security Checks
