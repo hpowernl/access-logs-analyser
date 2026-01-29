@@ -71,6 +71,14 @@ hlogcli content
 # Anomaly detection
 hlogcli anomalies
 
+# Generate Nginx block configurations (interactive)
+hlogcli nginx
+
+# Generate Nginx config with specific option
+hlogcli nginx --option critical    # Critical threats only (score >= 70)
+hlogcli nginx --option all         # All suspicious IPs
+hlogcli nginx --option error100    # 100% error rate only
+
 # Analyze specific file
 hlogcli analyze --file /path/to/access.log
 
@@ -91,6 +99,7 @@ hlogcli analyze --export csv --output report.csv
 |---------|--------------|
 | `analyze` | Algemene log analyse met verkeer statistieken |
 | `security` | Security threats: SQL injection, XSS, brute force |
+| `nginx` | Genereer Nginx deny rules voor verdachte IP's |
 | `perf` | Performance analyse en optimalisatie tips |
 | `ecommerce` | E-commerce analyse (Magento, WooCommerce, Shopware) |
 | `bots` | Bot classificatie en AI/LLM bot detectie |

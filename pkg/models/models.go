@@ -186,6 +186,53 @@ type SecuritySummary struct {
 	SuspiciousIPs     []SuspiciousIP
 	ThreatTimeline    []ThreatEvent
 	PlatformThreats   map[string]int64
+
+	// Overall statistics
+	TotalRequests     int64
+	TotalErrors       int64
+	UniqueIPs         int
+	AttackAttempts    int64
+	UniqueAttackTypes int
+
+	// Categorized IP counts
+	SuspiciousIPsCount int
+	PotentialDDoSIPs   int
+	ScanningIPsCount   int
+	AdminAccessIPs     int
+
+	// Attack categories with IP counts
+	AttackCategoriesIPCount map[string]int // e.g., "Brute Force": 8 IPs
+
+	// Top attack types with attempt counts
+	TopAttackTypes []AttackTypeStat
+
+	// User agent analysis
+	SuspiciousUserAgents int
+
+	// Extended threat counts
+	SensitiveFileAccessCount int64
+	WebShellCount            int64
+	Log4ShellCount           int64
+	SSRFCount                int64
+	OpenRedirectCount        int64
+	XXECount                 int64
+	CRLFInjectionCount       int64
+	CredentialStuffingCount  int64
+	APIAbuseCount            int64
+	PathTraversalExtCount    int64
+	TemplateInjectionCount   int64
+	NoSQLInjectionCount      int64
+	PrototypePollutionCount  int64
+	HTTPMethodAnomalyCount   int64
+
+	// User agent analysis (expanded)
+	MaliciousUserAgentCount int64
+	EmptyUserAgentCount     int64
+
+	// Detailed breakdowns
+	SensitiveFilesAccessed map[string]int64 // File -> count
+	WebShellsDetected      map[string]int64 // Shell type -> count
+	AnomalousHTTPMethods   map[string]int64 // Method -> count
 }
 
 // SuspiciousIP represents an IP with suspicious activity
@@ -210,6 +257,13 @@ type ThreatEvent struct {
 	Path        string
 	Severity    string
 	Description string
+}
+
+// AttackTypeStat represents statistics for an attack type
+type AttackTypeStat struct {
+	AttackType string
+	Attempts   int64
+	UniqueIPs  int
 }
 
 // BotSummary contains bot analysis results

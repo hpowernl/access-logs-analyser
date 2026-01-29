@@ -61,6 +61,7 @@ func init() {
 	RootCmd.AddCommand(contentCmd)
 	RootCmd.AddCommand(anomaliesCmd)
 	RootCmd.AddCommand(searchCmd)
+	RootCmd.AddCommand(nginxCmd)
 }
 
 // Execute runs the CLI
@@ -129,6 +130,21 @@ var searchCmd = &cobra.Command{
 	Short: "Advanced search and filtering",
 	Long:  "Search logs with flexible filtering options",
 	RunE:  runSearch,
+}
+
+var (
+	nginxOption string
+)
+
+var nginxCmd = &cobra.Command{
+	Use:   "nginx",
+	Short: "Generate Nginx block configurations",
+	Long:  "Generate Nginx deny rules for suspicious IPs based on threat scores and error rates",
+	RunE:  runNginx,
+}
+
+func init() {
+	nginxCmd.Flags().StringVarP(&nginxOption, "option", "t", "", "Block option: critical (>=70), all, or error100 (100% error rate)")
 }
 
 // Command implementations
@@ -238,18 +254,43 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 
 func runSecurity(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	entries, err := getLogEntries(ctx)
+	entriesChan, err := getLogEntries(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Security analysis
+	// Collect entries into a slice for processing by multiple analyzers
+	var entries []*models.LogEntry
+	for entry := range entriesChan {
+		entries = append(entries, entry)
+	}
+
+	// Initialize analyzers
+	agg := aggregators.NewStatisticsAggregator()
 	secAnalyzer := analysis.NewSecurityAnalyzer()
-	for entry := range entries {
+
+	// Process entries through both analyzers
+	for _, entry := range entries {
+		agg.AddEntry(entry)
 		secAnalyzer.AnalyzeEntry(entry)
 	}
 
+	// Get aggregated statistics
+	stats := agg.GetSummary()
 	report := secAnalyzer.GetSecuritySummary()
+
+	// Enhance report with aggregator stats
+	report.TotalRequests = stats.TotalRequests
+	report.UniqueIPs = stats.UniqueIPs
+
+	// Calculate total errors from status codes
+	totalErrors := int64(0)
+	for status, count := range stats.StatusCounts {
+		if status >= 400 {
+			totalErrors += count
+		}
+	}
+	report.TotalErrors = totalErrors
 
 	// Display results
 	consoleUI := ui.NewConsoleUI(!noColor)
@@ -260,6 +301,92 @@ func runSecurity(cmd *cobra.Command, args []string) error {
 		exporter := export.NewDataExporter()
 		return exporter.ExportSecurityReport(report, exportFile)
 	}
+
+	return nil
+}
+
+func runNginx(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	entriesChan, err := getLogEntries(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Collect entries into a slice
+	var entries []*models.LogEntry
+	for entry := range entriesChan {
+		entries = append(entries, entry)
+	}
+
+	// Initialize analyzers
+	agg := aggregators.NewStatisticsAggregator()
+	secAnalyzer := analysis.NewSecurityAnalyzer()
+
+	// Process entries through both analyzers
+	for _, entry := range entries {
+		agg.AddEntry(entry)
+		secAnalyzer.AnalyzeEntry(entry)
+	}
+
+	// Get aggregated statistics
+	stats := agg.GetSummary()
+	report := secAnalyzer.GetSecuritySummary()
+
+	// Enhance report with aggregator stats
+	report.TotalRequests = stats.TotalRequests
+	report.UniqueIPs = stats.UniqueIPs
+
+	// Calculate total errors from status codes
+	totalErrors := int64(0)
+	for status, count := range stats.StatusCounts {
+		if status >= 400 {
+			totalErrors += count
+		}
+	}
+	report.TotalErrors = totalErrors
+
+	// Interactive option selection if not provided via flag
+	if nginxOption == "" {
+		fmt.Println("\nNGINX BLOCK CONFIGURATION OPTIONS")
+		fmt.Println("==================================")
+		fmt.Println()
+		fmt.Println("Choose which IPs to block:")
+		fmt.Println()
+		fmt.Println("  1) Critical Threats (Threat Score >= 70)")
+		fmt.Println("     - Most conservative, only blocks severe threats")
+		fmt.Println("     - Recommended for production environments")
+		fmt.Println()
+		fmt.Println("  2) All Suspicious IPs (Complete Block List)")
+		fmt.Println("     - Most aggressive, blocks all detected threats")
+		fmt.Println("     - May include false positives")
+		fmt.Println()
+		fmt.Println("  3) 100% Error Rate Only (Zero Success)")
+		fmt.Println("     - Safest option, only blocks IPs with no successful requests")
+		fmt.Println("     - Good balance between security and safety")
+		fmt.Println()
+		fmt.Print("Enter your choice (1-3): ")
+
+		var choice string
+		_, err := fmt.Scanln(&choice)
+		if err != nil {
+			return fmt.Errorf("failed to read choice: %w", err)
+		}
+
+		switch choice {
+		case "1":
+			nginxOption = "critical"
+		case "2":
+			nginxOption = "all"
+		case "3":
+			nginxOption = "error100"
+		default:
+			return fmt.Errorf("invalid choice: %s (must be 1, 2, or 3)", choice)
+		}
+	}
+
+	// Display Nginx block configurations with selected option
+	consoleUI := ui.NewConsoleUI(!noColor)
+	consoleUI.DisplayNginxBlockConfig(report, nginxOption)
 
 	return nil
 }
