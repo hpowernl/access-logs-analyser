@@ -38,41 +38,41 @@ make install
 
 ```bash
 # Analyze today's logs
-hlogcli-go analyze
+hlogcli analyze
 
 # Security analysis
-hlogcli-go security
+hlogcli security
 
 # Performance analysis
-hlogcli-go perf
+hlogcli perf
 
 # Bot analysis
-hlogcli-go bots
+hlogcli bots
 
 # E-commerce analysis
-hlogcli-go ecommerce
+hlogcli ecommerce
 
 # API analysis
-hlogcli-go api
+hlogcli api
 
 # Content analysis
-hlogcli-go content
+hlogcli content
 
 # Anomaly detection
-hlogcli-go anomalies
+hlogcli anomalies
 
 # Analyze specific file
-hlogcli-go analyze --file /path/to/access.log
+hlogcli analyze --file /path/to/access.log
 
 # Analyze yesterday's logs
-hlogcli-go analyze --yesterday
+hlogcli analyze --yesterday
 
 # Analyze logs from N days ago
-hlogcli-go analyze --days-ago 7
+hlogcli analyze --days-ago 7
 
 # Export results
-hlogcli-go analyze --export json --output report.json
-hlogcli-go analyze --export csv --output report.csv
+hlogcli analyze --export json --output report.json
+hlogcli analyze --export csv --output report.csv
 ```
 
 ## Available Commands
@@ -81,56 +81,56 @@ hlogcli-go analyze --export csv --output report.csv
 Comprehensive log analysis with traffic insights and statistics.
 
 ```bash
-hlogcli-go analyze [flags]
+hlogcli analyze [flags]
 ```
 
 ### security
 Security threat detection and analysis including SQL injection, XSS, directory traversal, and brute force attacks.
 
 ```bash
-hlogcli-go security [flags]
+hlogcli security [flags]
 ```
 
 ### perf
 Performance analysis including response times, cache effectiveness, and optimization recommendations.
 
 ```bash
-hlogcli-go perf [flags]
+hlogcli perf [flags]
 ```
 
 ### ecommerce
 E-commerce platform analysis (Magento, WooCommerce, Shopware) with conversion funnel tracking.
 
 ```bash
-hlogcli-go ecommerce [flags]
+hlogcli ecommerce [flags]
 ```
 
 ### bots
 Bot classification and behavior analysis including AI/LLM bot detection.
 
 ```bash
-hlogcli-go bots [flags]
+hlogcli bots [flags]
 ```
 
 ### api
 API endpoint analysis and GraphQL operation tracking.
 
 ```bash
-hlogcli-go api [flags]
+hlogcli api [flags]
 ```
 
 ### content
 Content type and resource analysis with SEO issue detection.
 
 ```bash
-hlogcli-go content [flags]
+hlogcli content [flags]
 ```
 
 ### anomalies
 Machine learning-based anomaly detection using statistical analysis.
 
 ```bash
-hlogcli-go anomalies [flags]
+hlogcli anomalies [flags]
 ```
 
 ## Global Flags
@@ -223,61 +223,6 @@ hlogcli/
 - `github.com/fsnotify/fsnotify` - File watching
 - `github.com/mssola/useragent` - User agent parsing
 - `github.com/montanaflynn/stats` - Statistics
-
-## Nginx Log Format
-
-This tool is optimized for Hypernode's Nginx JSON logs:
-
-```json
-{
-  "time": "2024-09-17T08:10:17+00:00",
-  "remote_addr": "94.124.105.4",
-  "host": "example.com",
-  "request": "POST /graphql HTTP/1.1",
-  "status": "200",
-  "body_bytes_sent": "860",
-  "referer": "",
-  "user_agent": "GuzzleHttp/7",
-  "request_time": "0.098",
-  "country": "CZ",
-  "server_name": "example.com",
-  "handler": "phpfpm"
-}
-```
-
-## Troubleshooting
-
-### Command not found: hypernode-parse-nginx-log
-
-Use the `--file` flag to analyze local log files:
-```bash
-hlogcli-go analyze --file /var/log/nginx/access.log
-```
-
-### Permission denied
-
-Ensure the binary is executable:
-```bash
-chmod +x bin/hlogcli-go
-```
-
-### Import errors during build
-
-Download dependencies:
-```bash
-make deps
-```
-
-## Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `make test`
-5. Format code: `make fmt`
-6. Submit a pull request
 
 ## License
 
