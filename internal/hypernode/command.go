@@ -78,15 +78,15 @@ func (h *HypernodeCommand) Execute(ctx context.Context, args []string, daysAgo i
 		buf := make([]byte, 0, 64*1024)
 		scanner.Buffer(buf, 1024*1024)
 
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			_ = cmd.Process.Kill()
-			return
-		default:
-			lineChan <- scanner.Text()
+		for scanner.Scan() {
+			select {
+			case <-ctx.Done():
+				_ = cmd.Process.Kill()
+				return
+			default:
+				lineChan <- scanner.Text()
+			}
 		}
-	}
 
 		if err := scanner.Err(); err != nil {
 			errorChan <- fmt.Errorf("error reading command output: %w", err)
