@@ -143,10 +143,13 @@ func (s *SecurityAnalyzer) AnalyzeEntry(entry *models.LogEntry) {
 		ipData.attackTypes["brute_force"]++
 	}
 
-	// Check for scanning behavior
+	// Check for scanning behavior (only increment once per IP)
 	if s.isScanningBehavior(ipData) {
-		s.scanningCount++
-		ipData.attackTypes["scanning"]++
+		// Only increment if we haven't already detected scanning for this IP
+		if _, alreadyDetected := ipData.attackTypes["scanning"]; !alreadyDetected {
+			s.scanningCount++
+			ipData.attackTypes["scanning"] = 1
+		}
 	}
 
 	// Phase 1: Core Security Checks
@@ -168,7 +171,14 @@ func (s *SecurityAnalyzer) AnalyzeEntry(entry *models.LogEntry) {
 		ipData.attackTypes["log4shell"]++
 	}
 
-	if s.checkMaliciousUserAgent(entry) {
+	// Check user agent (returns: 0=not suspicious, 1=empty, 2=malicious)
+	uaType := s.checkMaliciousUserAgent(entry)
+	if uaType == 1 {
+		// Empty user agent
+		s.emptyUACount++
+		// Empty UAs are suspicious but not necessarily threats, so don't increment totalThreats
+	} else if uaType == 2 {
+		// Malicious user agent
 		s.maliciousUACount++
 		s.totalThreats++
 		ipData.attackTypes["malicious_ua"]++
@@ -844,24 +854,23 @@ func (s *SecurityAnalyzer) checkLog4Shell(entry *models.LogEntry) bool {
 }
 
 // checkMaliciousUserAgent detects known malicious user agents
-func (s *SecurityAnalyzer) checkMaliciousUserAgent(entry *models.LogEntry) bool {
+// Returns: 0 = not suspicious, 1 = empty user agent, 2 = malicious user agent
+func (s *SecurityAnalyzer) checkMaliciousUserAgent(entry *models.LogEntry) int {
 	ua := strings.ToLower(entry.UserAgent)
 
 	// Check for empty user agent
 	if ua == "" || ua == "-" {
-		s.emptyUACount++
-		return true
+		return 1 // Empty
 	}
 
 	// Check against known malicious tools
 	for _, malicious := range config.MaliciousUserAgents {
 		if strings.Contains(ua, strings.ToLower(malicious)) {
-			s.maliciousUACount++
-			return true
+			return 2 // Malicious
 		}
 	}
 
-	return false
+	return 0 // Not suspicious
 }
 
 // Phase 2: Advanced Security Checks

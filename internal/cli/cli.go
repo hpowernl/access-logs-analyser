@@ -367,7 +367,10 @@ func runNginx(cmd *cobra.Command, args []string) error {
 		fmt.Print("Enter your choice (1-3): ")
 
 		var choice string
-		fmt.Scanln(&choice)
+		_, err := fmt.Scanln(&choice)
+		if err != nil {
+			return fmt.Errorf("failed to read choice: %w", err)
+		}
 
 		switch choice {
 		case "1":

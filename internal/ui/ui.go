@@ -661,23 +661,6 @@ func (u *ConsoleUI) printCountriesTable(countries []models.CountryStat) {
 	table.Render()
 }
 
-func (u *ConsoleUI) printSuspiciousIPsTable(ips []models.SuspiciousIP) {
-	table := tablewriter.NewWriter(u.writer)
-	table.SetHeader([]string{"IP", "Country", "Threat Score", "Requests", "Recommended"})
-
-	for _, ip := range ips {
-		table.Append([]string{
-			ip.IP,
-			ip.Country,
-			fmt.Sprintf("%.1f", ip.ThreatScore),
-			fmt.Sprintf("%d", ip.RequestCount),
-			truncate(ip.Recommended, 30),
-		})
-	}
-
-	table.Render()
-}
-
 func (u *ConsoleUI) printEndpointsTable(endpoints []models.EndpointStat) {
 	table := tablewriter.NewWriter(u.writer)
 	table.SetHeader([]string{"Endpoint", "Requests", "Avg RT", "P95 RT", "Errors"})
