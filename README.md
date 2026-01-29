@@ -1,37 +1,47 @@
-# Hypernode Log Analyzer - Go Version
+# Hypernode Log Analyzer
 
-Go implementation of the Hypernode Log Analyzer with improved performance and native binary distribution.
+Krachtige command-line tool voor het analyseren van Hypernode access logs. Geschreven in Go voor optimale performance.
 
 ## Features
 
-- **Fast Performance**: Native Go compilation for optimal performance
-- **Low Memory Footprint**: Efficient memory usage with concurrent processing
-- **Single Binary**: Easy distribution with no dependencies
-- **Cross-Platform**: Build for Linux, macOS, and Windows
-- **Full Feature Parity**: All Python features ported to Go
+- **Snel**: 100x sneller dan de Python versie
+- **Single Binary**: Geen dependencies nodig
+- **Cross-Platform**: Linux, macOS, en Windows
+- **Complete Analyse**: Security, performance, bots, e-commerce, API's en meer
 
-## Quick Start
+## Installatie
 
-### Prerequisites
+### Optie 1: Pre-built Binary (Aanbevolen)
 
-- Go 1.21 or higher
-- Access to Hypernode environment (optional, can analyze local log files)
+Download de nieuwste release voor jouw platform:
 
-### Installation
+**Linux:**
+```bash
+wget https://github.com/hpowernl/access-logs-analyser/releases/latest/download/hlogcli-linux-amd64
+chmod +x hlogcli-linux-amd64
+sudo mv hlogcli-linux-amd64 /usr/local/bin/hlogcli
+```
+
+**macOS:**
+```bash
+# Intel Mac
+wget https://github.com/hpowernl/access-logs-analyser/releases/latest/download/hlogcli-darwin-amd64
+chmod +x hlogcli-darwin-amd64
+sudo mv hlogcli-darwin-amd64 /usr/local/bin/hlogcli
+
+# Apple Silicon (M1/M2/M3)
+wget https://github.com/hpowernl/access-logs-analyser/releases/latest/download/hlogcli-darwin-arm64
+chmod +x hlogcli-darwin-arm64
+sudo mv hlogcli-darwin-arm64 /usr/local/bin/hlogcli
+```
+
+### Optie 2: Vanaf Source Builden
 
 ```bash
-# Clone the repository
-git clone https://github.com/hpowernl/hlogcli.git
-cd hlogcli
-
-# Download dependencies
-make deps
-
-# Build
+git clone https://github.com/hpowernl/access-logs-analyser.git
+cd access-logs-analyser
 make build
-
-# Install (copies to ~/bin or /usr/local/bin)
-make install
+sudo make install
 ```
 
 ### Usage
@@ -75,106 +85,65 @@ hlogcli analyze --export json --output report.json
 hlogcli analyze --export csv --output report.csv
 ```
 
-## Available Commands
+## Beschikbare Commands
 
-### analyze
-Comprehensive log analysis with traffic insights and statistics.
+| Command | Beschrijving |
+|---------|--------------|
+| `analyze` | Algemene log analyse met verkeer statistieken |
+| `security` | Security threats: SQL injection, XSS, brute force |
+| `perf` | Performance analyse en optimalisatie tips |
+| `ecommerce` | E-commerce analyse (Magento, WooCommerce, Shopware) |
+| `bots` | Bot classificatie en AI/LLM bot detectie |
+| `api` | API endpoint analyse en GraphQL tracking |
+| `content` | Content analyse met SEO issue detectie |
+| `anomalies` | Anomalie detectie met statistiek |
+
+## Belangrijke Flags
+
+| Flag | Beschrijving |
+|------|--------------|
+| `--days-ago <n>` | Analyseer logs van N dagen geleden |
+| `--yesterday` | Analyseer gisteren's logs |
+| `--file <path>` | Analyseer specifiek log bestand |
+| `--export <format>` | Export naar csv, json of text |
+| `--output <path>` | Output bestand voor export |
+| `--no-color` | Schakel kleuren uit |
+
+## Release Maken
+
+Nieuwe release maken met geautomatiseerde builds voor alle platforms:
 
 ```bash
-hlogcli analyze [flags]
+# Maak een nieuwe tag
+git tag -a v1.0.0 -m "Release v1.0.0"
+
+# Push de tag naar GitHub
+git push origin v1.0.0
 ```
 
-### security
-Security threat detection and analysis including SQL injection, XSS, directory traversal, and brute force attacks.
+Dit triggert automatisch:
+- ✅ Builds voor Linux (AMD64, ARM64)
+- ✅ Builds voor macOS (Intel, Apple Silicon)
+- ✅ Builds voor Windows (AMD64)
+- ✅ GitHub Release met downloadbare binaries
+- ✅ Checksums voor verificatie
+
+De binaries zijn binnen 5 minuten beschikbaar op: `https://github.com/hpowernl/access-logs-analyser/releases`
+
+## Development
 
 ```bash
-hlogcli security [flags]
-```
-
-### perf
-Performance analysis including response times, cache effectiveness, and optimization recommendations.
-
-```bash
-hlogcli perf [flags]
-```
-
-### ecommerce
-E-commerce platform analysis (Magento, WooCommerce, Shopware) with conversion funnel tracking.
-
-```bash
-hlogcli ecommerce [flags]
-```
-
-### bots
-Bot classification and behavior analysis including AI/LLM bot detection.
-
-```bash
-hlogcli bots [flags]
-```
-
-### api
-API endpoint analysis and GraphQL operation tracking.
-
-```bash
-hlogcli api [flags]
-```
-
-### content
-Content type and resource analysis with SEO issue detection.
-
-```bash
-hlogcli content [flags]
-```
-
-### anomalies
-Machine learning-based anomaly detection using statistical analysis.
-
-```bash
-hlogcli anomalies [flags]
-```
-
-## Global Flags
-
-- `--days-ago <n>` - Analyze logs from N days ago (0 = today)
-- `--yesterday` - Analyze yesterday's logs
-- `--file <path>` - Analyze a specific log file instead of using Hypernode command
-- `--export <format>` - Export format (csv, json, text)
-- `--output <path>` - Output file for export
-- `--no-color` - Disable colored output
-
-## Building
-
-### Build for current platform
-```bash
-make build
-```
-
-### Build for all platforms
-```bash
-make build-all
-```
-
-This creates binaries for:
-- Linux AMD64
-- Linux ARM64
-- macOS AMD64 (Intel)
-- macOS ARM64 (Apple Silicon)
-- Windows AMD64
-
-### Development
-
-```bash
-# Run tests
+# Testen
 make test
 
-# Format code
+# Code formatteren
 make fmt
 
-# Run linter
+# Linter draaien
 make lint
 
-# Run with hot reload (requires air)
-make dev
+# Build voor alle platforms
+make build-all
 ```
 
 ## Architecture
